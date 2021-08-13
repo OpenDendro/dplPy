@@ -5,8 +5,6 @@
 
 import json
 
-
-
 with open("test1.txt", "r" ) as rings:
     data= rings.read()
     lines = data.split("\n")
@@ -79,8 +77,8 @@ with open("test1.txt", "r" ) as rings:
                         pts=0
                         unit = points
             else:
-            current += 1
-            pts=0
+                current = current + 1
+                pts=0
    
 jsonfile = {}
 jsonfile["site_code"] = site_code
