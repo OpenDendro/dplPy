@@ -1,8 +1,9 @@
-### Date:
-### Author: Anushka 
+### Date:2021-08-13
+### Author: Sarah
 ### Project: OpenDendro- Tucson Format 
-### Description: Assigning variables to each value in the tucson formated datasets
+### Description: Assigning variables to each value in the tucson formated datasets using the emptyjson file.
 
+import json
 
 with open("test1.txt", "r" ) as rings:
     data= rings.read()
@@ -22,7 +23,7 @@ with open("test1.txt", "r" ) as rings:
     #State/province
     state_province = lines[1,3]
 
-    #country 
+    #country
     country= lines[0,2]
 
     #species
@@ -31,17 +32,17 @@ with open("test1.txt", "r" ) as rings:
     #species code
     species_code= lines[1,5]
 
-    #start year- start of collection
-    start_year = int(lines[1,6])
+    #start year- start of collection 
+    start_date = int(lines[1,6])
 
     #end year- completion year
     end_year = int(lines[1,7])
 
-    #latitude, longitude, elevation 
-    latitude = lines[2,4]
+#lattitude, longitude, elevation 
+    lattitude = lines[2,4]
     longitude = lines[2,5]
 
-    #lead investigater
+    #lead investigator
     lead_investigator= lines[2,2] 
 
     #site_id
@@ -51,6 +52,7 @@ with open("test1.txt", "r" ) as rings:
         current=0
         information=0 
         site_id=0 
+        unit = 0
         while current >=0 and current<=len(lines)-1:
             if current <=3:   
                 site_code = lines[current,0,0]       
@@ -64,7 +66,7 @@ with open("test1.txt", "r" ) as rings:
             y=1
             past= y-1
             end=[current,-1]
-            if site_id == lines[current,0] and start_year <= int(lines[current,1]) and end_year>= int(lines[current,1]):
+            if site_id == lines[current,0] and start_date <= int(lines[]):
                 for points in lines[current,2:]:
                     pts=[]
                     pts.append(points)
@@ -73,6 +75,27 @@ with open("test1.txt", "r" ) as rings:
                         pts[:-1]
                         data.append(pts)
                         pts=0
-            current += 1
-            pts=0
+                        unit = points
+            else:
+                current = current + 1
+                pts=0
    
+jsonfile = {}
+jsonfile["site_code"] = site_code
+jsonfile["site_name"] = site_id
+jsonfile["species_code"] = species_code
+jsonfile["species_name"] = species
+jsonfile["country"] = country
+jsonfile["state_province"] = state_province
+jsonfile["elevation"] = ""
+jsonfile["latitude"] = lattitude
+jsonfile["longitude"] = longitude
+if unit == "999":
+    jsonfile["unit"] = "0.01mm"
+elif unit == "-9999":
+    jsonfile["unit"] = "0.001mm"
+else:
+    print("ERROR - Stopcodes is not 999 or -9999. Cannot identify a unit.")
+    exit
+jsonfile["lead_investigator"] = lead_investigator
+jsonfile["collection_date"] = ""
