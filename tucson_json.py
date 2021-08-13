@@ -95,7 +95,7 @@ if unit == "999":
 elif unit == "-9999":
     jsonfile["unit"] = "0.001mm"
 else:
-    print("ERROR - Stopcodes is not 999 or -9999. Cannot identify a unit.")
+    print("ERROR - Stopcode is not 999 or -9999. Cannot identify a unit.")
     exit
 jsonfile["lead_investigator"] = lead_investigator
 jsonfile["collection_date"] = ""
