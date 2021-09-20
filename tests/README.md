@@ -1,5 +1,3 @@
-# contents
-
 # Tucson Files
 
 Three Tucson format decadal raw ring width data are currently available in /tests - these were selected because they are also part of the dplR package.  These include the following: 
