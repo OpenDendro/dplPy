@@ -60,6 +60,21 @@
     "eigen_value":"",
     "elevation":0,
     "exposition":"",
+    "field_no":0,
+    "film_no":0,
+    "from_seed_to_date_begin":"",
+    "global_math_comments":{
+        "global_math_comment_count":0,
+        "global_math_comment_1":{
+            "comment_text":"",
+            "date":""
+        }
+    },
+    "graph_param":"",
+    "group":"",
+    "house_name":"",
+    "house_no":0,
+    "image_cell_row":"",
     "key":"",
     "latitude":0,
     "lead_investigator":"",
