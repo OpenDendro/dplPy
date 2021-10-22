@@ -1,4 +1,3 @@
-### Date:
 ### Author: Anushka 
 ### Project: OpenDendro- Tucson Format 
 ### Description: Assigning variables to each value in the tucson formated datasets
@@ -18,12 +17,18 @@ with open("test1.txt", "r" ) as rings:
 
     for items in lines:
         str(items)  
+    #Location 
 
-    #State/province
+    ##State/province
     state_province = lines[1,3]
 
-    #country 
+    ##country 
     country= lines[0,2]
+
+    ##Using a dictornary to check if the the place exist or not.  
+        # If it does exist then it the program will continue running
+        # If not then will tell user to change the location or stop the program completely 
+    
 
     #species
     species = lines[1,4]
