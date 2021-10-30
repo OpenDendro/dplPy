@@ -1,53 +1,53 @@
 ### Date:2021-08-13
-### Author: Sarah
+### Author: Sarah Jackson
 ### Project: OpenDendro- Tucson Format 
 ### Description: Assigning variables to each value in the tucson formated datasets using the emptyjson file.
 
 import json
 
-with open("test1.txt", "r" ) as rings:
+with open("*", "r" ) as rings:
     data= rings.read()
     lines = data.split("\n")
     print (lines[0-2])
-    #read every single line
+    # read every single line
     for  rows  in lines:
         print (rows)
     
-    #remove empty lines from the file.
+    # remove empty lines from the file.
 
-    #convert every element in each list to string- it is easier to manupilate the elements
+    # convert every element in each list to string- it is easier to manupilate the elements
 
     for items in lines:
         str(items)  
 
-    #State/province
+    # State/province
     state_province = lines[1,3]
 
-    #country
+    # country
     country= lines[0,2]
 
-    #species
+    # species
     species = lines[1,4]
 
-    #species code
+    # species code
     species_code= lines[1,5]
 
-    #start year- start of collection 
+    # start year- start of collection 
     start_date = int(lines[1,6])
 
-    #end year- completion year
+    # end year- completion year
     end_year = int(lines[1,7])
 
-#lattitude, longitude, elevation 
+# latitude, longitude, elevation 
     lattitude = lines[2,4]
     longitude = lines[2,5]
 
-    #lead investigator
+    # lead investigator
     lead_investigator= lines[2,2] 
 
-    #site_id
-        #Via indexing the first three digits of the site id are assigned to var named site_code and the rest to information.
-        #Check if all the site codes are the same for the whole dataset 
+    # site_id
+        # Via indexing the first three digits of the site id are assigned to var named site_code and the rest to information.
+        # Check if all the site codes are the same for the whole dataset 
     for site_code in lines:
         current=0
         information=0 
@@ -95,7 +95,7 @@ if unit == "999":
 elif unit == "-9999":
     jsonfile["unit"] = "0.001mm"
 else:
-    print("ERROR - Stopcode is not 999 or -9999. Cannot identify a unit.")
+    print("ERROR - Stop code is not 999 or -9999. Cannot identify a unit.")
     exit
 jsonfile["lead_investigator"] = lead_investigator
 jsonfile["collection_date"] = ""

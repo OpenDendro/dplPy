@@ -1,9 +1,9 @@
-### Author: Sarah 
+### Date: 10/01/2021 
+### Author: Sarah Jackson
 ### Project: OpenDendro- CSV Format 
-### Description: Assigning variables to each value in the tucson formated datasets
+### Description: Assigning variables to each value in a CSV format data set
 
-
-with open("test1.txt", "r" ) as rings:
+with open("*", "r" ) as rings:
     data= rings.read()
     lines = data.split("\n")
     print (lines[0-1])

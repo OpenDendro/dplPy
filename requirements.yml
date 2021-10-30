@@ -1,0 +1,36 @@
+name: dplpy
+channels:
+  - conda-forge
+  - defaults
+  - anaconda
+dependencies:
+  - ca-certificates
+  - cairo
+  - certifi
+  - folium
+  - gdal
+  - geojson
+  - geos
+  - json-c
+  - jsonschema
+  - libclang
+  - libcurl
+  - libgdal
+  - libgfortran-ng
+  - libgfortran5
+  - libnetcdf
+  - matplotlib
+  - matplotlib-base
+  - numpy
+  - pandas
+  - pillow
+  - pip
+  - pkg-config
+  - proj
+  - python
+  - python-dateutil
+  - python_abi
+  - rasterio
+  - readline
+  - requests
+  - urllib3

@@ -1,12 +1,12 @@
-###Date: 10/22/2021
-###Author: Anushka 
-###Title: summary.tucson.py
-### Description 
+### Date: 10/22/2021
+### Author: Anushka Bande
+### Title: summary.tucson.py
+### Description: 
 
 import pandas as pd
 import numpy as np
 
-df = pd.read_csv(r'tests/co021.csv')
+df = pd.read_csv(r'*')
 
 #To see the dataframe 
 print(df)
