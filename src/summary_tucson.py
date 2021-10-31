@@ -18,37 +18,52 @@ __copyright__ = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-__license__ = "GNU GPL3"
+__license__ = "GNU GPLv3"
 
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 10/01/2021 
-# Author: Sarah Jackson
-# Project: OpenDendro- CSV Format 
-# Description: Assigning variables to each value in a CSV format data set
-# example usage: csv_var("./data/file.csv")
+# Date: 10/22/2021
+# Author: Anushka Bande
+# Title: summary.tucson.py
+# Description: Generates summary statistics for Tucson format CSV files
+# usage:
 
-with open("*", "r" ) as rings:
-    data= rings.read()
-    lines = data.split("\n")
-    print (lines[0-1])
-    #read every single line
-    csvs = []
-    for  rows  in lines:
-        csvs.append(rows)
-    
-    #remove empty lines from the file.
-    while "" in csvs:
-        csvs.remove("")
+import pandas as pd
+import numpy as np
 
-    allvals = []
-    csvtemp = csvs[0].split(",")
-    startyear = csvtemp[0]
+df = pd.read_csv(r'*')
 
-    for csv in csvs:
-        temp = csv.split(",")
-        for i in range(1, len(temp)):
-            allvals.append(temp[i])
+#To see the dataframe 
+print(df)
 
-    #convert every element in each list to string- it is easier to manupilate the elements
+#First five rows 
+df.head()
+
+#Average / year
+df['Average'] = df.mean(axis=1)
+
+"""
+Total amount of observation 
+Average 
+Standard Deviation 
+Minimum 
+Lower and Upper Quartile
+Interquartile
+Maximum 
+Data type 
+
+"""
+df.describe()
+
+
+
+
+
+
+
+
+
+
+
+

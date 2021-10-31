@@ -1,7 +1,33 @@
-### Date:2021-08-13
-### Author: Sarah Jackson
-### Project: OpenDendro- Tucson Format 
-### Description: Assigning variables to each value in the tucson formated datasets using the emptyjson file.
+from __future__ import print_function
+
+__copyright__ = """
+   dplPy for tree ring width time series analyses
+   Copyright (C) 2021  OpenDendro
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+__license__ = "GNU GPL3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Date:2021-08-13
+# Author: Sarah Jackson
+# Project: OpenDendro- Tucson Format 
+# Description: Assigns variable names to each value in the tucson formated datasets using the emptyjson file.
+# example usage:
 
 import json
 
@@ -39,7 +65,7 @@ with open("*", "r" ) as rings:
     end_year = int(lines[1,7])
 
 # latitude, longitude, elevation 
-    lattitude = lines[2,4]
+    latitude = lines[2,4]
     longitude = lines[2,5]
 
     # lead investigator

@@ -1,0 +1,9 @@
+[build-system]
+requires = [
+    "jsonschema",
+    "matplotlib",
+    "pandas",
+    "setuptools",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
