@@ -18,7 +18,7 @@ __copyright__ = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-__license__ = "GNU GPL3"
+__license__ = "GNU GPLv3"
 
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
