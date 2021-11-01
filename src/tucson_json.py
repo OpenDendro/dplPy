@@ -114,7 +114,7 @@ jsonfile["species_name"] = species
 jsonfile["country"] = country
 jsonfile["state_province"] = state_province
 jsonfile["elevation"] = ""
-jsonfile["latitude"] = lattitude
+jsonfile["latitude"] = latitude
 jsonfile["longitude"] = longitude
 if unit == "999":
     jsonfile["unit"] = "0.01mm"
