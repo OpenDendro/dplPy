@@ -107,11 +107,11 @@ print("")
 
 spacing = "                               "
 
-from .read_rwl import read_rwl
-from .read_csv import read_csv
-
-from .summary import summary_rwl
-from .summary import summary_csv
+# Commenting out until we've corrected the read_rwl.py read_csv.py and summary.py 
+# from .read_rwl import read_rwl
+# from .read_csv import read_csv
+# from .summary import summary_rwl
+# from .summary import summary_csv
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
