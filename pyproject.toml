@@ -1,8 +1,5 @@
 [build-system]
 requires = [
-    "jsonschema",
-    "matplotlib",
-    "pandas",
     "setuptools",
     "wheel"
 ]

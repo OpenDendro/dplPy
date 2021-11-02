@@ -29,7 +29,9 @@ __license__ = "GNU GPL3"
 # Description: Assigning variables to each value in a CSV format data set
 # example usage: csv_var("./data/file.csv")
 
-with open("*", "r" ) as rings:
+def read_csv(input):
+
+with open("input", "r" ) as rings:
     data= rings.read()
     lines = data.split("\n")
     print (lines[0-1])

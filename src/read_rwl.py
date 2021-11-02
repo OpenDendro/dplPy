@@ -18,7 +18,7 @@ __copyright__ = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-__license__ = "GNU GPL3"
+__license__ = "GNU GPLv3"
 
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
@@ -32,6 +32,7 @@ __license__ = "GNU GPL3"
 ## This section needs to be fixed - the scripts must ask the users for an input file or directory and it should look for the .rwl formatted files within a folder.
 ## It must also echo out that the file is corrupt or there is no corresponding .rwl file.
 ################################
+
 import sys
 from os import listdir
 from os.path import isfile, join
@@ -48,6 +49,9 @@ else:
     print('Correct usage: python tucson_var.py ~/folder/dataset1.rwl')
     print('Correct usage: python tucson_var.py ~/folder/dataset1.rwl dataset2.rwl')    
     exit(2)
+
+def read_rwl(input):
+    with open(input) as filename:
 
 for filename in listdir(rwldir):
     if filename.endswith('.rwl'):

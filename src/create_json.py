@@ -31,7 +31,9 @@ __license__ = "GNU GPL3"
 
 import json
 
-with open("*", "r" ) as rings:
+def create_json(input):
+
+with open("input", "r" ) as rings:
     data= rings.read()
     lines = data.split("\n")
     print (lines[0-2])

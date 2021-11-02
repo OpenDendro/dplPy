@@ -1,7 +1,10 @@
-import setuptools
+from setuptools import setup, find_packages
+import pathlib
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+here = pathlib.Path(__file__).parent.resolve()
+
+# Get the long description from the README file
+long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setuptools.setup(
     name="dplpy-opendendro",
@@ -13,15 +16,22 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/opendendro/dplpy",
     project_urls={
+        "Funding": "https://nsf.gov/awardsearch/showAward?AWD_ID=2054516",
         "Bug Tracker": "https://github.com/opendendro/dplpy/issues",
         "Changelog": "https://github.com/opendendro/dplpy/blob/main/CHANGELOG.md"
     },
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3 :: Only",
         "License :: OSI Approved :: GNU GPLv3 License",
         "Operating System :: OS Independent",
     ],
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
-    python_requires=">=3.8.6",
+    python_requires=">=3.6",
 )

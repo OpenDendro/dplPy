@@ -31,7 +31,7 @@ __license__ = "GNU GPLv3"
 
 import argparse
 import base64
-import clipboard
+from bs4 import BeautifulSoup
 import datetime
 import dateutil.parser
 import json
@@ -42,93 +42,13 @@ import requests
 import subprocess
 import sys
 import time
+import webbrowser
 
-# Windows installations
-if str(platform.system().lower()) == "windows":
-    # Get python runtime version
-    version = sys.version_info[0]
-    try:
-        import pipwin
-
-        if pipwin.__version__ == "0.5.0":
-            pass
-        else:
-            a = subprocess.call(
-                "{} -m pip install pipwin==0.5.0".format(sys.executable),
-                shell=True,
-                stdout=subprocess.PIPE,
-            )
-            b = subprocess.call(
-                "{} -m pip install wheel".format(sys.executable),
-                shell=True,
-                stdout=subprocess.PIPE,
-            )
-            subprocess.call("pipwin refresh", shell=True)
-        """Check if the pipwin cache is old: useful if you are upgrading porder on windows
-        [This section looks if the pipwin cache is older than two weeks]
-        """
-        home_dir = expanduser("~")
-        fullpath = os.path.join(home_dir, ".pipwin")
-        file_mod_time = os.stat(fullpath).st_mtime
-        if int((time.time() - file_mod_time) / 60) > 90000:
-            print("Refreshing your pipwin cache")
-            subprocess.call("pipwin refresh", shell=True)
-    except ImportError:
-        a = subprocess.call(
-            "{} -m pip install pipwin==0.5.0".format(sys.executable),
-            shell=True,
-            stdout=subprocess.PIPE,
-        )
-        subprocess.call("pipwin refresh", shell=True)
-    except Exception as e:
-        print(e)
-    try:
-        import json
-    except ImportError:
-        try:
-           import json
-        except ModuleNotFoundError:
-            subprocess.call("pipwin install json", shell=True)
-    except ModuleNotFoundError or ImportError:
-        subprocess.call("pipwin install json", shell=True)
-    except Exception as e:
-        print(e)
-    try:
-        import pandas
-    except ImportError:
-        subprocess.call("pipwin install pandas", shell=True)
-    except Exception as e:
-        print(e)
-
-# add def files from /src        
-from .tucson_json import create_json
-from .tucson_var import read_tucson
-from .csv_var import read_csv
-from .summary_tucson import summary
-
-if str(platform.python_version()) > "3.8":
-    from .async_down import downloader
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 lpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(lpath)
 
-# Get package version
-class Solution:
-    def compareVersion(self, version1, version2):
-        versions1 = [int(v) for v in version1.split(".")]
-        versions2 = [int(v) for v in version2.split(".")]
-        for i in range(max(len(versions1), len(versions2))):
-            v1 = versions1[i] if i < len(versions1) else 0
-            v2 = versions2[i] if i < len(versions2) else 0
-            if v1 > v2:
-                return 1
-            elif v1 < v2:
-                return -1
-        return 0
-
-ob1 = Solution()
-
-# Open the README
+# Opens the Python README website
 def readme():
     try:
         a = webbrowser.open("https://opendendro.github.io/opendendro/python/", new=2)
@@ -140,25 +60,75 @@ def readme():
 def read_from_parser(args):
     readme()
 
+# Get package versioning -- commented out until we add dplPy to pypi.org
+#def dplpy_version():
+#    url = "https://pypi.org/project/dplpy/"
+#    source = requests.get(url)
+#    html_content = source.text
+#    soup = BeautifulSoup(html_content, "html.parser")
+#    company = soup.find("h1")
+#    vcheck = ob1.compareVersion(
+#        company.string.strip().split(" ")[-1],
+#        pkg_resources.get_distribution("dplpy").version,
+#    )
+#    if vcheck == 1:
+#        print(
+#            "\n"
+#            + "========================================================================="
+#        )
+#        print(
+#            "Current version of dplPy is {} upgrade to lastest version: {}".format(
+#                pkg_resources.get_distribution("dplpy").version,
+#                company.string.strip().split(" ")[-1],
+#            )
+#        )
+#        print(
+#            "========================================================================="
+#        )
+#    elif vcheck == -1:
+#        print(
+#            "\n"
+#            + "========================================================================="
+#        )
+#        print(
+#            "Possibly running staging code {} compared to pypi release {}".format(
+#                pkg_resources.get_distribution("dplpy").version,
+#                company.string.strip().split(" ")[-1],
+#            )
+#        )
+#        print(
+#            "========================================================================="
+#        )
+#
+#dplpy_version()
+
+# creates whitespace
 print("")
 
 spacing = "                               "
 
+from .read_rwl import read_rwl
+from .read_csv import read_csv
+
+from .summary import summary_rwl
+from .summary import summary_csv
+
 def main(args=None):
-    parser = argparse.ArgumentParser(description="dplPy v0.1")
+    parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
     subparsers = parser.add_subparsers()
 
     parser_read = subparsers.add_parser(
-        "readme", help="Go to https://opendendro.github.io/opendendro/python/"
+        "readme", help="Goes to the website: https://opendendro.github.io/opendendro/python/"
     )
+    
     parser_read.set_defaults(func=read_from_parser)
+    args = parser.parse_args()
 
     try:
         func = args.func
     except AttributeError:
         parser.error("too few arguments")
     func(args)
-
 
 if __name__ == "__main__":
     main()
