@@ -4,33 +4,16 @@ channels:
   - defaults
   - anaconda
 dependencies:
+  - argparse
+  - bs4
   - ca-certificates
-  - cairo
   - certifi
-  - folium
-  - gdal
-  - geojson
-  - geos
-  - json-c
+  - conda
   - jsonschema
-  - libclang
   - libcurl
-  - libgdal
-  - libgfortran-ng
-  - libgfortran5
-  - libnetcdf
-  - matplotlib
-  - matplotlib-base
-  - numpy
-  - pandas
-  - pillow
+  - openssl
   - pip
-  - pkg-config
-  - proj
   - python
   - python-dateutil
-  - python_abi
-  - rasterio
-  - readline
   - requests
-  - urllib3
+  - wheel
