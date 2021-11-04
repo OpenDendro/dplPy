@@ -2,18 +2,8 @@ name: dplpy
 channels:
   - conda-forge
   - defaults
-  - anaconda
 dependencies:
-  - argparse
   - bs4
-  - ca-certificates
-  - certifi
-  - conda
-  - jsonschema
-  - libcurl
-  - openssl
-  - pip
+  - numpy
+  - pandas
   - python
-  - python-dateutil
-  - requests
-  - wheel

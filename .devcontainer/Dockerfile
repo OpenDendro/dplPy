@@ -20,8 +20,8 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     /bin/bash ~/miniconda.sh -b -p /home/vscode/conda && \
     rm ~/miniconda.sh && \
     ln -s /home/vscode/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
-    echo ". /home/vscode/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    echo "conda activate base" >> ~/.bashrc
+    echo ". /home/vscode/conda/etc/profile.d/conda.sh" >> /home/vscode/.bashrc && \
+    echo "conda activate base" >> /home/vscode/.bashrc
 
 # [Optional] Uncomment this line to install global node packages.
 # RUN su vscode -c "source /usr/local/share/nvm/nvm.sh && npm install -g <your-package-here>" 2>&1
