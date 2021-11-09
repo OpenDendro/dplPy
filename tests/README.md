@@ -7,3 +7,5 @@ Three Tucson format decadal raw ring width data are currently available in /test
 - co021.rwl - This data set gives the raw ring widths for Douglas fir *Pseudotsuga menziesii* at Mesa Verde in Colorado, USA. The complete original data are available [here from the ITRDB](https://www1.ncdc.noaa.gov/pub/data/paleo/treering/measurements/northamerica/usa/co021.rwl)
 
 Comma-delimited versions of the above Tucson-formatted files are also in this directory.  The CSV files were converted from the original RWL files using the DPL subprogram YUX.
+
+- TTHH_raw.txt - This is a Tucson formatted data file of raw ring widths for Twisted Tree/Heartrot Hill.  It is an example of a Tucson file that may be difficult to read properly. File originally from Ed Cook.
