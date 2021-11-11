@@ -1,0 +1,68 @@
+Synthesizing 6/10 solutions
+
+=======
+
+print(path)
+
+path_to_data='/workspaces/dplPy/tests/data'
+
+data_files = glob.glob(path_to_data+'*.txt')
+
+for file in data_files:
+    print(file)
+    with open(file) as f:
+        content = f.readlines()
+        content = [x.strip() for x in content]
+        content = [x.split('\t') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split('-') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split(' ') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split('/') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split('.') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split(',') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split('_') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split('(') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split(')') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split(':') for x in content]
+        content = [x[0] for x in content]
+        content = [x.split(';') for x in content]
+        content = [x[0] for x in content]
+
+=======
+
+print(path)
+
+# List all files in the current directory
+list_of_files = glob.glob('*.txt')
+
+=======
+
+print(path)
+
+#path="/home/anushka/Desktop/OpenDendro/Tucson_format"
+
+=======
+
+print(path)
+
+#for f in glob.glob("*.tuc"):
+
+=======
+
+print(path)
+
+path=path+"/Tucson/Tucson_Data/Tucson_Data_PreProcessed/"
+
+=======
+
+print(path)
+
+#list of files in directory

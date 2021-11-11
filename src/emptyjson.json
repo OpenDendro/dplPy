@@ -1,0 +1,23 @@
+{
+    "site_code":"", 
+    "site_name":"", 
+    "species_code":"",
+    "species_name":"",
+    "country":"",
+    "state_province":"",
+    "elevation":0,
+    "latitude":0,
+    "longitude":0,
+    "unit":0,
+    "lead_investigator":"",
+    "collection_date":"",
+    "completion_date":"",
+    "data":{
+        "series 1":{
+            "sample_id":"", 
+            "start_year":0,
+            "data":[""]
+        }
+        
+    }
+}

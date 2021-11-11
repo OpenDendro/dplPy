@@ -1,0 +1,9 @@
+name: dplpy
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - bs4
+  - numpy
+  - pandas
+  - python
