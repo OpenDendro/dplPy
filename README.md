@@ -18,18 +18,4 @@ Activate the environment:
 ```
 conda activate dplpy
 ```
-
-## Tests
-
-From terminal:
-
-```
-$ python summary.tucson.py ./tests/data/filename.rwl
-```
-
-From Python3 console or notebook cell:
-
-```
->>> import dplpy as dpl
->>> dpl.summary.tucson("./tests/data/filename.rwl")
-```
+We're using [ZenHub](https://zenhub.com) to manage our GitHub Issues
