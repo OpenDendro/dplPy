@@ -20,22 +20,18 @@ __copyright__ = """
 """
 __license__ = "GNU GPLv3"
 
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
-# Date: 10/01/2021
-# Author: Anushka Bande  
-# Project: OpenDendro- Tucson Format 
-# Description: Assigning variables to each value in the Tucson format data sets
-# example usage:
-
-## This section needs to be fixed - the scripts must ask the users for an input file or directory and it should look for the .rwl formatted files within a folder.
-## It must also echo out that the file is corrupt or there is no corresponding .rwl file.
-################################
+###Author: Anushka Bande
+###Project: OpenDendro  
+####Description: combining the files read_csv.py , read_rwl.py, read_url.py
 
 import sys
 from os import listdir
 from os.path import isfile, join
+
+from src.read_csv import read_csv
+from src.read_rwl import read_rwl
+
+
 
 if len(sys.argv) == 2:
     rwldir = sys.argv[1]
@@ -50,14 +46,46 @@ else:
     print('Correct usage: python tucson_var.py ~/folder/dataset1.rwl dataset2.rwl')    
     exit(2)
 
-def read_rwl(input, format, name):
-    #input- path
-    # format- rwl or csv
-    # name- df 
-    with open(input) as filename:
+#Check what type of file by asking the user- rwl or csv or url
+format = input("What type of file is it? Is it csv or rwl?")
+format.lower()
+if format == "csv": 
+    read_csv()
+if format == "rwl":
+    read_rwl()
+if format == "url":
+    read_url()
+else:
+    print("The file does not exist.")
+    
+def  read_csv():
+    with open("input", "r" ) as rings:
+    data= rings.read()
+    lines = data.split("\n")
+    print (lines[0-1])
+    #read every single line
+    csvs = []
+    for  rows  in lines:
+        csvs.append(rows)
+    
+    #remove empty lines from the file.
+    while "" in csvs:
+        csvs.remove("")
 
-for filename in listdir(rwldir):
-    if filename.endswith('.rwl'):
+    allvals = []
+    csvtemp = csvs[0].split(",")
+    startyear = csvtemp[0]
+
+    for csv in csvs:
+        temp = csv.split(",")
+        for i in range(1, len(temp)):
+            allvals.append(temp[i])
+
+
+def read_rwl():
+    
+    for filename in listdir(rwldir):
+        if filename.endswith('.rwl'):
         try:
             rwl = open(rwldir+'/'+ filename) # open the rwl file
         except (IOError, SyntaxError) as e:
@@ -78,7 +106,13 @@ for filename in listdir(rwldir):
 
     for items in lines:
         str(items)  
-    
+
+
+def read_url():
+
+
+
+def read_df():
     # state/province code
     state_province = lines[1,3]
     # country code
@@ -139,3 +173,4 @@ for filename in listdir(rwldir):
             current += 1
             pts=0
    
+

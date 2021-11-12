@@ -16,9 +16,9 @@ dependencies:
   - libclang
   - libcurl
   - libgdal
-  - libgfortran-ng
-  - libgfortran5
-  - libnetcdf
+ # - libgfortran-ng
+ # - libgfortran5
+ #- libnetcdf
   - matplotlib
   - matplotlib-base
   - numpy
@@ -31,6 +31,6 @@ dependencies:
   - python-dateutil
   - python_abi
   - rasterio
-  - readline
+ # - readline
   - requests
   - urllib3
