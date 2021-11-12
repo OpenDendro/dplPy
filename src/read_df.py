@@ -18,6 +18,7 @@ __copyright__ = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
+
 __license__ = "GNU GPLv3"
 
 ###Author: Anushka Bande
@@ -30,8 +31,6 @@ from os.path import isfile, join
 
 from src.read_csv import read_csv
 from src.read_rwl import read_rwl
-
-
 
 if len(sys.argv) == 2:
     rwldir = sys.argv[1]
@@ -46,7 +45,8 @@ else:
     print('Correct usage: python tucson_var.py ~/folder/dataset1.rwl dataset2.rwl')    
     exit(2)
 
-#Check what type of file by asking the user- rwl or csv or url
+#Check what type of file by asking the user rwl or csv or url
+
 format = input("What type of file is it? Is it csv or rwl?")
 format.lower()
 if format == "csv": 
@@ -59,6 +59,7 @@ else:
     print("The file does not exist.")
     
 def  read_csv():
+
     with open("input", "r" ) as rings:
         data= rings.read()
         lines = data.split("\n")
@@ -81,7 +82,6 @@ def  read_csv():
         for i in range(1, len(temp)):
             allvals.append(temp[i])
 
-
 def read_rwl():
     
     for filename in listdir(rwldir):
@@ -90,7 +90,6 @@ def read_rwl():
             rwl = open(rwldir+'/'+ filename) # open the rwl file
         except (IOError, SyntaxError) as e:
             print('Bad file:', filename) # print out the names of corrupt files
-#################################
 
     with open(rwldir+'/'+ filename, 'r') as rings:
         data= rings.read()
@@ -109,7 +108,6 @@ def read_rwl():
 
 
 def read_url():
-
 
 
 def read_df():
@@ -173,4 +171,3 @@ def read_df():
             current += 1
             pts=0
    
-
