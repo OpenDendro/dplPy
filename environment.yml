@@ -2,8 +2,8 @@ name: dplpy
 channels:
   - conda-forge
   - defaults
-  - anaconda
 dependencies:
+<<<<<<< HEAD
   - ca-certificates
   - cairo
   - certifi
@@ -34,3 +34,9 @@ dependencies:
  # - readline
   - requests
   - urllib3
+=======
+  - bs4
+  - numpy
+  - pandas
+  - python
+>>>>>>> 12be64b5f9fd65842e1e99945077f50007cd95ef

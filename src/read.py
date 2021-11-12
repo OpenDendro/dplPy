@@ -60,12 +60,12 @@ else:
     
 def  read_csv():
     with open("input", "r" ) as rings:
-    data= rings.read()
-    lines = data.split("\n")
-    print (lines[0-1])
+        data= rings.read()
+        lines = data.split("\n")
+        print (lines[0-1])
     #read every single line
-    csvs = []
-    for  rows  in lines:
+        csvs = []
+        for  rows  in lines:
         csvs.append(rows)
     
     #remove empty lines from the file.

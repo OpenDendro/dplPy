@@ -30,18 +30,18 @@ __license__ = "GNU GPLv3"
 # example usage:
 
 import argparse
-import base64
+#import base64
 from bs4 import BeautifulSoup
-import datetime
-import dateutil.parser
-import json
+#import datetime
+#import dateutil.parser
+#import json
 import os
-import pkg_resources
-import platform
-import requests
-import subprocess
+#import pkg_resources
+#import platform
+#import requests
+#import subprocess
 import sys
-import time
+#import time
 import webbrowser
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
