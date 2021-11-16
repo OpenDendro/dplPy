@@ -27,39 +27,38 @@ __license__ = "GNU GPLv3"
 # Date: 11/16/2021 
 # Author: Tyson Lee Swetnam
 # Project: OpenDendro- Readers
-# Description: Readers for all file types (*.CSV, *.RWL, and *.TXT)
+# Description: Readers for all supported file types (*.CSV, *.RWL, and *.TXT)
 # 
-# example usage: 
+# example usages: 
 # >>> import dplpy as dpl 
 # >>> dpl.readers("./data/file.csv")
 # >>> dpl.readers("./data/file.rwl")
 # >>> dpl.readers("./data/file.txt")
 
-import csv
-import sys
-from os import listdir
-from os.path import isfile, join
-
-# define `reader` module as oython definition function
-# input is expected to be a file path with file name
+# define `reader` module as a definition function
+# input is expected to be a file path with file name and extension
 def readers(input):
     """
     This function imports common ring width
     data files into Python as arrays
     Accepted file types are CSV, RWL, TXT
     """
-    with open(input) as rings:
-        # First, test if its a CSV
-        if rings.endswith('.csv'):
+    import csv
+    import os
+    # open the input file and parse it to see what exactly it is
+    if input.endswith(('.csv','.CSV')):
+        with open(input, "r") as rings:
+            print("")
             print(
-                "Reading as .CSV format"
+                "Reading input as .CSV format"
             )
+            print("")
             try:
                 data = rings.read()
                 lines = data.split("\n")
                 print(
                     "CSV header detail:"
-                    + lines[0-1]
+                    + lines[0]
                 )
                 #reads every single line
                 csvs = []
@@ -71,6 +70,10 @@ def readers(input):
                 allvals = []
                 csvtemp = csvs[0].split(",")
                 startyear = csvtemp[0]
+                print(
+                    "Start Year: "
+                    + startyear
+                )
                 for csv in csvs:
                     temp = csv.split(",")
                     for i in range(1, len(temp)):
@@ -78,44 +81,87 @@ def readers(input):
                         )
             except Exception as e:
                 print(e)
-                #end CSV reader
-        # Second, test if its a Tucson (RWL) format
-        # Note, RWL have many header variations
-        elif rings.endswith('.rwl'):
+    # End the CSV reader
+    # Next, test if the file is a Tucson (RWL) format
+        # Note, RWL may have many header variations
+    elif input.endswith(('.rwl','.RWL')):
+        with open(input, "r") as rings:
+            print("")
             print(
-                "Reading as Tucson (RWL) format"
-            )
+                    "Reading as Tucson (RWL) format"
+                )
+            print("")
             try:
                 data= rings.read()
                 lines = data.split("\n")
                 print(
                     "RWL header detail:"
-                    + lines[0-2]
                 )
-            #read every line
-                for rows in lines:
-                    print(rows)
+                print(
+                    lines[0]  
+                    + lines[1] 
+                    + lines[2]
+                )
+                #read every line 
+                #for rows in lines:
+                #    print(rows)
                 # convert every element in each list to string- it is easier to manupilate the elements
                 for items in lines:
                     str(items)  
                     # state/province code
                     state_province = lines[1,3]
+                    print(
+                        "State/Province: "
+                        + state_province
+                        )
                     # country code
                     country= lines[0,2]
+                    print(
+                        "Country: "
+                        + lines[0,2]
+                        )
                     #species
                     species = lines[1,4]
+                    print(
+                        "Species: "
+                        + species
+                        )
                     #species code
                     species_code= lines[1,5]
+                    print(
+                        "Species Code: "
+                        + species_code
+                        )
                     #start year- start of collection
                     start_year = int(lines[1,6])
+                    print(
+                        " Start Year: "
+                        + start_year
+                    )
                     #end year- completion year
                     end_year = int(lines[1,7])
+                    print(
+                        "End Year: "
+                        + end_year
+                    )
                     #latitude
-                    latitude = lines[2,4]
+                    lat = lines[2,4]
+                    print(
+                        "Latitude: "
+                        + lat
+                    )
                     # longitude
-                    longitude = lines[2,5]
+                    lon = lines[2,5]
+                    print(
+                        "Longitude: "
+                        + lon
+                    )
                     #lead investigater
-                    lead_investigator= lines[2,2] 
+                    leadinv= lines[2,2]
+                    print(
+                        "Lead Investigator: "
+                        + leadinv
+                    ) 
                     #site_id
                     #Via indexing the first three digits of the site id are assigned to var named site_code and the rest to information.
                     for site_code in lines:
@@ -137,30 +183,39 @@ def readers(input):
                             end=[current,-1]
                             if site_id == lines[current,0] and start_year <= int(lines[current,1]) and end_year>= int(lines[current,1]):
                                 for points in lines[current,2:]:
-                                    pts=[]
-                                    pts.append(points)
-                                    # End of data collection for that year
-                                    if points== "999" or points== "-9999":
-                                        pts[:-1]
-                                        data.append(pts)
-                                        pts=0
-                            current += 1
-                            pts=0
-                        #end
+                                        pts=[]
+                                        pts.append(points)
+                                        # End of data collection for that year
+                                        if points== "999" or points== "-9999":
+                                            pts[:-1]
+                                            data.append(pts)
+                                            pts=0
+                                current += 1
+                                pts=0
+                            #end
+                        print(
+                            "Site ID: "
+                            + side_id
+                        )
             except Exception as e:
                 print(e)
-                # end RWL reader
-        # Begin import  for .txt types
-        elif rings.endswith('.txt'):
+    # end RWL reader
+    # Begin import  for .txt types
+    elif input.endswith(('.txt','.TXT')):
+        with open(input, "r") as rings:
+            print("")
             print(
                 "Reading as TXT format"
             )
+            print("")
             try:
                 data = rings.read()
                 lines = data.split("\n")
                 print(
                     "TXT header detail:"
-                    + lines[0-1]
+                    + lines[0]
                 )
             except Exception as e:
                 print(e)
+    else: 
+        print("Unable to read file, please check that you're using a supported type")

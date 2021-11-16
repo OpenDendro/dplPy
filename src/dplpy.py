@@ -49,22 +49,40 @@ def help():
     try:
         print("*Welcome to the dplPy Help Menu*")
         print("")
-        print("....:....:....:....:....⋮....:....:....:....:....:....⋮")
+        print("....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⁞")
         print("")
         print("README")
-        print("to view the documentation online, type:")
+        print("")
+        print("to view the documentation online from terminal, type:")
         print("$ python src/dplpy.py readme()")
+        print("")
+        print("from Python Console:")
+        print(">>> import dplpy")
+        print(">>> dplpy.readme()")
+        print("")
         print("or")
-        print("visit our website here: https://opendendro.org/dplpy")
+        print("to visit our website click url: https://opendendro.org/dplpy")
         print("")
         print("READERS")
-        print("to import ring width series data type:")
-        print("$ python src/dplpy.py reader(input)")
+        print("")
+        print("to import ring width series from termial type:")
+        print("$ python src/dplpy.py reader(\"/folder/filename.csv\")")
+        print("")
+        print("from Python Console:")
+        print("")
+        print(">>> import dplpy")
+        print(">>> dplpy.readers(\"/folder/filename.csv\")")
         print("where input = a single ring width series formatted file")
         print("")
         print("WRITERS")
-        print("to write or convert outputs to new file, type:")
-        print("$ python src/dplpy.py writer(input,output)")
+        print("")
+        print("to write or convert outputs to new file from terminal, type:")
+        print("$ python src/dplpy.py writer(\"/folder/filename.csv\")")
+        print("")
+        print("from Python Console:")
+        print("")
+        print(">>> import dplpy")
+        print(">>> dplpy.writers(input=\"/folder/filename.csv\",output=\"/outputfolder/outputfile.rwl\")")
         print("where input = a ring width series file, and output= a ring width series file")
         print("")
         print("SUMMARY STATISTICS")
@@ -130,13 +148,27 @@ def readme_from_parser(args):
 #
 #dplpy_version()
 
+# Readers
+def readers_from_parser(args):
+    readers()
+
+# Writers
+#def writers_from_parser(args):
+#    writers()
+
+# Summary
+#def summary_from_parser(args):
+#    summary()
+
 # creates whitespace
 print("")
 
 spacing = "                               "
 
+# Import definition functions from other files in the src/ path
+
+from readers import readers
 # Commenting out extra features until we're ready to implement them
-import readers
 # import writers
 # import summary
 
@@ -163,7 +195,7 @@ def main(args=None):
         "reader", help="Read input ring width series files (.CSV, .JSON, .RWL, .TXT) into an array"
     )
 
-    parser_readers.set_defaults(func=readers)
+    parser_readers.set_defaults(func=readers_from_parser)
 
 # Writer file output
 #    parser_writers = subparsers.add_parser(
