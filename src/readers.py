@@ -24,7 +24,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 11/16/2021 
+# Date: 11/17/2021 
 # Author: Tyson Lee Swetnam
 # Project: OpenDendro- Readers
 # Description: Readers for all supported file types (*.CSV, *.RWL, and *.TXT)
@@ -34,9 +34,13 @@ __license__ = "GNU GPLv3"
 # >>> dpl.readers("./data/file.csv")
 # >>> dpl.readers("./data/file.rwl")
 # >>> dpl.readers("./data/file.txt")
-
+# 
+# example command line application:
+# $ python src/dplpy.py reader --input ./data/file.csv
+#
 # define `reader` module as a definition function
 # input is expected to be a file path with file name and extension
+
 def readers(input):
     """
     This function imports common ring width
@@ -45,51 +49,63 @@ def readers(input):
     """
     import csv
     import os
-    # open the input file and parse it to see what exactly it is
+# open the input file and parse it to see what exactly it is
+    # begin with CSV format
     if input.endswith(('.csv','.CSV')):
         with open(input, "r") as rings:
             print("")
             print(
-                "Reading input as .CSV format"
+                "Attempting to read input file: "
+                + os.path.basename(input)
+                + " as .csv format"
             )
             print("")
             try:
                 data = rings.read()
                 lines = data.split("\n")
                 print(
-                    "CSV header detail:"
-                    + lines[0]
+                    "CSV header detail: \n"
+                + "\n" + lines[0] + "\n"
                 )
-                #reads every single line
+                # creates blank array
                 csvs = []
                 for  rows  in lines:
                     csvs.append(rows)
                 #remove empty lines from the file.
                 while "" in csvs:
                     csvs.remove("")
-                allvals = []
-                csvtemp = csvs[0].split(",")
-                startyear = csvtemp[0]
+                csv_temp = csvs[1].split(",")
+                startyear = csv_temp[0]
                 print(
                     "Start Year: "
                     + startyear
                 )
-                for csv in csvs:
-                    temp = csv.split(",")
-                    for i in range(1, len(temp)):
-                        allvals.append(temp[i]
+                print("")
+                # create blank array
+                allvals = []
+                for csv_data in csvs:
+                    csv_data_split = csv_data.split(",")
+                    for i in range(1, len(csv_data_split)):
+                        allvals.append(csv_data_split[i]
                         )
+                print(
+                    "Successful -- loaded file name: "
+                    + os.path.basename(input)
+                )
+                print("")       
             except Exception as e:
                 print(e)
     # End the CSV reader
-    # Next, test if the file is a Tucson (RWL) format
+    # Next, test if the file is in a Tucson (RWL) format
         # Note, RWL may have many header variations
     elif input.endswith(('.rwl','.RWL')):
         with open(input, "r") as rings:
             print("")
             print(
-                    "Reading as Tucson (RWL) format"
-                )
+                "Attempting to read input file: "
+                + os.path.basename(input)
+                + " as .rwl format"
+            )
             print("")
             try:
                 data= rings.read()
@@ -97,83 +113,85 @@ def readers(input):
                 print(
                     "RWL header detail:"
                 )
+                print("")
                 print(
-                    lines[0]  
-                    + lines[1] 
+                    lines[0] + "\n" 
+                    + lines[1] + "\n"
                     + lines[2]
                 )
+                print("")
                 #read every line 
                 #for rows in lines:
                 #    print(rows)
                 # convert every element in each list to string- it is easier to manupilate the elements
                 for items in lines:
-                    str(items)  
+                    data_str=str(items)  
                     # state/province code
-                    state_province = lines[1,3]
+                    state_province = data_str[1,3]
                     print(
                         "State/Province: "
                         + state_province
                         )
                     # country code
-                    country= lines[0,2]
+                    country= data_str[0,2]
                     print(
                         "Country: "
-                        + lines[0,2]
+                        + data_str[0,2]
                         )
                     #species
-                    species = lines[1,4]
+                    species = data_str[1,4]
                     print(
                         "Species: "
                         + species
                         )
                     #species code
-                    species_code= lines[1,5]
+                    species_code= data_str[1,5]
                     print(
                         "Species Code: "
                         + species_code
                         )
                     #start year- start of collection
-                    start_year = int(lines[1,6])
+                    start_year = int(data_str[1,6])
                     print(
                         " Start Year: "
                         + start_year
                     )
                     #end year- completion year
-                    end_year = int(lines[1,7])
+                    end_year = int(data_str[1,7])
                     print(
                         "End Year: "
                         + end_year
                     )
                     #latitude
-                    lat = lines[2,4]
+                    lat = data_str[2,4]
                     print(
                         "Latitude: "
                         + lat
                     )
                     # longitude
-                    lon = lines[2,5]
+                    lon = data_str[2,5]
                     print(
                         "Longitude: "
                         + lon
                     )
                     #lead investigater
-                    leadinv= lines[2,2]
+                    leadinv= data_str[2,2]
                     print(
                         "Lead Investigator: "
                         + leadinv
                     ) 
                     #site_id
                     #Via indexing the first three digits of the site id are assigned to var named site_code and the rest to information.
-                    for site_code in lines:
+                    for site_code in data_str:
                         current=0
                         information=0 
                         site_id=0 
-                        while current >=0 and current<=len(lines)-1:
+                        while current >=0 and current<=len(data_str)-1:
                             if current <=3:   
-                                site_code = lines[current,0,0]       
-                            if current>=4 and current<=len(lines)-1:
-                                if lines[current,0,0] == lines[4,0,0]:
-                                    site_id = lines[current,0,0]
+                                site_code = data_str[current,0,0]       
+                            if current>=4 and current<=len(data_str)-1:
+                                if data_str[current,0,0] == data_str[4,0,0]:
+                                    site_id = data_str[current,0,0]
                                     information = site_id[3::]  
                             site_id= site_code + information 
                             #data
@@ -181,8 +199,8 @@ def readers(input):
                             y=1
                             past= y-1
                             end=[current,-1]
-                            if site_id == lines[current,0] and start_year <= int(lines[current,1]) and end_year>= int(lines[current,1]):
-                                for points in lines[current,2:]:
+                            if site_id == data_str[current,0] and start_year <= int(data_str[current,1]) and end_year>= int(data_str[current,1]):
+                                for points in data_str[current,2:]:
                                         pts=[]
                                         pts.append(points)
                                         # End of data collection for that year
@@ -205,15 +223,17 @@ def readers(input):
         with open(input, "r") as rings:
             print("")
             print(
-                "Reading as TXT format"
+                "Attempting to read input file: "
+                + os.path.basename(input)
+                + " as .txt format"
             )
             print("")
             try:
                 data = rings.read()
                 lines = data.split("\n")
                 print(
-                    "TXT header detail:"
-                    + lines[0]
+                    "TXT header detail: \n"
+                    + "\n" + lines[0] + "\n"
                 )
             except Exception as e:
                 print(e)

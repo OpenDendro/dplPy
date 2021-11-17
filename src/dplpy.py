@@ -89,20 +89,20 @@ def help():
         print("TBD")
     except Exception as e:
         print(e)
-
-# set definition for help function
+# set the definition for the help function
 def help_from_parser(args):
     help()
 
-# Open the Website with its README 
+# Open the Website README (Manual documentation) 
 def readme():
     try:
         a = webbrowser.open("https://opendendro.github.io/opendendro/python/", new=2)
+        print("Success: Check your web browser for a new tab")
         if a == False:
             print("Your computer does not use a monitor, and cannot display the webpages")
     except Exception as e:
         print(e)
-
+# set the definition for the help function
 def readme_from_parser(args):
     readme()
 
@@ -148,13 +148,13 @@ def readme_from_parser(args):
 #
 #dplpy_version()
 
-# Readers
+# set the definition for the Readers functions (from readers.py)
 def readers_from_parser(args):
-    readers()
+    readers(input=args.input)
 
-# Writers
+# set the definition for the Writers funcitons (from writers.py)
 #def writers_from_parser(args):
-#    writers()
+#    writers(input=args.input,output=args.output)
 
 # Summary
 #def summary_from_parser(args):
@@ -190,9 +190,14 @@ def main(args=None):
 
     parser_readme.set_defaults(func=readme_from_parser)
 
-# Reader file input
+# Reader file input parser
     parser_readers = subparsers.add_parser(
-        "reader", help="Read input ring width series files (.CSV, .JSON, .RWL, .TXT) into an array"
+        "readers", help="Read input ring width series files (.CSV, .JSON, .RWL, .TXT) into an array"
+    )
+
+    parser_readers.add_argument(
+        "--input",
+        help="select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
     )
 
     parser_readers.set_defaults(func=readers_from_parser)
@@ -201,8 +206,15 @@ def main(args=None):
 #    parser_writers = subparsers.add_parser(
 #        "writer", help="Write out ring width series from array to file (.CSV, .JSON, .RWL, .TXT)"
 #    )
-#
-#    parser_writers.set_defaults(func=writers)
+#    parser_writers.add_argument(
+#        "--input",
+#        help="select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#    )
+#    parser_writers.add_argument(
+#        "--output",
+#        help="select a valid output ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#    )
+#    parser_writers.set_defaults(func=writers_from_parser)
 
 # Summary Statistics
 #    parser_summary = subparsers.add_parser(

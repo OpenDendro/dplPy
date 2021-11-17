@@ -1,8 +1,3 @@
-###Author: Anushka Bande
-###Project: OpenDendro  
-####Description: The licensing template for every file. 
-
-
 from __future__ import print_function
 
 __copyright__ = """
@@ -24,3 +19,20 @@ __copyright__ = """
 
 """
 __license__ = "GNU GPLv3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Date: 
+# Author: 
+# Project: 
+# Description: 
+
+# example usages: 
+# >>> 
+# >>> 
+#
+# example command line application:
+# $ 
+# $
+
