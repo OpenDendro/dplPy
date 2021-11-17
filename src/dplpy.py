@@ -51,42 +51,44 @@ def help():
         print("")
         print("....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⁞")
         print("")
-        print("README")
-        print("")
-        print("to view the documentation online from terminal, type:")
-        print("$ python src/dplpy.py readme()")
-        print("")
+        print("README \n")
+        print("to view the documentation online from terminal, type: \n")
+        print("$ python src/dplpy.py readme() \n")
         print("from Python Console:")
         print(">>> import dplpy")
-        print(">>> dplpy.readme()")
+        print(">>> dplpy.readme() \n")
+        print("or visit our website click url: https://opendendro.org/dplpy \n")
+        print("READERS \n")
+        print("Import ring width series in a terminal: \n")
+        print("$ python src/dplpy.py reader --input /folder/filename.csv \n")
+        print(
+            "arguments: \n"
+        )
+        print(
+            " --input, -i : single ring width series formatted file (.CSV, .RWL, .TXT) \n"
+            " --help, -h : echo the help menu \n"
+            )
+        print("from the Python Console: \n")
+        print(">>> import dplpy as dpl")
+        print(">>> dpl.readers(\"/folder/filename.csv\") \n")
+        print("WRITERS \n")
+        print("Write or convert outputs to new file from terminal, type: \n")
+        print("$ python src/dplpy.py writer --input /folder/in_filename.csv --output /folder/out_filename.rwl \n")
+        print("arguments: \n")
+        print(
+            " --input, -i : single ring width series formatted file (.CSV, .RWL, .TXT) \n"
+            " --output, -i : single ring with series formatted file (.CSV, .RWL, .TXT \n"
+            " --help, -h : echo the help menu \n"
+        )
+        print("from the Python Console:")
         print("")
-        print("or")
-        print("to visit our website click url: https://opendendro.org/dplpy")
-        print("")
-        print("READERS")
-        print("")
-        print("to import ring width series from termial type:")
-        print("$ python src/dplpy.py reader(\"/folder/filename.csv\")")
-        print("")
-        print("from Python Console:")
-        print("")
-        print(">>> import dplpy")
-        print(">>> dplpy.readers(\"/folder/filename.csv\")")
-        print("where input = a single ring width series formatted file")
-        print("")
-        print("WRITERS")
-        print("")
-        print("to write or convert outputs to new file from terminal, type:")
-        print("$ python src/dplpy.py writer(\"/folder/filename.csv\")")
-        print("")
-        print("from Python Console:")
-        print("")
-        print(">>> import dplpy")
-        print(">>> dplpy.writers(input=\"/folder/filename.csv\",output=\"/outputfolder/outputfile.rwl\")")
-        print("where input = a ring width series file, and output= a ring width series file")
-        print("")
+        print(">>> import dplpy as dpl")
+        print(">>> dpl.writers(input=\"/folder/filename.csv\",output=\"/outputfolder/outputfile.rwl\") \n")
         print("SUMMARY STATISTICS")
         print("TBD")
+        print("")
+        print("")
+        print("END HELP MANUAL")
     except Exception as e:
         print(e)
 # set the definition for the help function
@@ -196,8 +198,9 @@ def main(args=None):
     )
 
     parser_readers.add_argument(
-        "--input",
-        help="select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+        "--input", "-i",
+        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+        required=True
     )
 
     parser_readers.set_defaults(func=readers_from_parser)
@@ -207,12 +210,14 @@ def main(args=None):
 #        "writer", help="Write out ring width series from array to file (.CSV, .JSON, .RWL, .TXT)"
 #    )
 #    parser_writers.add_argument(
-#        "--input",
-#        help="select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        "--input", "-i",
+#        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
 #    )
 #    parser_writers.add_argument(
-#        "--output",
-#        help="select a valid output ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        "--output", "-o",
+#        help="<Required> select a valid output ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
 #    )
 #    parser_writers.set_defaults(func=writers_from_parser)
 
