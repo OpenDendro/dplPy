@@ -47,7 +47,6 @@ def readers(input):
     data files into Python as arrays
     Accepted file types are CSV, RWL, TXT
     """
-    import csv
     import os
 # open the input file and parse it to see what exactly it is
     # begin with CSV format
@@ -68,10 +67,22 @@ def readers(input):
                 + "\n" + lines[0] + "\n"
                 )
                 # creates blank array
+                import csv 
+                lines = []
+                # read in the csv and outputs the years (column 0) of the file
+                with open(input) as csvfile:    
+                	csvReader = csv.reader(csvfile)    
+                	for row in csvReader:        
+                		lines.append(row[0])        
+                print(lines)
+
+                # now read the csv into an array               
                 csvs = []
                 for  rows  in lines:
-                    csvs.append(rows)
-                #remove empty lines from the file.
+                    csvs.append(rows[1])
+                print(csvs)
+
+                # Return the start year of the chronology
                 while "" in csvs:
                     csvs.remove("")
                 csv_temp = csvs[1].split(",")
@@ -81,6 +92,7 @@ def readers(input):
                     + startyear
                 )
                 print("")
+
                 # create blank array
                 allvals = []
                 for csv_data in csvs:

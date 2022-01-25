@@ -170,6 +170,7 @@ spacing = "                               "
 # Import definition functions from other files in the src/ path
 
 from readers import readers
+
 # Commenting out extra features until we're ready to implement them
 # import writers
 # import summary
@@ -178,21 +179,21 @@ def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
     subparsers = parser.add_subparsers()
 
-# Help Documentation
+# Help Documentation parser
     parser_help = subparsers.add_parser(
         "help", help="Echo the Help Menu"
     )
 
     parser_help.set_defaults(func=help_from_parser)
 
-# README Documentation pages
+# README Documentation pages parser
     parser_readme = subparsers.add_parser(
         "readme", help="Goes to the website: https://opendendro.github.io/opendendro/python/"
     )
 
     parser_readme.set_defaults(func=readme_from_parser)
 
-# Reader file input parser
+# Readers file input parser
     parser_readers = subparsers.add_parser(
         "readers", help="Read input ring width series files (.CSV, .JSON, .RWL, .TXT) into an array"
     )
@@ -205,7 +206,7 @@ def main(args=None):
 
     parser_readers.set_defaults(func=readers_from_parser)
 
-# Writer file output
+# Writers file output parser
 #    parser_writers = subparsers.add_parser(
 #        "writer", help="Write out ring width series from array to file (.CSV, .JSON, .RWL, .TXT)"
 #    )
@@ -221,9 +222,19 @@ def main(args=None):
 #    )
 #    parser_writers.set_defaults(func=writers_from_parser)
 
-# Summary Statistics
+# Summary Statistics parser
 #    parser_summary = subparsers.add_parser(
 #        "summary", help="Prints out the summary statistics for an array or input file"
+#    )
+#    parser_writers.add_argument(
+#        "--input", "-i",
+#        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
+#    )
+#    parser_summary.add_argument(
+#       "--stats", "-s",
+#       help="<Default> calculates a specific set of summary statistics from the input file series",
+#       required=False
 #    )
 #
 #    parser_summary.set_defaults(func=read_from_parser)
