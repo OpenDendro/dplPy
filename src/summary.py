@@ -29,12 +29,12 @@ __license__ = "GNU GPLv3"
 # Description: Generates Summary statistics for Tucson format and CSV format files
 # usage: python dplpy summary --input <*.rwl> 
 
-import pandas as pd
-import numpy as np
-
 # Create Summaries for Tucson (*rwl) files
-def summary_rwl(input):
-    df = pd.read_rwl(r'input')
+def summary(input):
+    import pandas as pd
+    import numpy as np
+    
+    df = pd.read_rwl(input)
     
     #To see the dataframe 
     print(df)

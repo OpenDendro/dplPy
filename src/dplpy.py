@@ -23,41 +23,89 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date:2021-10-31
+# Date:2021-11-16
 # Author: Tyson Lee Swetnam
 # Project: OpenDendro dplPy
 # Description: Imports main functionality for package
-# example usage:
+# example usage from Python Console: 
+# >>> import dplpy as dpl
+# >>> dpl.readme()
+# >>> dpl.help()
+# >>> dpl.readers(input="tests/csv/ca533.csv")
+# >>> dpl.writers(input="tests/csv/ca533.csv",output="ca533.rwl")
 
 import argparse
-#import base64
 from bs4 import BeautifulSoup
-#import datetime
-#import dateutil.parser
-#import json
 import os
-#import pkg_resources
-#import platform
-#import requests
-#import subprocess
 import sys
-#import time
 import webbrowser
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 lpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(lpath)
 
-# Opens the Python README website
+# Help Menu
+def help():
+    try:
+        print("*Welcome to the dplPy Help Menu*")
+        print("")
+        print("....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⋮....:....⁞")
+        print("")
+        print("README \n")
+        print("to view the documentation online from terminal, type: \n")
+        print("$ python src/dplpy.py readme() \n")
+        print("from Python Console:")
+        print(">>> import dplpy")
+        print(">>> dplpy.readme() \n")
+        print("or visit our website click url: https://opendendro.org/dplpy \n")
+        print("READERS \n")
+        print("Import ring width series in a terminal: \n")
+        print("$ python src/dplpy.py reader --input /folder/filename.csv \n")
+        print(
+            "arguments: \n"
+        )
+        print(
+            " --input, -i : single ring width series formatted file (.CSV, .RWL, .TXT) \n"
+            " --help, -h : echo the help menu \n"
+            )
+        print("from the Python Console: \n")
+        print(">>> import dplpy as dpl")
+        print(">>> dpl.readers(\"/folder/filename.csv\") \n")
+        print("WRITERS \n")
+        print("Write or convert outputs to new file from terminal, type: \n")
+        print("$ python src/dplpy.py writer --input /folder/in_filename.csv --output /folder/out_filename.rwl \n")
+        print("arguments: \n")
+        print(
+            " --input, -i : single ring width series formatted file (.CSV, .RWL, .TXT) \n"
+            " --output, -i : single ring with series formatted file (.CSV, .RWL, .TXT \n"
+            " --help, -h : echo the help menu \n"
+        )
+        print("from the Python Console:")
+        print("")
+        print(">>> import dplpy as dpl")
+        print(">>> dpl.writers(input=\"/folder/filename.csv\",output=\"/outputfolder/outputfile.rwl\") \n")
+        print("SUMMARY STATISTICS")
+        print("TBD")
+        print("")
+        print("")
+        print("END HELP MANUAL")
+    except Exception as e:
+        print(e)
+# set the definition for the help function
+def help_from_parser(args):
+    help()
+
+# Open the Website README (Manual documentation) 
 def readme():
     try:
         a = webbrowser.open("https://opendendro.github.io/opendendro/python/", new=2)
+        print("Success: Check your web browser for a new tab")
         if a == False:
             print("Your computer does not use a monitor, and cannot display the webpages")
     except Exception as e:
         print(e)
-
-def read_from_parser(args):
+# set the definition for the help function
+def readme_from_parser(args):
     readme()
 
 # Get package versioning -- commented out until we add dplPy to pypi.org
@@ -102,26 +150,98 @@ def read_from_parser(args):
 #
 #dplpy_version()
 
+# set the definition for the Readers functions (from readers.py)
+def readers_from_parser(args):
+    readers(input=args.input)
+
+# set the definition for the Writers funcitons (from writers.py)
+#def writers_from_parser(args):
+#    writers(input=args.input,output=args.output)
+
+# Summary
+#def summary_from_parser(args):
+#    summary()
+
 # creates whitespace
 print("")
 
 spacing = "                               "
 
-# Commenting out until we've corrected the read_rwl.py read_csv.py and summary.py 
-# from .read_rwl import read_rwl
-# from .read_csv import read_csv
-# from .summary import summary_rwl
-# from .summary import summary_csv
+# Import definition functions from other files in the src/ path
+
+from readers import readers
+
+# Commenting out extra features until we're ready to implement them
+# import writers
+# import summary
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
     subparsers = parser.add_subparsers()
 
-    parser_read = subparsers.add_parser(
+# Help Documentation parser
+    parser_help = subparsers.add_parser(
+        "help", help="Echo the Help Menu"
+    )
+
+    parser_help.set_defaults(func=help_from_parser)
+
+# README Documentation pages parser
+    parser_readme = subparsers.add_parser(
         "readme", help="Goes to the website: https://opendendro.github.io/opendendro/python/"
     )
-    
-    parser_read.set_defaults(func=read_from_parser)
+
+    parser_readme.set_defaults(func=readme_from_parser)
+
+# Readers file input parser
+    parser_readers = subparsers.add_parser(
+        "readers", help="Read input ring width series files (.CSV, .JSON, .RWL, .TXT) into an array"
+    )
+
+    parser_readers.add_argument(
+        "--input", "-i",
+        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+        required=True
+    )
+
+    parser_readers.set_defaults(func=readers_from_parser)
+
+# Writers file output parser
+#    parser_writers = subparsers.add_parser(
+#        "writer", help="Write out ring width series from array to file (.CSV, .JSON, .RWL, .TXT)"
+#    )
+#    parser_writers.add_argument(
+#        "--input", "-i",
+#        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
+#    )
+#    parser_writers.add_argument(
+#        "--output", "-o",
+#        help="<Required> select a valid output ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
+#    )
+#    parser_writers.set_defaults(func=writers_from_parser)
+
+# Summary Statistics parser
+#    parser_summary = subparsers.add_parser(
+#        "summary", help="Prints out the summary statistics for an array or input file"
+#    )
+#    parser_writers.add_argument(
+#        "--input", "-i",
+#        help="<Required> select a valid input ring width series file (.CSV, .JSON, .RWL, .TXT) ",
+#        required=True
+#    )
+#    parser_summary.add_argument(
+#       "--stats", "-s",
+#       help="<Default> calculates a specific set of summary statistics from the input file series",
+#       required=False
+#    )
+#
+#    parser_summary.set_defaults(func=read_from_parser)
+
+# TBD
+
+# finish argument parsing
     args = parser.parse_args()
 
     try:
