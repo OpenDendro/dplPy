@@ -6,4 +6,4 @@ dependencies:
   - bs4
   - numpy
   - pandas
-  - python
+  - python=3.9.*
