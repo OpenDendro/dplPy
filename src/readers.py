@@ -40,214 +40,122 @@ __license__ = "GNU GPLv3"
 #
 # define `reader` module as a definition function
 # input is expected to be a file path with file name and extension
+import os
 
-def readers(input):
+def readers(filename):
     """
     This function imports common ring width
     data files into Python as arrays
     Accepted file types are CSV, RWL, TXT
     """
-    import os
-# open the input file and parse it to see what exactly it is
+
+# open the input file and read its data into a dictionary
     # begin with CSV format
-    if input.endswith(('.csv','.CSV')):
-        with open(input, "r") as rings:
-            print("")
-            print(
-                "Attempting to read input file: "
-                + os.path.basename(input)
-                + " as .csv format"
-            )
-            print("")
-            try:
-                data = rings.read()
-                lines = data.split("\n")
-                print(
-                    "CSV header detail: \n"
-                + "\n" + lines[0] + "\n"
-                )
-                # creates blank array
-                import csv 
-                lines = []
-                # read in the csv and outputs the years (column 0) of the file
-                with open(input) as csvfile:    
-                	csvReader = csv.reader(csvfile)    
-                	for row in csvReader:        
-                		lines.append(row[0])        
-                print(lines)
-
-                # now read the csv into an array               
-                csvs = []
-                for  rows  in lines:
-                    csvs.append(rows[1])
-                print(csvs)
-
-                # Return the start year of the chronology
-                while "" in csvs:
-                    csvs.remove("")
-                csv_temp = csvs[1].split(",")
-                startyear = csv_temp[0]
-                print(
-                    "Start Year: "
-                    + startyear
-                )
-                print("")
-
-                # create blank array
-                allvals = []
-                for csv_data in csvs:
-                    csv_data_split = csv_data.split(",")
-                    for i in range(1, len(csv_data_split)):
-                        allvals.append(csv_data_split[i]
-                        )
-                print(
-                    "Successful -- loaded file name: "
-                    + os.path.basename(input)
-                )
-                print("")       
-            except Exception as e:
-                print(e)
-    # End the CSV reader
-    # Next, test if the file is in a Tucson (RWL) format
-        # Note, RWL may have many header variations
-    elif input.endswith(('.rwl','.RWL')):
-        with open(input, "r") as rings:
-            print("")
-            print(
-                "Attempting to read input file: "
-                + os.path.basename(input)
-                + " as .rwl format"
-            )
-            print("")
-            try:
-                data= rings.read()
-                lines = data.split("\n")
-                print(
-                    "RWL header detail:"
-                )
-                print("")
-                print(
-                    lines[0] + "\n" 
-                    + lines[1] + "\n"
-                    + lines[2]
-                )
-                print("")
-                #read every line 
-                #for rows in lines:
-                #    print(rows)
-                # convert every element in each list to string- it is easier to manupilate the elements
-                for items in lines:
-                    data_str=str(items)  
-                    # state/province code
-                    state_province = data_str[1,3]
-                    print(
-                        "State/Province: "
-                        + state_province
-                        )
-                    # country code
-                    country= data_str[0,2]
-                    print(
-                        "Country: "
-                        + data_str[0,2]
-                        )
-                    #species
-                    species = data_str[1,4]
-                    print(
-                        "Species: "
-                        + species
-                        )
-                    #species code
-                    species_code= data_str[1,5]
-                    print(
-                        "Species Code: "
-                        + species_code
-                        )
-                    #start year- start of collection
-                    start_year = int(data_str[1,6])
-                    print(
-                        " Start Year: "
-                        + start_year
-                    )
-                    #end year- completion year
-                    end_year = int(data_str[1,7])
-                    print(
-                        "End Year: "
-                        + end_year
-                    )
-                    #latitude
-                    lat = data_str[2,4]
-                    print(
-                        "Latitude: "
-                        + lat
-                    )
-                    # longitude
-                    lon = data_str[2,5]
-                    print(
-                        "Longitude: "
-                        + lon
-                    )
-                    #lead investigater
-                    leadinv= data_str[2,2]
-                    print(
-                        "Lead Investigator: "
-                        + leadinv
-                    ) 
-                    #site_id
-                    #Via indexing the first three digits of the site id are assigned to var named site_code and the rest to information.
-                    for site_code in data_str:
-                        current=0
-                        information=0 
-                        site_id=0 
-                        while current >=0 and current<=len(data_str)-1:
-                            if current <=3:   
-                                site_code = data_str[current,0,0]       
-                            if current>=4 and current<=len(data_str)-1:
-                                if data_str[current,0,0] == data_str[4,0,0]:
-                                    site_id = data_str[current,0,0]
-                                    information = site_id[3::]  
-                            site_id= site_code + information 
-                            #data
-                            data=[]
-                            y=1
-                            past= y-1
-                            end=[current,-1]
-                            if site_id == data_str[current,0] and start_year <= int(data_str[current,1]) and end_year>= int(data_str[current,1]):
-                                for points in data_str[current,2:]:
-                                        pts=[]
-                                        pts.append(points)
-                                        # End of data collection for that year
-                                        if points== "999" or points== "-9999":
-                                            pts[:-1]
-                                            data.append(pts)
-                                            pts=0
-                                current += 1
-                                pts=0
-                            #end
-                        print(
-                            "Site ID: "
-                            + side_id
-                        )
-            except Exception as e:
-                print(e)
-    # end RWL reader
-    # Begin import  for .txt types
-    elif input.endswith(('.txt','.TXT')):
-        with open(input, "r") as rings:
-            print("")
-            print(
-                "Attempting to read input file: "
-                + os.path.basename(input)
-                + " as .txt format"
-            )
-            print("")
-            try:
-                data = rings.read()
-                lines = data.split("\n")
-                print(
-                    "TXT header detail: \n"
-                    + "\n" + lines[0] + "\n"
-                )
-            except Exception as e:
-                print(e)
-    else: 
+    if filename.upper().endswith((".CSV")):
+        series_data = process_csv_file(filename)
+    elif filename.upper().endswith((".RWL")):
+        series_data = process_rwl_file(filename)
+        
+    else:
         print("Unable to read file, please check that you're using a supported type")
+    # end of readers
+    for key, value in series_data.items():
+        print(str(key) + ":- " + str(value[:3]))
+
+# read the files written in CSV format
+def process_csv_file(filename):
+    import csv
+    with open(filename, "r") as file:
+        print("")
+        print(
+            "Attempting to read input file: " + os.path.basename(filename)
+            + " as .csv format\n")
+            
+        try:
+            data = csv.reader(file)
+            header = next(data)     # read the header of the file
+
+            print("CSV header detail: \n")
+            print(" ".join(header[1:]) + "\n")
+            
+            identifiers = header
+
+            # assemble dictionary for data storage
+            # format in dictionary is: 
+            # key (series name):- first year of collection, 
+            #                     no. of years data was collected for,
+            #                     sum of collected data, 
+            #                     individual data (measurements)
+            series_data = get_series_data(identifiers[1:])
+
+            line_no = 0
+
+            for row in data:
+                if line_no == 0:
+                    year_1 = int(row[0])
+                    
+                for i, data in enumerate(row):
+                    try:
+                        num = float(data)
+                        if i != 0:
+                            record_data(series_data, identifiers, year_1, 
+                                    line_no, i, num)
+                    except ValueError:
+                        num = 0
+                line_no += 1
+                
+            return series_data
+        except:
+            print("Error in data format")
+            return
+    # End the CSV reader
+
+def process_rwl_file(filename):
+    with open(filename, "r") as rwl_file:
+        lines = rwl_file.readlines()
+        series_data = {}
+
+        
+        for line in lines:
+            line = line.rstrip("\n").split()
+            id = line[0]
+
+            if id not in series_data:
+                series_data[id] = [int(line[1]), 0, 0, []]
+                
+            for i in range(2, len(line)):
+                series_data[id][1] += 1
+
+                try:
+                    data = float(line[i])/100
+                    series_data[id][2] += data
+                    series_data[id][3].append(data)
+                except ValueError:
+                    data = 0
+
+    print("RWL header detail: \n")
+    print(" ".join(sorted(series_data.keys)) + "\n")
+    return series_data
+
+# This function arranges the series data into a dictionary where it is 
+# stored in a format that makes processing easy
+def get_series_data(id_array):
+    dictionary = {}
+    
+    for id in id_array:
+        dictionary[id] = ["first", 0, 0, []]
+    
+    return dictionary
+
+# This function stores data from the time series in a dictionary
+# as the program reads from the input file
+def record_data(series_data, identifiers, year_1, line, col, data):
+
+    if series_data[identifiers[col]][0] == "first":
+        series_data[identifiers[col]][0] = year_1 + line
+
+    series_data[identifiers[col]][1] += 1
+
+    series_data[identifiers[col]][2] += float(data)
+
+    series_data[identifiers[col]][3].append(data)
