@@ -59,18 +59,16 @@ def readers(filename):
     else:
         print("Unable to read file, please check that you're using a supported type")
     # end of readers
+
     for key, value in series_data.items():
         print(str(key) + ":- " + str(value[:3]))
 
 # read the files written in CSV format
 def process_csv_file(filename):
     import csv
-    with open(filename, "r") as file:
-        print("")
-        print(
-            "Attempting to read input file: " + os.path.basename(filename)
+    print("\nAttempting to read input file: " + os.path.basename(filename)
             + " as .csv format\n")
-            
+    with open(filename, "r") as file:
         try:
             data = csv.reader(file)
             header = next(data)     # read the header of the file
@@ -111,11 +109,12 @@ def process_csv_file(filename):
     # End the CSV reader
 
 def process_rwl_file(filename):
+    print("\nAttempting to read input file: " + os.path.basename(filename)
+            + " as .rwl format\n")
     with open(filename, "r") as rwl_file:
         lines = rwl_file.readlines()
         series_data = {}
 
-        
         for line in lines:
             line = line.rstrip("\n").split()
             id = line[0]
@@ -134,7 +133,7 @@ def process_rwl_file(filename):
                     data = 0
 
     print("RWL header detail: \n")
-    print(" ".join(sorted(series_data.keys)) + "\n")
+    print(" ".join(list(sorted(series_data.keys()))) + "\n")
     return series_data
 
 # This function arranges the series data into a dictionary where it is 
