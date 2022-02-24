@@ -58,10 +58,12 @@ def readers(filename):
         
     else:
         print("Unable to read file, please check that you're using a supported type")
+        return
     # end of readers
 
     for key, value in series_data.items():
         print(str(key) + ":- " + str(value[:3]))
+    return series_data
 
 # read the files written in CSV format
 def process_csv_file(filename):

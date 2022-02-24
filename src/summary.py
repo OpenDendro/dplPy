@@ -30,68 +30,43 @@ __license__ = "GNU GPLv3"
 # usage: python dplpy summary --input <*.rwl> 
 
 # Create Summaries for Tucson (*rwl) files
-def summary(input):
-    import pandas as pd
-    import numpy as np
+import pandas as pd
+import numpy as np
+import statistics
+
+from readers import readers
+def summary(inp):
+
+    if isinstance(inp, dict):
+        series_data = inp
+    elif isinstance(inp, str):
+        series_data = readers(inp)
+    else:
+        "Invalid command"
+        return
     
-    df = pd.read_rwl(input)
     
-    #To see the dataframe 
-    print(df)
+    print("\nSummary:")
 
-    #First five rows 
-    df.head()
+    print("series".rjust(10), "first", "last", "year", "mean".rjust(5), "median", "stdev", "gini")
 
-    #Average / year
-    df['Average'] = df.mean(axis=1)
+    line = 1
+    for key, value in series_data.items():
+        print(str(line).ljust(4), end="")
+        print(key, str(value[0]).rjust(5), str(value[0] + value[1] - 1).rjust(4), 
+                str(value[1]).rjust(4), "{:.3f}".format(value[2]/value[1]).rjust(4),
+                    "{:.3f}".format(statistics.median(value[3])).rjust(6),
+                        "{:.3f}".format(statistics.stdev(value[3])),
+                            get_auto_correlation(value[3]))
+        line += 1
+    print()
 
-    """
-    Total amount of observation 
-    Average 
-    Standard Deviation 
-    Minimum 
-    Lower and Upper Quartile
-    Interquartile
-    Maximum 
-    Data type 
-
-    """
-    df.describe()
-
-# Create Summaries for CSV files
-def summary_csv(input):    
-    df = pd.read_csv(r'*.csv')
-
-    #To see the dataframe 
-    print(df)
-
-    #First five rows 
-    df.head()
-
-    #Average / year
-    df['Average'] = df.mean(axis=1)
-
-    """
-    Total amount of observation 
-    Average 
-    Standard Deviation 
-    Minimum 
-    Lower and Upper Quartile
-    Interquartile
-    Maximum 
-    Data type 
-
-    """
-    df.describe()
-
-
-
-
-
-
-
-
-
-
-
-
+def get_auto_correlation(data_array):
+    # might need to work on more efficient solution
+    # Mean absolute difference
+    mad = np.abs(np.subtract.outer(data_array, data_array)).mean()
+    # Relative mean absolute difference
+    rmad = mad/np.mean(data_array)
+    # Gini coefficient
+    g = 0.5 * rmad
+    return "{:.3f}".format(g)

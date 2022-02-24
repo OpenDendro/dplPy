@@ -159,8 +159,8 @@ def readers_from_parser(args):
 #    writers(input=args.input,output=args.output)
 
 # Summary
-#def summary_from_parser(args):
-#    summary()
+def summary_from_parser(args):
+    summary(input=args.input)
 
 # creates whitespace
 print("")
@@ -173,7 +173,7 @@ from readers import readers
 
 # Commenting out extra features until we're ready to implement them
 # import writers
-# import summary
+from summary import summary
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
