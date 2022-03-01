@@ -45,23 +45,34 @@ def summary(inp):
         "Invalid command"
         return
     
-    
+
+    #df = pd.DataFrame.from_dict(series_data, orient='index')
+    #print(df)
+    #print()
+
     print("\nSummary:")
 
-    print("series".rjust(10), "first", "last", "year", "mean".rjust(5), "median", "stdev", "gini")
+    print("series".rjust(10), "first", "last", "year", "mean".rjust(5), 
+            "median", "stdev", "skew".rjust(6), "gini".rjust(5))
 
     line = 1
     for key, value in series_data.items():
         print(str(line).ljust(4), end="")
         print(key, str(value[0]).rjust(5), str(value[0] + value[1] - 1).rjust(4), 
                 str(value[1]).rjust(4), "{:.3f}".format(value[2]/value[1]).rjust(4),
-                    "{:.3f}".format(statistics.median(value[3])).rjust(6),
+                    "{:.2f}".format(statistics.median(value[3])).rjust(6),
                         "{:.3f}".format(statistics.stdev(value[3])),
-                            get_auto_correlation(value[3]))
+                            get_skew(value[3]).rjust(6),
+                                get_gini(value[3]).rjust(5))
+                                
         line += 1
     print()
 
-def get_auto_correlation(data_array):
+    if input("Would you like to see a report on the data?(yes/no) ") == "yes":
+        print_report(series_data)
+
+
+def get_gini(data_array):
     # might need to work on more efficient solution
     # Mean absolute difference
     mad = np.abs(np.subtract.outer(data_array, data_array)).mean()
@@ -70,3 +81,30 @@ def get_auto_correlation(data_array):
     # Gini coefficient
     g = 0.5 * rmad
     return "{:.3f}".format(g)
+
+def get_skew(data_array):
+    # Should work, but produces values slightly different from those in dplR
+    df = pd.DataFrame(data_array)
+
+    return "{:.3f}".format(df.skew(skipna=False).pop(0))
+
+def print_report(series_data):
+    print("Number of dated series:", len(series_data))
+
+    first = 9999
+    last = 0
+    measurements = 0
+    for values in series_data.values():
+        if values[0] < first:
+            first = values[0]
+        last_year = values[0] + values[1] - 1
+        if last_year > last:
+            last = last_year
+        measurements += len(values[3])
+    
+    print("Number of measurements:", measurements)
+    print("Avg series length:", measurements/len(series_data))
+    print("Range:", last - first + 1)
+    print("Span:", first, "-", last)
+
+    
