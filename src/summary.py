@@ -1,4 +1,5 @@
 from __future__ import print_function
+from xml.etree.ElementInclude import DEFAULT_MAX_INCLUSION_DEPTH
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -94,6 +95,7 @@ def print_report(series_data):
     first = 9999
     last = 0
     measurements = 0
+    total = 0
     for values in series_data.values():
         if values[0] < first:
             first = values[0]
@@ -101,10 +103,28 @@ def print_report(series_data):
         if last_year > last:
             last = last_year
         measurements += len(values[3])
+        total += sum(values[3])
     
     print("Number of measurements:", measurements)
     print("Avg series length:", measurements/len(series_data))
     print("Range:", last - first + 1)
     print("Span:", first, "-", last)
+    print("-------------")
+    print("Years with absent rings listed by series")
+    print_absent_ring_data(series_data, measurements)
 
-    
+def print_absent_ring_data(series_data, data_count):
+    years_absent = 0
+    for series, data in series_data.items():
+        if 0 in data[3]:
+            print("Series", series, "--", end=" ")
+            for i, val in enumerate(data[3]):
+                if val == 0:
+                    print(data[0] + i, end=" ")
+                    years_absent += 1
+            print("")
+    print(str(years_absent) + " absent rings (" +
+            "{:.3f}".format(years_absent/data_count) + "%)")
+
+# Remaining tasks with this file:
+# 
