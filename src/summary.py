@@ -47,7 +47,10 @@ def summary(inp):
     if isinstance(inp, dict):
         series_data = inp
     elif isinstance(inp, str):
-        series_data = readers(inp)
+        try:
+            series_data = readers(inp)
+        except:
+            return
     else:
         print("\nUnable to generate summary report. Invalid input")
         print("Note: for file pathname inputs, only CSV and RWL file formats are accepted\n")

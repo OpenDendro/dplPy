@@ -74,9 +74,8 @@ def readers(filename):
     else:
         print("\nUnable to read file, please check that you're using a supported type\n")
         print("Accepted file types: .csv and .rwl")
-        print("example usages: >>> import dplpy as dpl")
-        print("                >>> data = dpl.readers('../tests/data/csv/filename.csv')")
-
+        print("example usages:\n>>> import dplpy as dpl")
+        print(">>> data = dpl.readers('../tests/data/csv/filename.csv')")
         return
     # end of readers
 
