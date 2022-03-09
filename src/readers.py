@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2021  OpenDendro
+   Copyright (C) 2022  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,15 +24,15 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 11/17/2021 
-# Author: Tyson Lee Swetnam
+# Date: 3/9/2021 
+# Author: Ifeoluwa Ale
 # Project: OpenDendro- Readers
 # Description: Readers for supported file types (*.CSV and *.RWL)
 # 
 # example usages: 
 # >>> import dplpy as dpl 
-# >>> dpl.readers("./data/file.csv")
-# >>> dpl.readers("./data/file.rwl")
+# >>> data = dpl.readers("../tests/data/csv/file.csv")
+# >>> data = dpl.readers("../tests/data/csv/file.rwl")
 # 
 # example command line application:
 # $ python src/dplpy.py reader --input ./data/file.csv
@@ -72,13 +72,18 @@ def readers(filename):
         series_data = process_rwl_file(filename)
         
     else:
-        print("Unable to read file, please check that you're using a supported type")
+        print("\nUnable to read file, please check that you're using a supported type\n")
+        print("Accepted file types: .csv and .rwl")
+        print("example usages: >>> import dplpy as dpl")
+        print("                >>> data = dpl.readers('../tests/data/csv/filename.csv')")
+
         return
     # end of readers
 
     # for debugging purposes
     #for key, value in series_data.items():
     #    print(str(key) + ":- " + str(value[:3]))
+    print("\nSUCCESS!\nFile read as:", filename[-4:], "file")
     return series_data
 
 # read the files written in CSV format

@@ -46,7 +46,7 @@ def summary(inp):
         "Invalid command"
         return
     
-
+    # for potential better implementation, ignore
     #df = pd.DataFrame.from_dict(series_data, orient='index')
     #print(df)
     #print()
@@ -72,7 +72,7 @@ def summary(inp):
     if input("Would you like to see a report on the data?(yes/no) ") == "yes":
         print_report(series_data)
 
-
+# gets gini coefficient for each series
 def get_gini(data_array):
     # might need to work on more efficient solution
     # Mean absolute difference
@@ -83,12 +83,14 @@ def get_gini(data_array):
     g = 0.5 * rmad
     return "{:.3f}".format(g)
 
+# gets skew values for each series
 def get_skew(data_array):
     # Should work, but produces values slightly different from those in dplR
     df = pd.DataFrame(data_array)
 
     return "{:.3f}".format(df.skew(skipna=False).pop(0))
 
+# generates a report on the data collected
 def print_report(series_data):
     print("Number of dated series:", len(series_data))
 
@@ -113,6 +115,7 @@ def print_report(series_data):
     print("Years with absent rings listed by series")
     print_absent_ring_data(series_data, measurements)
 
+# gets information about absent ring data, marked as 0 in files
 def print_absent_ring_data(series_data, data_count):
     years_absent = 0
     for series, data in series_data.items():
