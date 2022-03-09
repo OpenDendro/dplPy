@@ -124,7 +124,8 @@ def print_absent_ring_data(series_data, data_count):
                     years_absent += 1
             print("")
     print(str(years_absent) + " absent rings (" +
-            "{:.3f}".format(years_absent/data_count) + "%)")
+            "{:.3f}".format((years_absent/data_count) * 100) + "%)")
 
 # Remaining tasks with this file:
-# 
+# mean (std dev) series intercorrelation
+# mean (std dev) ar1

@@ -27,20 +27,22 @@ __license__ = "GNU GPLv3"
 # Date: 11/17/2021 
 # Author: Tyson Lee Swetnam
 # Project: OpenDendro- Readers
-# Description: Readers for all supported file types (*.CSV, *.RWL, and *.TXT)
+# Description: Readers for supported file types (*.CSV and *.RWL)
 # 
 # example usages: 
 # >>> import dplpy as dpl 
 # >>> dpl.readers("./data/file.csv")
 # >>> dpl.readers("./data/file.rwl")
-# >>> dpl.readers("./data/file.txt")
 # 
 # example command line application:
 # $ python src/dplpy.py reader --input ./data/file.csv
 #
-# define `reader` module as a definition function
+# define `readers` module as a definition function
 # input is expected to be a file path with file name and extension
 import os
+import sys
+import pandas as pd
+import numpy as np
 
 def readers(filename):
     """
@@ -51,6 +53,19 @@ def readers(filename):
 
 # open the input file and read its data into a dictionary
     # begin with CSV format
+
+    # working on a new implementation here
+    #if filename.upper().endswith((".CSV")):
+    #    series_data = pd.read_csv(filename)
+    #    print(series_data)
+    #    print("\n done")
+    #else:
+    #    series_data = process_rwl_pandas(filename)
+    #    print(series_data)
+    #return series_data
+
+
+    # current way of doing this
     if filename.upper().endswith((".CSV")):
         series_data = process_csv_file(filename)
     elif filename.upper().endswith((".RWL")):
@@ -61,8 +76,9 @@ def readers(filename):
         return
     # end of readers
 
-    for key, value in series_data.items():
-        print(str(key) + ":- " + str(value[:3]))
+    # for debugging purposes
+    #for key, value in series_data.items():
+    #    print(str(key) + ":- " + str(value[:3]))
     return series_data
 
 # read the files written in CSV format
@@ -160,3 +176,59 @@ def record_data(series_data, identifiers, year_1, line, col, data):
     series_data[identifiers[col]][2] += float(data)
 
     series_data[identifiers[col]][3].append(data)
+
+# function for alternative implementation
+def process_rwl_pandas(filename):
+    print("\nAttempting to read input file: " + os.path.basename(filename)
+            + " as .rwl format\n")
+    with open(filename, "r") as rwl_file:
+        lines = rwl_file.readlines()
+        rwl_data = {}
+        first_date = sys.maxsize
+        last_date = 0
+
+        # read through lines of file and store raw data in a dictionary
+        for line in lines:
+            line = line.rstrip("\n").split()
+            id = line[0]
+            
+            date = int(line[1])
+
+            if id not in rwl_data:
+                rwl_data[id] = [date, []]
+
+            # keep track of the first and last date in the series
+            if date < first_date:
+                first_date = date
+            if (date + len(line) - 3) > last_date:
+                last_date = date + len(line) - 3
+            
+            for i in range(2, len(line)):
+                try:
+                    data = float(line[i])/100
+                except ValueError:
+                    data = np.nan
+                rwl_data[id][1].append(data)
+
+    # create an array of indexes for the dataframe
+    indexes = []
+    for i in range(first_date, last_date+1):
+        indexes.append(i)
+
+    # create a new dictionary to store the data in a way more suited for the
+    # dataframe
+    refined_data = {}
+    for key, val in rwl_data.items():
+        front_addition = [np.nan] * (val[0]-first_date)
+        end_addition = [np.nan] * (last_date - (val[0] + len(val[1]) - 1))
+        refined_data[key] = front_addition + val[1] + end_addition
+        
+    for key, val in refined_data.items():
+        print(key, len(val))
+
+    df = pd.DataFrame.from_dict(refined_data)
+
+    df.insert(0, "Year", indexes)
+    df.set_index("Year")
+    print(df)
+    return df
