@@ -3,7 +3,7 @@ from xml.etree.ElementInclude import DEFAULT_MAX_INCLUSION_DEPTH
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2021  OpenDendro
+   Copyright (C) 2022  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,11 +24,17 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 10/22/2021
-# Author: Anushka Bande
+# Date: 3/9/2021
+# Author: Ifeoluwa Ale
 # Title: summary.py
 # Description: Generates Summary statistics for Tucson format and CSV format files
-# usage: python dplpy summary --input <*.rwl> 
+# example usage:
+# >>> import dplpy as dpl 
+# >>> data = dpl.readers("../tests/data/csv/file.csv")
+# >>> dpl.summary(data)
+#
+# >>> dpl.summary("../tests/data/csv/file.csv")
+# >>> Note: for file pathname inputs, only CSV and RWL file formats are accepted
 
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
@@ -43,7 +49,13 @@ def summary(inp):
     elif isinstance(inp, str):
         series_data = readers(inp)
     else:
-        "Invalid command"
+        print("\nUnable to generate summary report. Invalid input")
+        print("Note: for file pathname inputs, only CSV and RWL file formats are accepted\n")
+        print("example usages:")
+        print(">>> import dplpy as dpl")
+        print(">>> data = dpl.readers('../tests/data/csv/file.csv')")
+        print(">>> dpl.summary(data)\n")
+        print(">>> dpl.summary('../tests/data/csv/file.csv')")        
         return
     
     # for potential better implementation, ignore
