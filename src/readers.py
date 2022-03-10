@@ -55,14 +55,14 @@ def readers(filename):
     # begin with CSV format
 
     # working on a new implementation here
-    #if filename.upper().endswith((".CSV")):
-    #    series_data = pd.read_csv(filename)
-    #    print(series_data)
-    #    print("\n done")
-    #else:
-    #    series_data = process_rwl_pandas(filename)
-    #    print(series_data)
-    #return series_data
+    if filename.upper().endswith((".CSV")):
+        series_data = pd.read_csv(filename)
+        print("\n done")
+    else:
+        series_data = process_rwl_pandas(filename)
+    
+    series_data.set_index('Year', inplace = True, drop = True)
+    return series_data
 
 
     # current way of doing this
@@ -226,9 +226,6 @@ def process_rwl_pandas(filename):
         front_addition = [np.nan] * (val[0]-first_date)
         end_addition = [np.nan] * (last_date - (val[0] + len(val[1]) - 1))
         refined_data[key] = front_addition + val[1] + end_addition
-        
-    for key, val in refined_data.items():
-        print(key, len(val))
 
     df = pd.DataFrame.from_dict(refined_data)
 
