@@ -39,7 +39,6 @@ __license__ = "GNU GPLv3"
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
 import numpy as np
-import statistics
 
 from readers import readers
 def summary(inp):
@@ -58,7 +57,7 @@ def summary(inp):
 
 
     summary = series_data.describe()
-    print(summary)
+    return summary
 
     stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
 
@@ -75,13 +74,8 @@ def summary(inp):
 
     statistics = pd.DataFrame(stats)
     statistics.index += 1
-    print(statistics)
-
     
     return
-
-    if input("Would you like to see a report on the data?(yes/no) ") == "yes":
-        print_report(series_data)
 
 # gets gini coefficient for each series
 def get_gini(data_array):
