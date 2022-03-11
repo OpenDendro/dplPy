@@ -9,4 +9,3 @@ dependencies:
   - python=3.9.*
   - matplotlib
   - scipy
-  - csaps
