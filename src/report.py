@@ -24,3 +24,8 @@ def report(inp):
     print("Avg series length:", round(no_of_measurements/no_of_series, 4))
     print("Range:", (last_year - first_year + 1))
     print("Span:", first_year, "-", last_year)
+    print("Mean (Std dev) series intercorrelation:")
+    print("Mean (Std dev) AR1:")
+    print("-------------")
+    print("Years with absent rings listed by series")
+    

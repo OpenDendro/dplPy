@@ -1,9 +1,12 @@
-name: dplpy
+name: dplpy3
 channels:
   - conda-forge
   - defaults
 dependencies:
   - bs4
-  - numpy
   - pandas
-  - python=3.9.*
+  - matplotlib
+  - wget
+  - statsmodels
+  - numpy
+  - scipy
