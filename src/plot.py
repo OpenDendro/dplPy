@@ -1,5 +1,5 @@
 import pandas as pd
-import matplotlib as mp
+import matplotlib.pyplot as plt
 from readers import readers
 
 def plot(inp, type="line"):
@@ -12,8 +12,6 @@ def plot(inp, type="line"):
 
     if type == "line":
         result = series_data.plot.line()
-
-
-
-
-    pass
+        plt.plot(series_data)
+        plt.savefig("Line graph.png")
+        print(result)

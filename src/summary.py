@@ -1,5 +1,4 @@
 from __future__ import print_function
-from xml.etree.ElementInclude import DEFAULT_MAX_INCLUSION_DEPTH
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -58,24 +57,6 @@ def summary(inp):
 
     summary = series_data.describe()
     return summary
-
-    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
-
-    for series_name, data in series_data.items():
-        stats["series"].append(series_name)
-        stats["first"].append(data.first_valid_index())
-        stats["last"].append(data.last_valid_index())
-        stats["year"].append(stats["last"][-1] - stats["first"][-1] + 1)
-        stats["mean"].append(round(data.mean(), 3))
-        stats["median"].append(round(data.median(), 2))
-        stats["stdev"].append(round(data.std(), 3))
-        stats["skew"].append(round(get_skew(data), 3))
-        stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
-
-    statistics = pd.DataFrame(stats)
-    statistics.index += 1
-    
-    return
 
 # gets gini coefficient for each series
 def get_gini(data_array):

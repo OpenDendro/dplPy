@@ -1,4 +1,5 @@
 from __future__ import print_function
+from multiprocessing.sharedctypes import Value
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -56,7 +57,7 @@ def readers(filename):
     if filename.upper().endswith(".CSV"):
         try:
             series_data = pd.read_csv(filename)
-        except:
+        except ValueError:
             print("\nError reading file. Check that file exists and that data is consistent")
             print("with .CSV format")
             return
@@ -64,7 +65,7 @@ def readers(filename):
     elif filename.upper().endswith(".RWL"):
         try:
             series_data = process_rwl_pandas(filename)
-        except:
+        except ValueError:
             print("\nError reading file. Check that file exists and that data is consistent")
             print("with .RWL format")
             return
@@ -92,11 +93,11 @@ def process_rwl_pandas(filename):
         # read through lines of file and store raw data in a dictionary
         for line in lines:
             line = line.rstrip("\n").split()
-            id = line[0]
+            ids = line[0]
             
             date = int(line[1])
 
-            if id not in rwl_data:
+            if ids not in rwl_data:
                 rwl_data[id] = [date, []]
 
             # keep track of the first and last date in the series

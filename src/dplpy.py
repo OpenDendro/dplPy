@@ -169,6 +169,9 @@ def stats_from_parser(args):
 def report_from_parser(args):
     report(input=args.input)
 
+def plot_from_parser(args):
+    plot(input=args.input)
+
 # creates whitespace
 print("")
 
@@ -183,6 +186,7 @@ from readers import readers
 from summary import summary
 from stats import stats
 from report import report
+from plot import plot
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
