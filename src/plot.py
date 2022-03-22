@@ -11,7 +11,6 @@ def plot(inp, type="line"):
         return
 
     if type == "line":
-        result = series_data.plot.line()
+        print("Hello")
         plt.plot(series_data)
-        plt.savefig("Line graph.png")
-        print(result)
+        plt.show(block=True)
