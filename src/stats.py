@@ -17,7 +17,6 @@ def stats(inp):
     elif isinstance(inp, str):
         series_data = readers(inp)
 
-    series_data.plot()
 
     stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
 
