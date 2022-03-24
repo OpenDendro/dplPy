@@ -19,3 +19,4 @@ def univariate_data(series):
 
     yi = csaps(x, y, xi, smooth=0.85)
     plt.plot(x, y, "o", xi, yi, "-")
+    plt.savefig("spline.png")

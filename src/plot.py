@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from readers import readers
 from smoothingspline import univariate_data
 
-def plot(inp, type="line"):
+def plot(inp):
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):
