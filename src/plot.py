@@ -11,7 +11,6 @@ def plot(inp):
     else:
         return
 
-
     for series_name, data in series_data.items():
         univariate_data(data)
         break
