@@ -171,6 +171,9 @@ def report_from_parser(args):
 def plot_from_parser(args):
     plot(input=args.input)
 
+def detrend_from_parser(args):
+    detrend(input=args.input)
+
 # creates whitespace
 print("")
 
@@ -186,6 +189,7 @@ from summary import summary
 from stats import stats
 from report import report
 from plot import plot
+from detrend import detrend
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

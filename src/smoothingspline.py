@@ -12,8 +12,7 @@ def get_param(amp, period):
     return spline_param
 
 # Change function names and definitions
-def univariate_data(series):
-    series = series.dropna()
+def splie(series):
     x = series.index.to_numpy()
     
     y = series.to_numpy()
@@ -23,4 +22,6 @@ def univariate_data(series):
     yi = csaps(x, y, x, smooth=p)
 
     plt.plot(x, y, "o", x, yi, "-")
-    plt.savefig("spline.png")
+    plt.show()
+
+    return yi
