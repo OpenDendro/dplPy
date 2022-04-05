@@ -98,7 +98,7 @@ def process_rwl_pandas(filename):
             date = int(line[1])
 
             if ids not in rwl_data:
-                rwl_data[id] = [date, []]
+                rwl_data[ids] = [date, []]
 
             # keep track of the first and last date in the series
             if date < first_date:
@@ -108,10 +108,12 @@ def process_rwl_pandas(filename):
             
             for i in range(2, len(line)):
                 try:
-                    data = float(line[i])/100
+                    data = float(int(line[i]))/100
+                    if data == 9.99:
+                        data = np.nan
                 except ValueError:
                     data = np.nan
-                rwl_data[id][1].append(data)
+                rwl_data[ids][1].append(data)
 
     # create an array of indexes for the dataframe
     indexes = []
