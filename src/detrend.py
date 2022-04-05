@@ -7,7 +7,6 @@ from smoothingspline import spline
 # In the future, detrend will probably only take a series as input
 def detrend(series_data):
     for series_name, data in series_data.items():
-        print(series_name)
         nullremoved_data = data.dropna()
         yi = spline(nullremoved_data)
         

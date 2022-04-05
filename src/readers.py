@@ -1,5 +1,6 @@
 from __future__ import print_function
 from multiprocessing.sharedctypes import Value
+from operator import index
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -110,14 +111,14 @@ def process_rwl_pandas(filename):
                 try:
                     data = float(int(line[i]))/100
                     if data == 9.99:
-                        data = np.nan
+                        continue
                 except ValueError:
                     data = np.nan
                 rwl_data[ids][1].append(data)
 
     # create an array of indexes for the dataframe
     indexes = []
-    for i in range(first_date, last_date+1):
+    for i in range(first_date, last_date):
         indexes.append(i)
 
     # create a new dictionary to store the data in a way more suited for the
@@ -125,7 +126,7 @@ def process_rwl_pandas(filename):
     refined_data = {}
     for key, val in rwl_data.items():
         front_addition = [np.nan] * (val[0]-first_date)
-        end_addition = [np.nan] * (last_date - (val[0] + len(val[1]) - 1))
+        end_addition = [np.nan] * (last_date - (val[0] + len(val[1])))
         refined_data[key] = front_addition + val[1] + end_addition
 
     df = pd.DataFrame.from_dict(refined_data)
