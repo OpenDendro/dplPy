@@ -39,18 +39,13 @@ __license__ = "GNU GPLv3"
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
 import numpy as np
-import statistics
 
 from readers import readers
 def summary(inp):
-
-    if isinstance(inp, dict):
+    if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):
-        try:
-            series_data = readers(inp)
-        except:
-            return
+        series_data = readers(inp)
     else:
         print("\nUnable to generate summary report. Invalid input")
         print("Note: for file pathname inputs, only CSV and RWL file formats are accepted\n")
@@ -58,34 +53,29 @@ def summary(inp):
         print(">>> import dplpy as dpl")
         print(">>> data = dpl.readers('../tests/data/csv/file.csv')")
         print(">>> dpl.summary(data)\n")
-        print(">>> dpl.summary('../tests/data/csv/file.csv')")        
-        return
+        print(">>> dpl.summary('../tests/data/csv/file.csv')\n")
+
+
+    summary = series_data.describe()
+    return summary
+
+    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
+
+    for series_name, data in series_data.items():
+        stats["series"].append(series_name)
+        stats["first"].append(data.first_valid_index())
+        stats["last"].append(data.last_valid_index())
+        stats["year"].append(stats["last"][-1] - stats["first"][-1] + 1)
+        stats["mean"].append(round(data.mean(), 3))
+        stats["median"].append(round(data.median(), 2))
+        stats["stdev"].append(round(data.std(), 3))
+        stats["skew"].append(round(get_skew(data), 3))
+        stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
+
+    statistics = pd.DataFrame(stats)
+    statistics.index += 1
     
-    # for potential better implementation, ignore
-    #df = pd.DataFrame.from_dict(series_data, orient='index')
-    #print(df)
-    #print()
-
-    print("\nSummary:")
-
-    print("series".rjust(10), "first", "last", "year", "mean".rjust(5), 
-            "median", "stdev", "skew".rjust(6), "gini".rjust(5))
-
-    line = 1
-    for key, value in series_data.items():
-        print(str(line).ljust(4), end="")
-        print(key, str(value[0]).rjust(5), str(value[0] + value[1] - 1).rjust(4), 
-                str(value[1]).rjust(4), "{:.3f}".format(value[2]/value[1]).rjust(4),
-                    "{:.2f}".format(statistics.median(value[3])).rjust(6),
-                        "{:.3f}".format(statistics.stdev(value[3])),
-                            get_skew(value[3]).rjust(6),
-                                get_gini(value[3]).rjust(5))
-                                
-        line += 1
-    print()
-
-    if input("Would you like to see a report on the data?(yes/no) ") == "yes":
-        print_report(series_data)
+    return
 
 # gets gini coefficient for each series
 def get_gini(data_array):
@@ -96,14 +86,11 @@ def get_gini(data_array):
     rmad = mad/np.mean(data_array)
     # Gini coefficient
     g = 0.5 * rmad
-    return "{:.3f}".format(g)
+    return g
 
 # gets skew values for each series
-def get_skew(data_array):
-    # Should work, but produces values slightly different from those in dplR
-    df = pd.DataFrame(data_array)
-
-    return "{:.3f}".format(df.skew(skipna=False).pop(0))
+def get_skew(data_series):
+    return (((data_series - data_series.mean()) / data_series.std()) ** 3).mean()
 
 # generates a report on the data collected
 def print_report(series_data):
