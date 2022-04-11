@@ -55,7 +55,7 @@ def stats(inp):
     elif isinstance(inp, str):
         series_data = readers(inp)
 
-
+        
     stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
 
     for series_name, data in series_data.items():
