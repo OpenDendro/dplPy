@@ -18,7 +18,6 @@ __copyright__ = """
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 """
 
 __license__ = "GNU GPLv3"
@@ -26,11 +25,12 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 3/9/2021 
+# Date: 4/11/2022
 # Author: Ifeoluwa Ale
 # Project: OpenDendro- Readers
-# Description: Readers for supported file types (*.CSV and *.RWL)
-# 
+# Description: Reads data from supported file types (*.CSV and *.RWL)
+#              and stores them in a dataframe
+#
 # example usages: 
 # >>> import dplpy as dpl 
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
@@ -50,7 +50,7 @@ def readers(filename):
     """
     This function imports common ring width
     data files into Python as arrays
-    Accepted file types are CSV, RWL, TXT
+    Accepted file types are CSV and RWL
     """
 
 # open the input file and read its data into a pandas dataframe
