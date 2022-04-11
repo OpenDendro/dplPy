@@ -1,4 +1,6 @@
 from __future__ import print_function
+from multiprocessing.sharedctypes import Value
+from operator import index
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -16,7 +18,6 @@ __copyright__ = """
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 """
 
 __license__ = "GNU GPLv3"
@@ -24,11 +25,12 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 3/9/2021 
+# Date: 4/11/2022
 # Author: Ifeoluwa Ale
 # Project: OpenDendro- Readers
-# Description: Readers for supported file types (*.CSV and *.RWL)
-# 
+# Description: Reads data from supported file types (*.CSV and *.RWL)
+#              and stores them in a dataframe
+#
 # example usages: 
 # >>> import dplpy as dpl 
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
@@ -48,7 +50,7 @@ def readers(filename):
     """
     This function imports common ring width
     data files into Python as arrays
-    Accepted file types are CSV, RWL, TXT
+    Accepted file types are CSV and RWL
     """
 
 # open the input file and read its data into a pandas dataframe
@@ -56,7 +58,7 @@ def readers(filename):
     if filename.upper().endswith(".CSV"):
         try:
             series_data = pd.read_csv(filename)
-        except:
+        except ValueError:
             print("\nError reading file. Check that file exists and that data is consistent")
             print("with .CSV format")
             return
@@ -64,7 +66,7 @@ def readers(filename):
     elif filename.upper().endswith(".RWL"):
         try:
             series_data = process_rwl_pandas(filename)
-        except:
+        except ValueError:
             print("\nError reading file. Check that file exists and that data is consistent")
             print("with .RWL format")
             return
@@ -92,12 +94,12 @@ def process_rwl_pandas(filename):
         # read through lines of file and store raw data in a dictionary
         for line in lines:
             line = line.rstrip("\n").split()
-            id = line[0]
+            ids = line[0]
             
             date = int(line[1])
 
-            if id not in rwl_data:
-                rwl_data[id] = [date, []]
+            if ids not in rwl_data:
+                rwl_data[ids] = [date, []]
 
             # keep track of the first and last date in the series
             if date < first_date:
@@ -107,14 +109,16 @@ def process_rwl_pandas(filename):
             
             for i in range(2, len(line)):
                 try:
-                    data = float(line[i])/100
+                    data = float(int(line[i]))/100
+                    if data == 9.99:
+                        continue
                 except ValueError:
                     data = np.nan
-                rwl_data[id][1].append(data)
+                rwl_data[ids][1].append(data)
 
     # create an array of indexes for the dataframe
     indexes = []
-    for i in range(first_date, last_date+1):
+    for i in range(first_date, last_date):
         indexes.append(i)
 
     # create a new dictionary to store the data in a way more suited for the
@@ -122,7 +126,7 @@ def process_rwl_pandas(filename):
     refined_data = {}
     for key, val in rwl_data.items():
         front_addition = [np.nan] * (val[0]-first_date)
-        end_addition = [np.nan] * (last_date - (val[0] + len(val[1]) - 1))
+        end_addition = [np.nan] * (last_date - (val[0] + len(val[1])))
         refined_data[key] = front_addition + val[1] + end_addition
 
     df = pd.DataFrame.from_dict(refined_data)
