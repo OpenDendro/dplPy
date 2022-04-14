@@ -1,18 +1,37 @@
 import numpy as np
+import pandas as pd
 from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+
+def negex_function(x, a, b, k):
+    return a * np.exp(b * x) + k
+
+def negex(series):
+    x = series.index.to_numpy()
+    
+    y = series.to_numpy()
+    xi = np.arange(1, len(y)+1)
+    pars, unk= curve_fit(negex_function, xi, y)
+    a, b, k = pars
+
+    yi = negex_function(xi, a, b, k)
+
+    plt.plot(x, y, "o", x, yi, "-")
+    plt.show()
+    return yi
 
 def gaussian(x, a, b, c):
     return a*np.exp(-np.power(x - b, 2)/(2*np.power(c, 2)))
-
-def main():
-    # Generate dummy dataset
-    x_dummy = np.linspace(start=-10, stop=10, num=100)
-    y_dummy = gaussian(x_dummy, 8, -1, 3)
-    # Add noise from a Gaussian distribution
-    noise = 0.5*np.random.normal(size=y_dummy.size)
-    y_dummy = y_dummy + noise
-
-    pars, cov = curve_fit(f=gaussian, xdata=x_dummy, ydata=y_dummy, p0=[5, -1, 1], bounds=(-np.inf, np.inf))
-    print(pars)
-    print(cov)
     
+def line_function(x, m, c):
+    return (m * x) + c
+
+def linear(series):
+    x = series.index.to_numpy()
+    y = series.to_numpy()
+    pars, unk = curve_fit(line_function, x, y)
+    m, c = pars
+    yi = line_function(x, m, c)
+    plt.plot(x, y, "o", x, yi, "-")
+    plt.show()
+    return yi

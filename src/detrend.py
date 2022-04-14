@@ -36,17 +36,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from readers import readers
 from smoothingspline import spline
+from curvefit import negex
 
 # In the future, detrend will probably only take a series as input
 # Currently takes a dataframe as input and detrends all the series in the
 # dataframe
 def detrend(series_data):
+    
+
+    
     for series_name, data in series_data.items():
         nullremoved_data = data.dropna()
-        yi = spline(nullremoved_data)
-        
-        residual(nullremoved_data, yi)
-        difference(nullremoved_data, yi)
+        # For testing curvefit.py
+        yi = negex(nullremoved_data)
+
+        #yi = spline(nullremoved_data)
+        #residual(nullremoved_data, yi)
+        #difference(nullremoved_data, yi)
     
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):
