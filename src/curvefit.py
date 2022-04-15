@@ -8,8 +8,8 @@ def negex_function(x, a, b, k):
     return a * np.exp(b * x) + k
 
 # Modified hugershoff function
-def hugershoff_function(x, a, b, d, g):
-    return a*(x**b)*np.exp(-g*x) + d
+def hugershoff_function(x, a, b, c, d):
+    return a*(x**b)*np.exp(c*x) + d
 
 # Attempt to fit a hugershoff curve to the series
 def hugershoff(series):
@@ -17,10 +17,11 @@ def hugershoff(series):
     
     y = series.to_numpy()
     xi = np.arange(1, len(y)+1)
-    pars, unk= curve_fit(hugershoff_function, xi, y)
-    a, b, d, g = pars
+    pars, unk= curve_fit(hugershoff_function, xi, y, bounds=([0, -2, -np.inf, min(y)], [np.inf, 2, 0, max(y)]), 
+                            p0=[max(y)-min(y), 0, 0, y[0]])
+    a, b, c, d = pars
 
-    yi = hugershoff_function(xi, a, b, d, g)
+    yi = hugershoff_function(xi, a, b, c, d)
 
     plt.plot(x, y, "o", x, yi, "-")
     plt.show()
@@ -32,12 +33,13 @@ def negex(series):
     
     y = series.to_numpy()
     xi = np.arange(1, len(y)+1)
-    pars, unk= curve_fit(negex_function, xi, y)
+    pars, unk= curve_fit(negex_function, xi, y, bounds=([0, -np.inf, 0], [np.inf, 0, np.inf]))
     a, b, k = pars
 
     yi = negex_function(xi, a, b, k)
 
     plt.plot(x, y, "o", x, yi, "-")
+    plt.ylim(0, 1)
     plt.show()
     return yi
 
