@@ -47,11 +47,18 @@ def detrend(series_data):
         nullremoved_data = data.dropna()
         # For testing curvefit.py
         try:
+            print("Cubic smoothing spline")
+            yi = spline(nullremoved_data)
+            print("Hugershoff curve fit")
             yi = curvefit.hugershoff(nullremoved_data)
+            print("NegEx curve fit")
+            yi = curvefit.negex(nullremoved_data)
+            print("Linear curve fit")
+            yi = curvefit.linear(nullremoved_data)
+            print("Horizontal curve fit")
+            yi = curvefit.horizontal(nullremoved_data)
         except RuntimeError:
-            print("Unable to get hugershoff fit")
-
-        #yi = spline(nullremoved_data)
+            print("Error")
     
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):
