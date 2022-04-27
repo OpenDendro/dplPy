@@ -35,6 +35,7 @@ from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
 from smoothingspline import spline
+from autoreg import autoreg
 import curvefit
 
 # In the future, detrend will probably only take a series as input
@@ -45,21 +46,15 @@ import curvefit
 def detrend(series_data):
     for series_name, data in series_data.items():
         nullremoved_data = data.dropna()
-        # For testing curvefit.py
-        try:
-            print("Cubic smoothing spline")
-            yi = spline(nullremoved_data)
-            print("Hugershoff curve fit")
-            yi = curvefit.hugershoff(nullremoved_data)
-            print("NegEx curve fit")
-            yi = curvefit.negex(nullremoved_data)
-            print("Linear curve fit")
-            yi = curvefit.linear(nullremoved_data)
-            print("Horizontal curve fit")
-            yi = curvefit.horizontal(nullremoved_data)
-        except RuntimeError:
-            print("Error")
-    
+        # For testing autoreg.py
+        print("Cubic smoothing spline")
+        yi = spline(nullremoved_data)
+        print("Done with spline")
+        autoreg(yi)
+        break
+        
+        
+
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):
     x = series.index.to_numpy()
