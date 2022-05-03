@@ -44,13 +44,12 @@ import curvefit
 # probably will add another argument to this function that specifies what type
 # of curve fit, and detrending method
 def detrend(series_data):
+    print("Detrending with Cubic smoothing spline")
     for series_name, data in series_data.items():
         nullremoved_data = data.dropna()
         # For testing autoreg.py
-        print("Cubic smoothing spline")
-        yi = spline(nullremoved_data)
-        print("Done with spline")
-        autoreg(yi)
+
+        autoreg(nullremoved_data)
         break
         
         
