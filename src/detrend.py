@@ -35,7 +35,7 @@ from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
 from smoothingspline import spline
-from autoreg import autoreg
+from autoreg import autoreg, autoreg_array
 import curvefit
 
 # In the future, detrend will probably only take a series as input
@@ -49,9 +49,12 @@ def detrend(series_data):
         nullremoved_data = data.dropna()
         # For testing autoreg.py
 
+        #fitted_data = spline(nullremoved_data)
         autoreg(nullremoved_data)
-        break
         
+        #res = residual(nullremoved_data, fitted_data)
+        break
+
         
 
 # Detrends by finding ratio of original series data to curve data
@@ -62,6 +65,7 @@ def residual(series, yi):
 
     plt.plot(x, res, "-")
     plt.show()
+
     return res
 
 # Detrends by finding difference between original series data and curve fit data
@@ -72,4 +76,5 @@ def difference(series, yi):
 
     plt.plot(x, res, "-")
     plt.show()
-    return res
+
+    return res 
