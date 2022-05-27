@@ -1,72 +1,47 @@
+from enum import auto
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.tsa.api import acf, graphics, pacf
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-def autoreg(data):
-    #AR_data = ar_select_order(data, 20, ic='aic', old_names=False)
-   
-    #results = AR_data.model.fit()
+# This function returns residuals plus mean of the best fit AR
+# model of the data
+def ar_func(data):
+    pars = autoreg(data, 5)
     
-    results = AutoReg(data, 20).fit()
-
-    print(results.summary())
-    pars = results.params
-
-
-    fig = plt.figure(figsize=(16, 9))
-    fig = results.plot_diagnostics(fig=fig, lags=30)
+    if isinstance(data, pd.Series):
+        y = data.to_numpy()
+    else:
+        y = data
     
-    
-    x = data.index.to_numpy()
-    y = data.to_numpy()
-    print(y)
-    print()
-    yi = predict_values(y, pars)
-    
-    print(yi)
-    print()
+    yi = fitted_values(y, pars)
 
     res = y[len(pars)-1:] - yi
-    print(res)
+    
     mean = np.mean(y)
 
+    # Add mean to the residuals
     for i in range(len(res)):
         res[i] += mean
 
-    print(res)
+    return res
 
-    plt.clf()
-    plt.plot(x[len(pars)-1:], res, "-")
-    plt.show()
-
-    
-def autoreg_array(x, y):
-    AR_data = ar_select_order(y, 5, ic='aic', old_names=False)
+# This method selects the best AR model with a specified maximum order
+# The best model is selected based on AIC value
+def autoreg(data, max_lag):
+    AR_data = ar_select_order(data, max_lag, ic='aic', old_names=False)
     results = AR_data.model.fit()
 
-    print(results.summary())
-    fig = plt.figure(figsize=(16, 9))
-    fig = results.plot_diagnostics(fig=fig, lags=30)
-    
-    plt.clf()
-    print()
-    yi = results.get_prediction().df
-    print(results.get_prediction().predicted)
-    print(results.get_prediction().var_resid)
-    print(yi)
-    
-    print("\nPrinting residuals now\n")
-    res = y/yi
-    print(res)
+    return results.params
 
-
-
-def predict_values(data_array, params):
+# This function calculates the in-sample predicted values of a series,
+# given an array containing the original data and the parameters for
+# the AR model
+def fitted_values(data_array, params):
     mean = np.mean(data_array)
     results = []
-
+    
     for i in range((len(params)-1), len(data_array)):
         pred = params[0]
         for j in range(1, len(params)):

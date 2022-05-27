@@ -35,7 +35,7 @@ from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
 from smoothingspline import spline
-from autoreg import autoreg, autoreg_array
+from autoreg import ar_func
 import curvefit
 
 # In the future, detrend will probably only take a series as input
@@ -50,7 +50,7 @@ def detrend(series_data):
         # For testing autoreg.py
 
         #fitted_data = spline(nullremoved_data)
-        autoreg(nullremoved_data)
+        print(ar_func(nullremoved_data))
         
         #res = residual(nullremoved_data, fitted_data)
         break
