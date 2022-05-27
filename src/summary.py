@@ -23,7 +23,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 4/11/2022
+# Date: 5/27/2022
 # Author: Ifeoluwa Ale
 # Title: summary.py
 # Description: Generates a summary of each series recorded in Tucson format and CSV format files

@@ -21,7 +21,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 4/11/2022
+# Date: 5/27/2022
 # Author: Ifeoluwa Ale
 # Title: stats.py
 # Description: Generates summary statistics for Tucson format and CSV format files
@@ -35,7 +35,7 @@ __license__ = "GNU GPLv3"
 
 # Create Summaries for Tucson (*rwl) files
 
-
+# Ignore the following comments:
 #Code to calculate ar1 when statsmodels can be imported
 #from statsmodels.tsa import stattools
 # x = 1-D array

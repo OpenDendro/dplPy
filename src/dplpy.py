@@ -23,7 +23,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 4/11/2022
+# Date: 5/27/2022
 # Author: Tyson Lee Swetnam
 # Project: OpenDendro dplPy
 # Description: Imports main functionality for package
@@ -174,6 +174,14 @@ def plot_from_parser(args):
 def detrend_from_parser(args):
     detrend(input=args.input)
 
+def ar_func_from_parser(args):
+    data, max_lag = args.input
+    ar_func(data, max_lag)
+
+def autoreg_from_parser(args):
+    data, max_lag = args.input
+    autoreg(data, max_lag)
+
 # creates whitespace
 print("")
 
@@ -190,6 +198,7 @@ from stats import stats
 from report import report
 from plot import plot
 from detrend import detrend
+from autoreg import ar_func, autoreg
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
