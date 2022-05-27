@@ -21,33 +21,33 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 4/11/2022
+# Date: 5/27/2022
 # Author: Ifeoluwa Ale
 # Title: detrend.py
-# Description: Detrends a the every series in a given dataset, first by fitting
-#              data to a spline curve and then by finding residuals and differences
+# Description: Detrends a given series, first by fitting data 
+#              to a spline curve and then by calculating residuals
 # example usage:
 # >>> import dplpy as dpl 
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.detrend(data)
+# >>> dpl.detrend(data['Name of series'])
 
 from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
-from readers import readers
 from smoothingspline import spline
+from autoreg import ar_func
+import curvefit
 
-# In the future, detrend will probably only take a series as input
-# Currently takes a dataframe as input and detrends all the series in the
-# dataframe
-def detrend(series_data):
-    for series_name, data in series_data.items():
-        nullremoved_data = data.dropna()
-        yi = spline(nullremoved_data)
-        
-        residual(nullremoved_data, yi)
-        difference(nullremoved_data, yi)
-    
+# Takes a series as input and fits it to a spline, then detrends it
+# by calculating residuals
+# In the future, will  add functionality that allows for different
+# types of curve fits, and choice of detrending by residual or
+# differences
+def detrend(data, fit="spline", method="residual"):
+    nullremoved_data = data.dropna()
+    yi = spline(data.dropna())
+    residual(nullremoved_data, yi)
+
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):
     x = series.index.to_numpy()
@@ -56,6 +56,7 @@ def residual(series, yi):
 
     plt.plot(x, res, "-")
     plt.show()
+
     return res
 
 # Detrends by finding difference between original series data and curve fit data
@@ -66,4 +67,5 @@ def difference(series, yi):
 
     plt.plot(x, res, "-")
     plt.show()
-    return res
+
+    return res 

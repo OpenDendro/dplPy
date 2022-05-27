@@ -21,7 +21,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 4/11/2022
+# Date: 5/27/2022
 # Author: Ifeoluwa Ale
 # Title: stats.py
 # Description: Generates summary statistics for Tucson format and CSV format files
@@ -35,7 +35,7 @@ __license__ = "GNU GPLv3"
 
 # Create Summaries for Tucson (*rwl) files
 
-
+# Ignore the following comments:
 #Code to calculate ar1 when statsmodels can be imported
 #from statsmodels.tsa import stattools
 # x = 1-D array
@@ -48,6 +48,7 @@ __license__ = "GNU GPLv3"
 import pandas as pd
 import numpy as np
 from readers import readers
+from statsmodels.tsa.ar_model import AutoReg
 
 def stats(inp):
     if isinstance(inp, pd.DataFrame):
@@ -56,7 +57,7 @@ def stats(inp):
         series_data = readers(inp)
 
         
-    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[]}
+    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[], "ar1":[]}
 
     for series_name, data in series_data.items():
         stats["series"].append(series_name)
@@ -68,6 +69,8 @@ def stats(inp):
         stats["stdev"].append(round(data.std(), 3))
         stats["skew"].append(round(get_skew(data), 3))
         stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
+        stats["ar1"].append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
+
 
     statistics = pd.DataFrame(stats)
     statistics.index += 1

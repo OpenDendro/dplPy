@@ -18,6 +18,7 @@ __copyright__ = """
 
 __license__ = "GNU GPLv3"
 
+# Incomplete module
 import pandas as pd
 import matplotlib.pyplot as plt
 from readers import readers
