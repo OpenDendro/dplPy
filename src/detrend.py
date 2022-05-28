@@ -38,15 +38,28 @@ from smoothingspline import spline
 from autoreg import ar_func
 import curvefit
 
-# Takes a series as input and fits it to a spline, then detrends it
-# by calculating residuals
-# In the future, will  add functionality that allows for different
-# types of curve fits, and choice of detrending by residual or
-# differences
+# Takes a series as input and by default fits it to a spline, then 
+# detrends it by calculating residuals
+# Can specify what type of alternate curve-fits, or if the user
+# would like to detrend by using differences
 def detrend(data, fit="spline", method="residual"):
     nullremoved_data = data.dropna()
-    yi = spline(data.dropna())
-    residual(nullremoved_data, yi)
+
+    if fit == "spline":
+        yi = spline(nullremoved_data)
+    elif fit == "ModNegEx":
+        yi = curvefit.negex(nullremoved_data)
+    elif fit == "Hugershoff":
+        yi = curvefit.hugershoff(nullremoved_data)
+    elif fit == "linear":
+        yi = curvefit.linear(nullremoved_data)
+    elif fit == "horizontal":
+        yi = curvefit.horizontal(nullremoved_data)
+    
+    if method == "residual":
+        return residual(nullremoved_data, yi)
+    else:
+        return difference(nullremoved_data, yi)
 
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):

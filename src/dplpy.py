@@ -172,7 +172,8 @@ def plot_from_parser(args):
     plot(input=args.input)
 
 def detrend_from_parser(args):
-    detrend(input=args.input)
+    data, fit, method = args.input
+    detrend(data, fit, method)
 
 def ar_func_from_parser(args):
     data, max_lag = args.input
