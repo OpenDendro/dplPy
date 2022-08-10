@@ -35,6 +35,7 @@ from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
 from smoothingspline import spline
+import emdecomp as emd
 from autoreg import ar_func
 import curvefit
 
@@ -45,8 +46,17 @@ import curvefit
 # differences
 def detrend(data, fit="spline", method="residual"):
     nullremoved_data = data.dropna()
-    yi = spline(data.dropna())
-    residual(nullremoved_data, yi)
+    if fit=="spline":
+        yi = spline(nullremoved_data)
+        residual(nullremoved_data, yi)
+
+    #Empirical Mode Decomposition (EMD)
+    elif fit=="emd":
+        imfs = emd.emd(nullremoved_data)
+        imfs_p = emd.phase_spectrum(imfs)
+        mis = emd.phase_mi(imfs_p)
+        stochastic_component, yi = emd.divide_signal(nullremoved_data, imfs, mis, cutoff=0.5)
+        residual(nullremoved_data, yi)
 
 # Detrends by finding ratio of original series data to curve data
 def residual(series, yi):
