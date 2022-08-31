@@ -151,7 +151,8 @@ def readme_from_parser(args):
 
 # set the definition for the Readers functions (from readers.py)
 def readers_from_parser(args):
-    readers(input=args.input)
+    filename, skip_lines, header = args.input
+    readers(filename, skip_lines, header)
 
 # set the definition for the Writers funcitons (from writers.py)
 # def writers_from_parser(args):
