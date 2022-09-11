@@ -23,7 +23,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 5/27/2022
+# Date: 9/8/2022
 # Author: Ifeoluwa Ale
 # Project: OpenDendro- Readers
 # Description: Reads data from supported file types (*.CSV and *.RWL)
@@ -77,7 +77,7 @@ def readers(filename, skip_lines=0, header=False):
 
     # Display names of all the series found
     print("Series names:")
-    print(list(series_data.columns))
+    print(list(series_data.columns), "\n")
     return series_data
 
 # Process data from .rwl file and store data in a pandas dataframe.
