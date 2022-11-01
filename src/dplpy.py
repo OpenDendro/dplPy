@@ -172,6 +172,9 @@ def report_from_parser(args):
 def plot_from_parser(args):
     plot(input=args.input)
 
+def chron_from_parser(args):
+    chron(input=args.input)
+
 def detrend_from_parser(args):
     data, fit, method = args.input
     detrend(data, fit, method)
@@ -201,6 +204,7 @@ from report import report
 from plot import plot
 from detrend import detrend
 from autoreg import ar_func, autoreg
+from chron import chron
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

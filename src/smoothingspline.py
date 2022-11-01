@@ -21,7 +21,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 5/27/2022
+# Date: 11/1/2022
 # Author: Ifeoluwa Ale
 # Title: smoothingspline.py
 # Description: This contains the spline method which fits a series to
@@ -32,9 +32,6 @@ __license__ = "GNU GPLv3"
 
 from math import cos
 from math import pi
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 from csaps import csaps
 
 # Returns the spline parameter, given amplitude of the series and the period
@@ -44,15 +41,7 @@ def get_param(amp, period):
     return spline_param
 
 # Fits a curve to the series given as input and returns the y-values of the curve
-def spline(series):
-    x = series.index.to_numpy()
-    y = series.to_numpy()
-
-    p = get_param(0.5, 100)
-
+def spline(x, y):
+    p = get_param(0.5, len(x) * 0.67)
     yi = csaps(x, y, x, smooth=p)
-
-    plt.plot(x, y, "o", x, yi, "-")
-    plt.show()
-
     return yi

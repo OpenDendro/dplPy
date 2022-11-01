@@ -1,4 +1,5 @@
 from __future__ import print_function
+from sys import intern
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -38,6 +39,7 @@ __license__ = "GNU GPLv3"
 import pandas as pd
 from readers import readers
 from stats import stats
+import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 
 def report(inp):
@@ -63,7 +65,7 @@ def report(inp):
     print("Mean (Std dev) series intercorrelation:")
     print("Mean (Std dev) AR1:", round(avg_ar, 4))
     print("-------------")
-    print("Years with absent rings listed by series")
+    print("Years with absent rings listed by series\n")
     print_missing_ring_data(missing_rings)
     print("-------------")
     print("Years with internal NA values listed by series")
@@ -72,14 +74,34 @@ def report(inp):
 def get_report_stats(series_data):
     ar1s = []
     missing_rings = {}
+    nans = {}
     for series_name, data in series_data.items():
         missing_rings[series_name] = list(map(str, data[data==0].index.tolist()))
+        nans[series_name] = list(map(str, data[data==np.nan].index.tolist()))
         ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
     avg_ar = sum(ar1s)/len(ar1s)
+
+    #print(nans)
+    internal_nans = {}
+    for series_name, data in nans.items():
+        if len(data) == 0:
+            continue
+        i = 1
+        j = len(data) - 2
+        
+        while j > i:
+            if data[i] != (data[i-1] + 1) and data[j+1] != (data[j] + 1):
+                internal_nans[series_data] = data[i:j]
+                break
+            if data[i] == data[i-1] + 1:
+                i += 1
+            if data[j+1] == data[j] + 1:
+                j += 1
 
     return missing_rings, avg_ar
 
 # Print data about missing rings
 def print_missing_ring_data(missing_rings):
     for series, missing in missing_rings.items():
-        print("     ", series, "--", " ".join(missing))
+        if len(missing) != 0:
+            print("     ", series, "--", " ".join(missing))
