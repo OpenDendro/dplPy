@@ -151,7 +151,8 @@ def readme_from_parser(args):
 
 # set the definition for the Readers functions (from readers.py)
 def readers_from_parser(args):
-    readers(input=args.input)
+    filename, skip_lines, header = args.input
+    readers(filename, skip_lines, header)
 
 # set the definition for the Writers funcitons (from writers.py)
 # def writers_from_parser(args):
@@ -171,8 +172,12 @@ def report_from_parser(args):
 def plot_from_parser(args):
     plot(input=args.input)
 
+def chron_from_parser(args):
+    chron(input=args.input)
+
 def detrend_from_parser(args):
-    detrend(input=args.input)
+    data, fit, method = args.input
+    detrend(data, fit, method)
 
 def ar_func_from_parser(args):
     data, max_lag = args.input
@@ -199,6 +204,7 @@ from report import report
 from plot import plot
 from detrend import detrend
 from autoreg import ar_func, autoreg
+from chron import chron
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

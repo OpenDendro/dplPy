@@ -1,6 +1,4 @@
 from __future__ import print_function
-from multiprocessing.sharedctypes import Value
-from operator import index
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -25,7 +23,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 5/27/2022
+# Date: 9/8/2022
 # Author: Ifeoluwa Ale
 # Project: OpenDendro- Readers
 # Description: Reads data from supported file types (*.CSV and *.RWL)
@@ -34,7 +32,7 @@ __license__ = "GNU GPLv3"
 # example usages: 
 # >>> import dplpy as dpl 
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> data = dpl.readers("../tests/data/csv/file.rwl")
+# >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
 # 
 # example command line application:
 # $ python src/dplpy.py reader --input ./data/file.csv
@@ -46,96 +44,96 @@ import sys
 import pandas as pd
 import numpy as np
 
-def readers(filename):
+def readers(filename, skip_lines=0, header=False):
     """
-    This function imports common ring width
-    data files into Python as arrays
+    This function imports common ring width data files into Python as arrays
     Accepted file types are CSV and RWL
     """
-
-# open the input file and read its data into a pandas dataframe
-    # tries to read file as .csv
+    FORMAT = "." + filename.split(".")[-1]
+    print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
+    
+    # open the input file and read its data into a pandas dataframe
     if filename.upper().endswith(".CSV"):
-        try:
-            series_data = pd.read_csv(filename)
-        except ValueError:
-            print("\nError reading file. Check that file exists and that data is consistent")
-            print("with .CSV format")
-            return
-    # tries to read file as .rwl
+        series_data = pd.read_csv(filename, skiprows=skip_lines)
     elif filename.upper().endswith(".RWL"):
-        try:
-            series_data = process_rwl_pandas(filename)
-        except ValueError:
-            print("\nError reading file. Check that file exists and that data is consistent")
-            print("with .RWL format")
-            return
+        series_data = process_rwl_pandas(filename, skip_lines, header)
     else:
         print("\nUnable to read file, please check that you're using a supported type\n")
         print("Accepted file types: .csv and .rwl")
         print("example usages:\n>>> import dplpy as dpl")
         print(">>> data = dpl.readers('../tests/data/csv/filename.csv')")
+        print(">>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True")
         return
 
-    # Display message to show that reading was successful
-    print("\nSUCCESS!\nFile read as:", filename[-4:], "file\n")
+    # If no data is returned, then an error was encountered when reading the file.
+    if series_data is None:
+        print("\nError reading file. Check that file exists and that file formatting is consistent with " + FORMAT + " format.")
+        print("If your file contains headers, run dpl.readers(file_path, header=True)")
+        return
     series_data.set_index('Year', inplace = True, drop = True)
-    
+
+    # Display message to show that reading was successful
+    print("\nSUCCESS!\nFile read as:", FORMAT, "file\n")
+
     # Display names of all the series found
     print("Series names:")
-    print(list(series_data.columns))
+    print(list(series_data.columns), "\n")
     return series_data
 
-# function for reading files in rwl format
-def process_rwl_pandas(filename):
-    print("\nAttempting to read input file: " + os.path.basename(filename)
-            + " as .rwl format\n")
+# Process data from .rwl file and store data in a pandas dataframe.
+def process_rwl_pandas(filename, skip_lines, header):
+    if header is True:
+        skip_lines += 3 # working with the assumption that headers are 3 lines long
+
     with open(filename, "r") as rwl_file:
-        lines = rwl_file.readlines()
-        rwl_data = {}
-        first_date = sys.maxsize
-        last_date = 0
-
-        # read through lines of file and store raw data in a dictionary
-        for line in lines:
-            line = line.rstrip("\n").split()
-            ids = line[0]
-            
-            date = int(line[1])
-
-            if ids not in rwl_data:
-                rwl_data[ids] = [date, []]
-
-            # keep track of the first and last date in the series
-            if date < first_date:
-                first_date = date
-            if (date + len(line) - 3) > last_date:
-                last_date = date + len(line) - 3
-            
-            for i in range(2, len(line)):
-                try:
-                    data = float(int(line[i]))/100
-                    if data == 9.99:
-                        continue
-                except ValueError:
-                    data = np.nan
-                rwl_data[ids][1].append(data)
+        file_lines = rwl_file.readlines()[skip_lines:]
+    
+    rwl_data, first_date, last_date = read_rwl(file_lines)
+    if rwl_data is None:
+        return None
 
     # create an array of indexes for the dataframe
     indexes = []
     for i in range(first_date, last_date):
         indexes.append(i)
+    
+    df = pd.DataFrame(data={"Year":indexes})
 
-    # create a new dictionary to store the data in a way more suited for the
-    # dataframe
-    refined_data = {}
-    for key, val in rwl_data.items():
-        front_addition = [np.nan] * (val[0]-first_date)
-        end_addition = [np.nan] * (last_date - (val[0] + len(val[1])))
-        refined_data[key] = front_addition + val[1] + end_addition
-
-    df = pd.DataFrame.from_dict(refined_data)
-
-    df.insert(0, "Year", indexes)
-    df.set_index("Year")
+    # store raw data in pandas dataframe
+    for series in rwl_data:
+        series_data = []
+        for i in range(first_date, last_date):
+            if i in rwl_data[series]:
+                series_data.append(rwl_data[series][i])
+            else:
+                series_data.append(np.nan)
+        df = pd.concat([df, pd.Series(data=series_data, name=series)], axis=1)
     return df
+
+# Extract raw data from lines of .rwl file and store in a nested dictionary
+def read_rwl(lines):
+    rwl_data = {}
+    first_date = sys.maxsize
+    last_date = -sys.maxsize
+
+    for line in lines:
+        line = line.rstrip("\n").split()
+
+        series_id = line[0]
+        if series_id not in rwl_data:
+            rwl_data[series_id] = {}
+            
+        # keep track of the first and last date in the dataset
+        line_start = int(line[1])
+        first_date = min(first_date, line_start)
+        last_date = max(last_date, (line_start+len(line)-3))
+
+        for i in range(2, len(line)):
+            try:
+                if line[i] == "999" or line[i] == "-9999":
+                    continue
+                data = float(int(line[i]))
+            except ValueError: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
+                return None, None, None
+            rwl_data[series_id][line_start+i-2] = data
+    return rwl_data, first_date, last_date
