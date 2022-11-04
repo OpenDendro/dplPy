@@ -103,7 +103,7 @@ This will load the necessary functions.
     - `header`: input files often have a header present; Default is `False`, use `True` if input has a header.
 - Usage example:
     ```
-    data = dpl.readers("/path/to/file.rwl", header=True)
+    >>> data = dpl.readers("/path/to/file.rwl", header=True)
     ```
 
 ### Data Summary
@@ -111,9 +111,9 @@ This will load the necessary functions.
 - Description: generates a summary of each series recorded in `rwl`  and `csv` format files
 - Usage Example:
     ```
-    dpl.summary("/path/to/file.rwl")
+    >>> dpl.summary("/path/to/file.rwl")
     # or
-    dpl.summary(data)
+    >>> dpl.summary(data)
     ```
 
 ### Data Stastics
@@ -121,9 +121,9 @@ This will load the necessary functions.
 - Description: generates summary statistics for `rwl`  and `csv` format files
 - Usage Example:
     ```
-    dpl.stats("/path/to/file.rwl")
+    >>> dpl.stats("/path/to/file.rwl")
     # or
-    dpl.stats(data)
+    >>> dpl.stats(data)
     ```
 
 ### Data Report
@@ -131,9 +131,9 @@ This will load the necessary functions.
 - Description: generates a report about absent rings in the data set
 - Usage Example:
     ```
-    dpl.report("/path/to/file.rwl")
+    >>> dpl.report("/path/to/file.rwl")
     # or
-    dpl.report(data)
+    >>> dpl.report(data)
     ```
 
 ### Plotting
@@ -145,14 +145,14 @@ This will load the necessary functions.
     - `type="seg"`: creates a segment plot
 - Usage Example:
     ```
-    dpl.report("/path/to/file.rwl")
+    >>> dpl.report("/path/to/file.rwl")
     # or 
-    dpl.plot(data)
+    >>> dpl.plot(data)
 
     # User is able to select specific series of interests.
     # In the example below, the user selects SERIES_1, SERIES_2, SERIES_3 
     # from the "data" dataset and generates a spaghetti plot
-    dpl.plot(data[[SERIES_1, SERIES_2, SERIES_3]], type="spag")
+    >>> dpl.plot(data[[SERIES_1, SERIES_2, SERIES_3]], type="spag")
     ```
 
 ### Autoregressive (AR) modeling 
@@ -165,9 +165,9 @@ This will load the necessary functions.
     - `max_lag`: default 5, can be specified to user's needs.
 - Usage Example:
     ```
-    dpl.autoreg(data[SERIES_1])
+    >>> dpl.autoreg(data[SERIES_1])
     # or
-    dpl.ar_func(data[SERIES_2], max_lag=7)
+    >>> dpl.ar_func(data[SERIES_2], max_lag=7)
     ```
 
 ### Detrending
@@ -184,12 +184,12 @@ This will load the necessary functions.
     - `Plot`: plotting results default is `True`, accepts `False`.
 - Usage Example:
     ```
-    dpl.detrend(data)
+    >>> dpl.detrend(data)
     # or
-    dpl.detrend(data, fit="Hugershoff", method="difference")
+    >>> dpl.detrend(data, fit="Hugershoff", method="difference")
 
     # User is able to select specific series of interests.
-    dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
+    >>> dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
     ```
 
 ### Chronology
@@ -202,7 +202,8 @@ This will load the necessary functions.
 - Usage Example:
     ```
     # Detrend data first!
-    rwi_data = dpl.data(data)
+    >>> rwi_data = dpl.data(data)
+
     # Perform chronology
-    dpl.chron(rwi_data, biweight=False, plot=False)
+    >>> dpl.chron(rwi_data, biweight=False, plot=False)
     ```
