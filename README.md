@@ -9,43 +9,42 @@ We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d7
 
 ---
 
+## Requirements
+
+**Note**: DplPy has been successfully tested on Ubuntu 20, Ubuntu 22, macOS (Intel, M2).
+
+- Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html))
+- (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
+- (Suggested) [VSCode]()
+
 ## Building Environment
 
 > :warning: **it is recommended to _NOT_ use GitHub Codespaces (as of Mar 2022)**
 
-> :warning: **Prior to creating an enviroment, ensure that you are outside of `base` by doing `conda deactivate`.**
-
-1\. Create a conda environment with python version 3.8 as default python:
+0\. Clone and change directory to this repository
 
 ```
-conda create -n dplpy3 python=3.8
+$ git clone https://github.com/OpenDendro/dplPy.git
+$ cd dplPy
 ```
 
-![env_1](docs/assets/env_1.png)
+1\. Create a conda environment through the `environment.yml` file. This will ensure all packages required are installed.
 
-When prompted for permission to install required packages (with `y/n`), select `y`. Upon finishing installing the required packages, reload your terminal (close and re-open terminal).
+```
+$ conda env create -f environment.yml     
 
-> :warning: **If terminal shows you are in `base`, exit with `conda deactivate`.**
+# if you have mamba installed you could instead do
+
+$ mamba env create -f environment.yml
+```
+
+When prompted for permission to install required packages (with `y/n`), select `y`.
 
 2\. Activate your environment:
 
 ```
-conda activate dplpy3
+$ conda activate dplpy
 ```
-
-From within your environment, install [CSAPS](https://pypi.org/project/csaps/#description):
-
-```
-pip install -U csaps
-```
-
-Update your environment:
-
-```
-conda env update -f environment.yml --prune
-```
-
-![env_2](docs/assets/env_2.png)
 
 Your environment should be successfully built.
 
@@ -58,6 +57,12 @@ Your environment should be successfully built.
 ## Using Jupyter
 
 The Conda enviroment is essential as it provides will all necessary packages. To execute the code, use Jupyter Notebook.
+
+**Note**: if using Jupyter from the terminal, you need to ensure that the kernel is findable by doing the following command once the environment is active:
+
+```
+python -m ipykernel install --user --name dplpy --display-name "Python (dplpy)"
+```
 
 ### Linux, MacOS
 
@@ -202,7 +207,7 @@ This will load the necessary functions.
 - Usage Example:
     ```
     # Detrend data first!
-    >>> rwi_data = dpl.data(data)
+    >>> rwi_data = dpl.detrend(data)
 
     # Perform chronology
     >>> dpl.chron(rwi_data, biweight=False, plot=False)
