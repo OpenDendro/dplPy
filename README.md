@@ -3,6 +3,26 @@ The Dendrochronology Program Library for Python
 
 ---
 
+## Index
+
+- [Issues](#issues)
+- [Requirements](#requirements)
+- [Building Environment](#building-environment)
+- [Using jupyter](#using-jupyter)
+    - [Linux, macOS](#linux-macos)
+    - [Windows](#windows)
+- [Functionality and usage](#functionalities-and-usage)
+    - [Loading data](#loading-data)
+    - [Data Summary](#data-summary)
+    - [Data Stastics](#data-stastics)
+    - [Data Report](#data-report)
+    - [Plotting](#plotting)
+    - [Autoregressive (AR) modeling](#autoregressive-ar-modeling)
+    - [Detrending](#detrending)
+    - [Chronology](#chronology)
+
+---
+
 ## Issues
 
 We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d700171ceee8/board?repos=385244315) to manage our [GitHub Issues](https://github.com/opendendro/dplpy/issues)
@@ -15,7 +35,7 @@ We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d7
 
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html))
 - (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
-- (Suggested) [VSCode]()
+- (Suggested) [VSCode](https://code.visualstudio.com/)
 
 ## Building Environment
 
