@@ -11,7 +11,7 @@ The Dendrochronology Program Library for Python
 - [Using jupyter](#using-jupyter)
     - [Linux, macOS](#linux-macos)
     - [Windows](#windows)
-- [Functionality and usage](#functionalities-and-usage)
+- [Functionalities and usage](#functionalities-and-usage)
     - [Loading data](#loading-data)
     - [Data Summary](#data-summary)
     - [Data Stastics](#data-stastics)
@@ -31,7 +31,7 @@ We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d7
 
 ## Requirements
 
-**Note**: DplPy has been successfully tested on Ubuntu 20, Ubuntu 22, macOS (Intel, M2).
+:warning: **Note**: DplPy has been successfully tested on Ubuntu 20, Ubuntu 22, macOS (Intel, M2).
 
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html))
 - (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
@@ -41,14 +41,14 @@ We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d7
 
 > :warning: **it is recommended to _NOT_ use GitHub Codespaces (as of Mar 2022)**
 
-0\. Clone and change directory to this repository
+1\. Clone and change directory to this repository
 
 ```
 $ git clone https://github.com/OpenDendro/dplPy.git
 $ cd dplPy
 ```
 
-1\. Create a conda environment through the `environment.yml` file. This will ensure all packages required are installed.
+2\. Create a conda environment through the `environment.yml` file. This will ensure all packages required are installed.
 
 ```
 $ conda env create -f environment.yml     
@@ -60,7 +60,7 @@ $ mamba env create -f environment.yml
 
 When prompted for permission to install required packages (with `y/n`), select `y`.
 
-2\. Activate your environment:
+3\. Activate your environment:
 
 ```
 $ conda activate dplpy
@@ -68,7 +68,7 @@ $ conda activate dplpy
 
 Your environment should be successfully built.
 
-3\. Your python environment should be able to import `numpy`, `pandas`, `matplotlib`, `statsmodels` and `csaps`:
+4\. Your python environment should be able to import `numpy`, `pandas`, `matplotlib`, `statsmodels` and `csaps`:
 
 ![env_3](docs/assets/env_3.png)
 
@@ -78,7 +78,7 @@ Your environment should be successfully built.
 
 The Conda enviroment is essential as it provides will all necessary packages. To execute the code, use Jupyter Notebook.
 
-**Note**: if using Jupyter from the terminal, you need to ensure that the kernel is findable by doing the following command once the environment is active:
+:warning: **Note**: if using Jupyter from the terminal, you need to ensure that the kernel is findable by doing the following command once the environment is active:
 
 ```
 python -m ipykernel install --user --name dplpy --display-name "Python (dplpy)"
