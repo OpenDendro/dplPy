@@ -43,6 +43,7 @@ import numpy as np
 import warnings
 
 def ar_func(data, max_lag=5):
+    warnings.filterwarnings("ignore")
     if isinstance(data, pd.DataFrame):
         start_df = pd.DataFrame(index=pd.Index(data.index))
         to_concat = [start_df]

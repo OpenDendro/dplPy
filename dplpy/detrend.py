@@ -49,7 +49,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
             to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
-      
+    
     elif isinstance(data, pd.Series):
         return detrend_series(data, data.name, fit, method, plot)
     else:
@@ -89,7 +89,6 @@ def detrend_series(data, series_name, fit, method, plot, period=None):
     
     if plot:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(7,3))
-    
     
         axes[0].plot(x, y, "k-", x, yi, "r-", linewidth=2)
         axes[0].set_xlabel('Year')
