@@ -41,7 +41,10 @@ def get_param(amp, period):
     return spline_param
 
 # Fits a curve to the series given as input and returns the y-values of the curve
-def spline(x, y):
-    p = get_param(0.5, len(x) * 0.67)
+def spline(x, y, period=None):
+    if period == None:
+        period = len(x) * 0.67
+    
+    p = get_param(0.5, period)
     yi = csaps(x, y, x, smooth=p)
     return yi
