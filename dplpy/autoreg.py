@@ -43,7 +43,6 @@ import numpy as np
 import warnings
 
 def ar_func(data, max_lag=5):
-    warnings.filterwarnings("ignore")
     if isinstance(data, pd.DataFrame):
         start_df = pd.DataFrame(index=pd.Index(data.index))
         to_concat = [start_df]
@@ -92,6 +91,7 @@ def autoreg(data: pd.Series, max_lag=5):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
+
     results = ar_data.model.fit()
     return results.params
 
