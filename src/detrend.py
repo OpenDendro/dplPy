@@ -40,11 +40,11 @@ from smoothingspline import spline
 from autoreg import ar_func
 import curvefit
 
-def detrend(data, fit="spline", method="residual", plot=True):
+def detrend(data, fit="spline", method="residual", plot=True, period=None):
     if isinstance(data, pd.DataFrame):
         res = {}
         for column in data.columns:
-            res[column] = detrend_series(data[column], column, fit, method, plot)
+            res[column] = detrend_series(data[column], column, fit, method, plot, period=None)
         return res
     elif isinstance(data, pd.Series):
         return detrend_series(data, data.name, fit, method, plot)
@@ -56,13 +56,13 @@ def detrend(data, fit="spline", method="residual", plot=True):
 # Can specify what type of alternate curve-fits, or if the user
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
-def detrend_series(data, series_name, fit, method, plot):
+def detrend_series(data, series_name, fit, method, plot, period=None):
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy()
 
     if fit == "spline":
-        yi = spline(x, y)
+        yi = spline(x, y, period)
     elif fit == "ModNegEx":
         yi = curvefit.negex(x, y)
     elif fit == "Hugershoff":

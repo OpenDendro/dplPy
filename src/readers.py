@@ -128,9 +128,16 @@ def read_rwl(lines):
         first_date = min(first_date, line_start)
         last_date = max(last_date, (line_start+len(line)-3))
 
+        # will implement some standardization here so that all data read is consistent, and all data written in rwl
+        # can be written to one of the two popular precisions.
+        div = 0
         for i in range(2, len(line)):
             try:
-                if line[i] == "999" or line[i] == "-9999":
+                if line[i] == "999":
+                    div = 100
+                    continue
+                elif line[i] == "-9999":
+                    div = 1000
                     continue
                 data = float(int(line[i]))
             except ValueError: # Stops reader, escalates to give the user an error when unexpected formatting is detected.

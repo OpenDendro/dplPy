@@ -187,6 +187,10 @@ def autoreg_from_parser(args):
     data, max_lag = args.input
     autoreg(data, max_lag)
 
+def xdate_from_parser(args):
+    data, prewhiten, corr, ar_lag, slide_period, bin_floor = args.input
+    xdate(data, prewhiten, corr, ar_lag, slide_period, bin_floor)
+
 # creates whitespace
 print("")
 
@@ -195,9 +199,6 @@ spacing = "                               "
 # Import definition functions from other files in the src/ path
 
 from readers import readers
-
-# Commenting out extra features until we're ready to implement them
-# import writers
 from summary import summary
 from stats import stats
 from report import report
@@ -205,6 +206,7 @@ from plot import plot
 from detrend import detrend
 from autoreg import ar_func, autoreg
 from chron import chron
+from xdate import xdate
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
