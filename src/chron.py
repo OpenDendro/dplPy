@@ -45,6 +45,8 @@ import numpy as np
 from tbrm import tbrm
 from autoreg import ar_func
 
+# Main function for creating chronology of series. Formats input, prewhitens if necessary
+# and produces output mean value chronology in a dataframe.
 def chron(rwi_data, biweight=True, prewhiten=False, plot=True):
     chron_data = {}
     for series in rwi_data:
@@ -74,6 +76,8 @@ def chron(rwi_data, biweight=True, prewhiten=False, plot=True):
     
     return chron_res
 
+# Does the work of creating the actual chronology by finding the mean RWI for each year
+# in the dataset and keeping track of the sample size.
 def get_chron_info(chron_data, biweight):
     years = []
     means = []
@@ -89,6 +93,8 @@ def get_chron_info(chron_data, biweight):
 
     return years, means, depths
 
+# Does the work of creating a chronology when the data has to be fit to an AR model
+# first (i.e. prewhitened).
 def get_whitened_chron_info(rwi_data, chron_data, biweight):
     whitened_data = {}
     ar_fit_data = {}
@@ -118,6 +124,7 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight):
             whitened_means.append(sum(whitened_data[year][1:])/whitened_data[year][0])
     return whitened_means
 
+# Plots the data created by the chronology
 def plot_chron(years, depths, means, whitened_means):
     # create figure and axis objects with subplots()
     fig,ax = plt.subplots()

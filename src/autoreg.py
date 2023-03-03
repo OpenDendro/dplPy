@@ -43,7 +43,6 @@ import numpy as np
 import warnings
 
 def ar_func(data, max_lag=5):
-    warnings.filterwarnings("ignore")
     if isinstance(data, pd.DataFrame):
         res = {}
         for column in data.columns:
@@ -78,7 +77,9 @@ def ar_func_series(data, max_lag):
 # This method selects the best AR model with a specified maximum order
 # The best model is selected based on AIC value
 def autoreg(data, max_lag=5):
-    ar_data = ar_select_order(data.dropna(), max_lag, ic='aic', old_names=False)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        ar_data = ar_select_order(data.dropna(), max_lag, ic='aic', old_names=False)
     results = ar_data.model.fit()
     return results.params
 
