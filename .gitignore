@@ -133,3 +133,4 @@ dmypy.json
 
 # GitHub Copilot
 "GitHub Copilot"
+tests/data/.DS_Store
