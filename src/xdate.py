@@ -37,14 +37,16 @@ __license__ = "GNU GPLv3"
 from detrend import detrend
 from autoreg import ar_func_series
 from chron import chron
+from stats import stats
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import scipy
 
+
 # Main crossdating function, returns a dictionary that maps each series to its correlation against
 # a chronology of the other series.
 def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
-
     # Identify first and last valid indexes, for separating into bins.
     bins, bin_data = get_bins(data.first_valid_index(), data.last_valid_index(), bin_floor, slide_period)
 
@@ -53,7 +55,6 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
     # if detrending returns error, raise to output
     if isinstance(rwi_data, ValueError) or isinstance(rwi_data, TypeError):
         raise rwi_data
-
 
     # drop nans, prewhiten series if necessary
     ready_series = {}
@@ -104,10 +105,76 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
             print_flags(series, flags)
     print()
 
-    #bin_res = pd.DataFrame.from_dict(bin_data)
-    #bin_res.set_index(pd.Index(series_names), inplace=True)
-    #print(bin_res)
-    return pd.DataFrame.from_dict({"Series":series_names, "Correlation":series_corr})
+    bin_res = pd.DataFrame.from_dict(bin_data)
+    bin_res.set_index(pd.Index(series_names), inplace=True)
+
+    return bin_res.transpose()
+
+def xdate_plot(data):
+    plot_data = xdate(data, slide_period=50, bin_floor=10, show_flags=False)
+    bins = plot_data.index.to_numpy()
+
+    # obtain a list of series names sorted by the start date
+    data_stats = stats(data)
+    series_by_start_date = data_stats.sort_values(by='first')['series']
+
+    # Change the style of plot
+    plt.style.use('seaborn-darkgrid')
+
+    years = data.index.to_numpy()
+
+    # set width and height of the window based on the data
+    dimensions = (max((years[-1] - years[0])//80, 1), max(len(data.columns)//2, 1.5))
+    lin_wid = 7.5
+
+    plt.figure(figsize=(dimensions))
+ 
+    # separate plots for each series using the offset
+    offset = (data.mean().mean() * 2)
+
+    y_divisions = [] # needed to put series names on the y-axis
+    num=0
+    for column_name in series_by_start_date:
+        num+=1
+        for i in range(0, len(bins)-1, 2):
+            bin_range1 = list(map(int, bins[i].split("-")))
+            bin_range2 = list(map(int, bins[i+1].split("-")))
+            if (bin_range1[0] >= data[column_name].first_valid_index() and bin_range2[1] <= data[column_name].last_valid_index()):
+                range_1_color = get_graph_color(plot_data.loc[bins[i]][column_name])
+                range_2_color = get_graph_color(plot_data.loc[bins[i+1]][column_name])
+                
+                plt.plot(bin_range1, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_1_color)
+                plt.plot(bin_range2, np.zeros((2,), dtype=int) + (offset * (num-1)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_2_color)
+        y_divisions.append(offset*(num-1))
+
+    # set y-axis to display series names at equal intervals, and x-axis to display years
+    plt.yticks(y_divisions, series_by_start_date)
+    plt.xlabel("Year")
+
+    # Show the graph
+    plt.show()
+
+def get_graph_color(corr_val):
+    if corr_val == np.nan:
+        return '#00ff00'
+    elif corr_val < 0.1:
+        return '#ff9999'
+    elif corr_val < 0.3:
+        return '#ccccff'
+    elif corr_val < 0.4:
+        return '#9999ff'
+    elif corr_val < 0.5:
+        return '#6666ff'
+    elif corr_val < 0.6:
+        return '#3333ff'
+    elif corr_val < 0.7:
+        return '#0000ff'
+    elif corr_val < 0.8:
+        return '#0000cc'
+    elif corr_val < 0.9:
+        return '#0000b3'
+    elif corr_val < 1:
+        return '#000099'
 
 # Noticed this is how R determines the max lag to use for its AR function, brough values closer to dplR.
 def get_ar_lag(data):

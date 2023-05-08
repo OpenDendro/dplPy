@@ -4,13 +4,15 @@
 from detrend import detrend
 from autoreg import ar_func_series
 from chron import chron
-from xdate import get_ar_lag, correlate, compare_segment
+from xdate import get_ar_lag, correlate, compare_segment, get_bins
 import pandas as pd
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
 def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05, plot=True):
+    # Identify first and last valid indexes, for separating into bins.
+
     rwi_data = detrend(data, fit="horizontal", plot=False)
 
     # if detrending returns error, raise to output
@@ -33,36 +35,117 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
 
     inp = pd.concat([removed, new_chron], axis=1, join='inner')
     correlate(inp, corr)
-    start = removed.first_valid_index()
-    end = removed.last_valid_index()
 
+    data_first = data.first_valid_index()
+    data_last = data.last_valid_index()
+    ser_first = removed.first_valid_index()
+    ser_last = removed.last_valid_index()
+
+    start, end = get_rel_range(data_first, data_last, ser_first, ser_last, bin_floor, seg_length)
+    
     plt.style.use('seaborn-darkgrid')
     wid = max((end - start)//30, 1)
     hei = 10
     
     dimensions = (wid, hei)
-    plt.figure(figsize=(dimensions))
+    plt.figure(num=1, figsize=(dimensions))
     plt.grid(True)
 
     years = []
     corrs = []
 
+    second_plot = []
+    # Find correlations at segment whose year is at center. So segments should be from i-25 to i+25, where i starts from bin start
     for i in range(start, end):
-        segment = removed.loc[i:i+seg_length-1]
+        segment = removed.loc[i-(seg_length//2):i+(seg_length//2)-1]
 
         if segment.size != seg_length:
-            break
+            continue
         seg_corr, flag, flag_data = compare_segment(segment, new_chron, seg_length, corr, p_val, slide=False)
 
-        if (i - start) % seg_length == 0:
+        years.append(i)
+        corrs.append(seg_corr)
+
+        if (((i-start-(seg_length//2)) % seg_length == 0)  or (((i-start-(seg_length//2)) % seg_length) == seg_length//2)):
             seg_range = [i-seg_length//2, i+seg_length//2]
             seg_corr_y = [seg_corr, seg_corr]
             plt.plot(seg_range, seg_corr_y, color="k")
-        else:
-            years.append(i)
-            corrs.append(seg_corr)
-    plt.plot(years, corrs, color="k")
+            second_plot.append(analyze_segment(segment, new_chron, seg_length, corr))
 
+            
+    plt.plot(years, corrs, color="k")
     plt.xlabel("Year")
     plt.ylabel("Correlation")
+
+    plt.figure(num=2)
+    plt.style.use('_mpl-gallery')
+    cols = 5
+    rows = (len(second_plot) // 5) + 1
+    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14,10))
+
+    j = 0
+    for lags in second_plot:
+        row = j // 5
+        col = j % 5
+        x_vals = np.arange(-5, 6, 1)
+        y_vals = lags
+
+        axes[row][col].stem(x_vals, y_vals)
+        axes[row][col].set_xlabel('Lag')
+        axes[row][col].set_ylabel('Correlation')
+        axes[row][col].set_title(str(start + ((seg_length//2)*j)) + '.' + str(start + ((seg_length//2)*j) + seg_length - 1))
+        axes[row][col].set_xlim([-6, 6])
+        axes[row][col].set_ylim([-0.5, 1])
+        j += 1
+    
+    while j < (rows*cols):
+        row = j // 5
+        col = j % 5
+        axes[row][col].set_axis_off()
+        j += 1
+
+    fig.tight_layout()
     plt.show()
+
+
+def analyze_segment(segment, new_chron, slide_period, correlation_type):
+    if segment.size < slide_period:
+        return
+    series_name = segment.name
+    data = pd.concat([segment, new_chron], axis=1, join='inner')
+    
+    segment_data = []
+
+    for shift in range(-5, 6):
+        shifted = data[series_name].copy(deep=False)
+        shifted.index += shift
+        overlapping_df = pd.concat([shifted, new_chron], axis=1, join='inner').dropna()
+        if overlapping_df.size == slide_period * 2:
+            new_coeff = correlate(overlapping_df, correlation_type)
+            segment_data.append(new_coeff)
+        else:
+            segment_data.append(0)
+    return segment_data
+
+
+def get_rel_range(data_first, data_last, series_first, series_last, bin_floor, seg_len):
+    overlap = seg_len/2
+
+    if bin_floor == 0 or data_first % bin_floor == 0:
+        start = data_first
+    else:
+        start = (int(data_first/bin_floor) * bin_floor) + bin_floor
+
+    rel_start = 9999
+    rel_stop = 0
+    i = start
+    while i+seg_len-1 < data_last:
+        if i >= series_first:
+            rel_start = min(rel_start, i)
+            if i <= series_last:
+                rel_stop = max(rel_stop, i+seg_len-1)
+            else:
+                break
+        i += overlap
+
+    return int(rel_start), int(rel_stop)
