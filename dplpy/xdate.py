@@ -126,7 +126,6 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
 
     return bin_res.transpose()
 
-
 # Variation of xdate function that plots a graph that color codes the segment correlations. 
 # Will be merged into original xdate function when completed, so that users can choose to
 # show the graph by passing an optional argument.
@@ -174,7 +173,6 @@ def xdate_plot(data):
     # Show the graph
     plt.show()
 
-
 # Helper function that determines the color of a segment of the graph depending on the correlation value.
 def get_graph_color(corr_val):
     if corr_val == np.nan:
@@ -197,7 +195,6 @@ def get_graph_color(corr_val):
         return '#0000b3'
     elif corr_val < 1:
         return '#000099'
-
 
 # Determines the max lag to use for AR modeling function.
 def get_ar_lag(data):
@@ -244,7 +241,6 @@ def get_crit(alpha=0.01, n=50, type="one-tailed"):
     rcrit = np.sqrt(cc/(1+cc))
     return rcrit
   
-
 # Compares segments to the mean values of the master chronology excluding the current series.
 # This is where flags in dating are detected.
 def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, slide=True, left_most=-10, right_most=10):
@@ -290,7 +286,6 @@ def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, s
         return original, flag, segment_data
     else:
         return original, flag, None
-
 
 # Prints the flags that had been detected for a series.
 def print_flags(series_name, flags):
