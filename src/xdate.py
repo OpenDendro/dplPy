@@ -21,7 +21,7 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 01/07/2023
+# Date: 5/12/2023
 # Author: Ifeoluwa Ale
 # Title: xdate.py
 # Project: OpenDendro dplPy
@@ -31,8 +31,8 @@ __license__ = "GNU GPLv3"
 # >>> import dplpy as dpl 
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
 # >>> dpl.xdate(data)
-# >>> dpl.xdate(data, prewhiten=False, corr="Pearson")
-# >>> dpl.xdate(data, slide_period=50, bin_floor=10)
+# >>> dpl.xdate(data, prewhiten=False, corr="Pearson", show_flags=False)
+# >>> dpl.xdate(data, slide_period=50, bin_floor=10, p_val=0.02)
 
 from detrend import detrend
 from autoreg import ar_func_series
@@ -44,8 +44,8 @@ import numpy as np
 import scipy
 
 
-# Main crossdating function, returns a dictionary that maps each series to its correlation against
-# a chronology of the other series.
+# Main crossdating function, returns a dataframe of each series' segment correlations compared to the same
+# segments in the master chronology.
 def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
     # Identify first and last valid indexes, for separating into bins.
     bins, bin_data = get_bins(data.first_valid_index(), data.last_valid_index(), bin_floor, slide_period)
@@ -110,6 +110,9 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
 
     return bin_res.transpose()
 
+# Variation of xdate function that plots a graph that color codes the segment correlations. 
+# Will be merged into original xdate function when completed, so that users can choose to
+# show the graph by passing an optional argument.
 def xdate_plot(data):
     plot_data = xdate(data, slide_period=50, bin_floor=10, show_flags=False)
     bins = plot_data.index.to_numpy()
@@ -154,6 +157,7 @@ def xdate_plot(data):
     # Show the graph
     plt.show()
 
+# Helper function that determines the color of a segment of the graph depending on the correlation value.
 def get_graph_color(corr_val):
     if corr_val == np.nan:
         return '#00ff00'
@@ -176,7 +180,7 @@ def get_graph_color(corr_val):
     elif corr_val < 1:
         return '#000099'
 
-# Noticed this is how R determines the max lag to use for its AR function, brough values closer to dplR.
+# Determines the max lag to use for AR modeling function.
 def get_ar_lag(data):
     n = len(data)
     return min(int(n-1), int(10 * np.log(n)))
@@ -219,7 +223,8 @@ def get_crit(alpha=0.01, n=50, type="one-tailed"):
     rcrit = np.sqrt(cc/(1+cc))
     return rcrit
   
-# Compares segments 
+# Compares segments to the mean values of the master chronology excluding the current series.
+# This is where flags in dating are detected.
 def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, slide=True, left_most=-10, right_most=10):
     flag = None
 
@@ -229,8 +234,7 @@ def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, s
     data = pd.concat([segment, new_chron], axis=1, join='inner')
     original = correlate(data, correlation_type)
 
-    # Will set threshold to 99% confidence p value (dk what that means yet) that is based on segment length.
-    # Update warning message
+    # Will set threshold to 99% confidence p value that is based on segment length.
     if original < get_crit(p_val):
         flag = "A"
 
@@ -265,6 +269,7 @@ def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, s
     else:
         return original, flag, None
 
+# Prints the flags that had been detected for a series.
 def print_flags(series_name, flags):
     if flags["A"] == [] and flags["B"] == []:
         return

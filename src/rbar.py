@@ -1,15 +1,51 @@
+__copyright__ = """
+   dplPy for tree ring width time series analyses
+   Copyright (C) 2023  OpenDendro
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+__license__ = "GNU GPLv3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Date: 5/12/2023
+# Author: Ifeoluwa Ale
+# Title: rbar.py
+# Description: Contains functions for finding best interval of overlapping series over a long
+#              period of years, and calculating rbar constant for a dataset over this best
+#              period of overlap
+#
+# example usage: 
+# >>> import dplpy as dpl 
+# >>> data = dpl.readers("../tests/data/csv/file.csv")
+# >>> rwi_data = dpl.detrend(data, plot=False)
+# >>> start, end = dpl.common_interval(data)
+# >>> rwi_rbar = dpl.rbar(rwi_data, start, end, method="osborn")
+
 import pandas as pd
 import numpy as np
 from detrend import detrend
 from chron import chron
 from xdate import correlate
 
+# common_interval finds a range of years in the provided dataframe where there is maximum overlap between series over the longest period of years.
 def common_interval(data):
-    # split out the variables for clarity - probably don't need to do this
     year = data.index.to_numpy() # this is the year vector
     crn = data.iloc[:,:] # these are the chronologies
 
-    # get the size of some things - 23 series covering up to 286 years
     num_years, num_series = crn.shape
 
     # across-column sum of non-NaN values to get the sample size = sample size
@@ -32,7 +68,9 @@ def common_interval(data):
     # this gives the same answer as MATLAB - 1828 to 1982 common interval
     return year[int(startYear)], year[int(startYear+windowWidth-1)]
 
-# can use osborn, frank or 67spline methods
+# rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
+# Can use osborn, frank and 67spline methods to generate rbar values.
+# Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.
 def rbar(data, start, end, method="osborn", seg_length=50, seg_overlap=0.5, corr_type="Spearman"):
     # how we deal with nans will depend on method chosen for finding rbar. 
     # drop all series with nans for osborn, but drop only if they are not up to fraction of seg_length for frank

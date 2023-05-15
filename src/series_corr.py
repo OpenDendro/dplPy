@@ -1,15 +1,49 @@
-# Works, but still in development to be made more efficient.
-# Analyzes the crossdating of one series compared to the master chronology
+__copyright__ = """
+   dplPy for tree ring width time series analyses
+   Copyright (C) 2023  OpenDendro
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+__license__ = "GNU GPLv3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Date: 5/12/2023
+# Author: Ifeoluwa Ale
+# Title: series_corr.py
+# Project: OpenDendro dplPy
+# Description: Crossdating function that focuses on the comparison of one series to the
+# master chronology.
+#
+# example usage from Python Console: 
+# >>> import dplpy as dpl 
+# >>> data = dpl.readers("../tests/data/csv/file.csv")
+# >>> dpl.series_corr(data, "series_name")
+# >>> dpl.series_corr(data, "series_name", prewhiten=False, corr="Pearson", bin_floor=10)
 
 from detrend import detrend
 from autoreg import ar_func_series
 from chron import chron
-from xdate import get_ar_lag, correlate, compare_segment, get_bins
+from xdate import get_ar_lag, correlate, compare_segment, get_bins, get_crit
 import pandas as pd
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
+# Analyzes the crossdating of one series compared to the master chronology
 def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05, plot=True):
     # Identify first and last valid indexes, for separating into bins.
 
@@ -46,6 +80,7 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
     plt.style.use('seaborn-darkgrid')
     wid = max((end - start)//30, 1)
     hei = 10
+    base_corr = get_crit(p_val)
     
     dimensions = (wid, hei)
     plt.figure(num=1, figsize=(dimensions))
@@ -74,6 +109,8 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
 
             
     plt.plot(years, corrs, color="k")
+    plt.plot([years[0]-seg_length, years[-1]+seg_length], [base_corr, base_corr], linestyle="dashed", color="k")
+    plt.xlim([years[0]-seg_length, years[-1]+seg_length])
     plt.xlabel("Year")
     plt.ylabel("Correlation")
 
@@ -81,7 +118,7 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
     plt.style.use('_mpl-gallery')
     cols = 5
     rows = (len(second_plot) // 5) + 1
-    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14,10))
+    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14,14))
 
     j = 0
     for lags in second_plot:
@@ -91,6 +128,8 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
         y_vals = lags
 
         axes[row][col].stem(x_vals, y_vals)
+        axes[row][col].plot([-5, 5], [base_corr, base_corr], linestyle="dashed")
+        axes[row][col].plot([-5, 5], [-base_corr, -base_corr], linestyle="dashed")
         axes[row][col].set_xlabel('Lag')
         axes[row][col].set_ylabel('Correlation')
         axes[row][col].set_title(str(start + ((seg_length//2)*j)) + '.' + str(start + ((seg_length//2)*j) + seg_length - 1))
@@ -107,7 +146,7 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
     fig.tight_layout()
     plt.show()
 
-
+# Gets correlation data for segments lagged by 5 years forwards and backwards.
 def analyze_segment(segment, new_chron, slide_period, correlation_type):
     if segment.size < slide_period:
         return
@@ -127,7 +166,8 @@ def analyze_segment(segment, new_chron, slide_period, correlation_type):
             segment_data.append(0)
     return segment_data
 
-
+# Finds the effective first and last year of crossdating for the series depending on the
+# values of bin floor and segment length.
 def get_rel_range(data_first, data_last, series_first, series_last, bin_floor, seg_len):
     overlap = seg_len/2
 
