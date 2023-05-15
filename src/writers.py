@@ -44,6 +44,8 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import numpy as np
+from chron import chron
+from detrend import detrend, detrend_series
 import os
 
 def write(data, label, format):
@@ -55,14 +57,19 @@ def write(data, label, format):
     Accepted file types are CSV, RWL, TXT
     """
     filename = label + "." + format
-    print(filename)
+    print("Writing to " + filename)
     output = open(filename, "w")
     if format == "csv":
         write_csv(data, output)
     elif format == "rwl":
         write_rwl(data, output)
+    elif format == "crn":
+        write_crn(data, label, output)
+    elif format == "txt":
+        write_txt(data, output)
 
     output.close()
+    print("Done.")
 
 def conv_data(data):
     if np.isnan(data):
@@ -87,24 +94,91 @@ def write_rwl(data, file):
         start = data[series].first_valid_index()
         end = data[series].last_valid_index()
         i = start
-        done = False
+        file.write(series.rjust(6) + "\t")
+        file.write(str(i).rjust(4) + "\t")
         while i <= end:
-            file.write(series + "\t")
-            file.write(str(i) + "\t")
-            line_end = i + 10
-            while i < line_end:
-                # write every series[i]
-                try:
-                    file.write(str(data[series][i]) + "\t")
-                    i += 1
-                except KeyError:
-                    file.write(str(999))
-                    file.write("\n")
-                    done = True
-                    break
-            if done:
-                break
-            else:
+            file.write((f"{data[series][i]:.2f}").lstrip('0').replace('.', '').rjust(3) + "\t")
+            i += 1
+            if i % 10 == 0:
                 file.write("\n")
-        
+                file.write(series.rjust(6) + "\t")
+                file.write(str(i).rjust(4) + "\t")
+                    
+        file.write(str(999))
+        file.write("\n")
+
+
+def write_crn(data, site_id, file, site_name="Unnamed object", species_code="UNKN", location="Unknown", species="Plantae", elevation="", lat_long="", investigator="", comp_date=""):
+    rwi_data = chron(detrend(data, fit="spline", method="residual", plot=False), prewhiten=True)
+    first = rwi_data.first_valid_index()
+    last = rwi_data.last_valid_index()
+
+    # For header, to be improved upon eventually
+    file.write(site_id.ljust(9) + site_name.ljust(61) + species_code.ljust(4) + "\n")
+    file.write(site_id.ljust(9) + location.ljust(13) + species.ljust(8) + elevation.ljust(5) + lat_long.ljust(10) + str(first).ljust(4) + str(last).rjust(5) + "\n")
+    file.write(site_id.ljust(9) + investigator.ljust(73) + comp_date.ljust(8) + "\n")
     
+    file.write(site_id.rjust(6))
+    file.write(str(rwi_data.first_valid_index()).rjust(4))
+
+    for year in rwi_data.index.to_numpy():
+        file.write(str(round(rwi_data["Mean RWI"][year], 2)).replace(".", "").replace("0", "").rjust(4))
+        file.write(str(rwi_data["Sample depth"][year]).rjust(3))
+        
+        if year % 10 == 9:
+            # write TRL ID#(optional) which takes columns 82-88 
+            if year + 1 in rwi_data.index.to_numpy():
+                file.write("\n")
+                file.write(site_id.rjust(6))
+                file.write(str(year + 1).rjust(4))
+            else:
+                break
+    file.write("9990  0")
+
+def write_txt(data, file):
+    header = ["year", "num".rjust(7), "seg".rjust(7), "age".rjust(7), "raw".rjust(7), "std".rjust(7), "res".rjust(7), "ars".rjust(7)]
+    file.write("    ".join(header))
+    file.write("\n")
+    rwi_data = detrend(data, fit="spline", method="residual", plot=False)
+    rwi_chron = chron(rwi_data, prewhiten=False)
+    mean_res = chron(rwi_data, biweight=False, prewhiten=False)
+    ar_chron = chron(rwi_data, prewhiten=True)
+
+    first = rwi_chron.first_valid_index()
+    last = rwi_chron.last_valid_index()
+
+    for year in range(first, last+1):
+        samp_dep = rwi_chron["Sample depth"][year]
+        
+        # standard chronology of detrended data
+        std = rwi_chron["Mean RWI"][year]
+
+        # residuals of detrended data?
+        res =  mean_res["Mean RWI"][year]
+
+        # residuals of ar modeled data?
+        ars = ar_chron["Mean Res"][year]
+        
+        year_data = data.loc[[year]].dropna(axis=1)
+        column_names = year_data.columns
+        
+        seg = 0
+        age = 0
+        raw = 0
+        
+        for name in column_names:
+            seg += len(data[name].dropna())
+            age += year - data[name].first_valid_index() + 1
+            raw += data[name][year]
+        
+        seg = seg/len(column_names)
+        age = age/len(column_names)
+        raw = raw/len(column_names)
+
+        
+
+        # double check what res and ars are supposed to be
+        # work on other columns
+        line = [str(year).rjust(4), (f"{samp_dep:.3f}").rjust(7), (f"{seg:.3f}").rjust(7), (f"{age:.3f}").rjust(7), (f"{raw:.3f}").rjust(7), (f"{std:.3f}").rjust(7), (f"{res:.3f}").rjust(7), (f"{ars:.3f}").rjust(7),]
+        file.write("    ".join(line))
+        file.write("\n")

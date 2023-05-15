@@ -42,10 +42,11 @@ import curvefit
 
 def detrend(data, fit="spline", method="residual", plot=True, period=None):
     if isinstance(data, pd.DataFrame):
-        res = {}
+        res = pd.DataFrame(index=data.index)
+        to_add = [res]
         for column in data.columns:
-            res[column] = detrend_series(data[column], column, fit, method, plot, period=None)
-        return res
+            to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
+        return pd.concat(to_add, axis=1)
     elif isinstance(data, pd.Series):
         return detrend_series(data, data.name, fit, method, plot)
     else:
@@ -103,7 +104,7 @@ def detrend_series(data, series_name, fit, method, plot, period=None):
     
         plt.show()
 
-    return pd.Series(detrended_data, index=x)
+    return pd.Series(detrended_data, index=x, name=series_name)
 
 # Detrends by finding ratio of original series data to curve data
 def residual(y, yi):

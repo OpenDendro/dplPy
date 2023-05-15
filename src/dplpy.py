@@ -151,8 +151,7 @@ def readme_from_parser(args):
 
 # set the definition for the Readers functions (from readers.py)
 def readers_from_parser(args):
-    filename, skip_lines, header = args.input
-    readers(filename, skip_lines, header)
+    readers(input=args.input)
 
 # set the definition for the Writers funcitons (from writers.py)
 # def writers_from_parser(args):
@@ -176,21 +175,25 @@ def chron_from_parser(args):
     chron(input=args.input)
 
 def detrend_from_parser(args):
-    data, fit, method = args.input
-    detrend(data, fit, method)
+    detrend(input=args.input)
 
 def ar_func_from_parser(args):
-    data, max_lag = args.input
-    ar_func(data, max_lag)
+    ar_func(input=args.input)
 
 def autoreg_from_parser(args):
-    data, max_lag = args.input
-    autoreg(data, max_lag)
+    autoreg(input=args.input)
 
 def xdate_from_parser(args):
-    data, prewhiten, corr, ar_lag, slide_period, bin_floor = args.input
-    xdate(data, prewhiten, corr, ar_lag, slide_period, bin_floor)
+    xdate(input=args.input)
 
+def series_corr_from_parser(args):
+    series_corr(input=args.input)
+
+def common_interval_from_parser(args):
+    common_interval(input=args.input)
+
+def rbar_from_parser(args):
+    rbar(input=args.input)
 # creates whitespace
 print("")
 
@@ -206,7 +209,9 @@ from plot import plot
 from detrend import detrend
 from autoreg import ar_func, autoreg
 from chron import chron
-from xdate import xdate
+from xdate import xdate, xdate_plot
+from series_corr import series_corr
+from rbar import rbar, common_interval
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

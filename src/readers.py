@@ -104,7 +104,7 @@ def process_rwl_pandas(filename, skip_lines, header):
         series_data = []
         for i in range(first_date, last_date):
             if i in rwl_data[series]:
-                series_data.append(rwl_data[series][i])
+                series_data.append(rwl_data[series][i]/rwl_data[series]["div"])
             else:
                 series_data.append(np.nan)
         df = pd.concat([df, pd.Series(data=series_data, name=series)], axis=1)
@@ -130,14 +130,13 @@ def read_rwl(lines):
 
         # will implement some standardization here so that all data read is consistent, and all data written in rwl
         # can be written to one of the two popular precisions.
-        div = 0
         for i in range(2, len(line)):
             try:
                 if line[i] == "999":
-                    div = 100
+                    rwl_data[series_id]["div"] = 100
                     continue
                 elif line[i] == "-9999":
-                    div = 1000
+                    rwl_data[series_id]["div"] = 1000
                     continue
                 data = float(int(line[i]))
             except ValueError: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
