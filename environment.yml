@@ -1,4 +1,4 @@
-name: dplpy3
+name: dplpy
 channels:
   - conda-forge
   - defaults
@@ -10,3 +10,9 @@ dependencies:
   - statsmodels
   - numpy
   - scipy
+  - ipykernel
+  - pip
+  - pip:
+    - csaps
+    - jupyterlab
+    - notebook

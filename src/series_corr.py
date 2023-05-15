@@ -1,3 +1,4 @@
+
 __copyright__ = """
    dplPy for tree ring width time series analyses
    Copyright (C) 2023  OpenDendro
@@ -42,6 +43,7 @@ import pandas as pd
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
+
 
 # Analyzes the crossdating of one series compared to the master chronology
 def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05, plot=True):
