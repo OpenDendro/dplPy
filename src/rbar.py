@@ -39,7 +39,6 @@ import pandas as pd
 import numpy as np
 from detrend import detrend
 from chron import chron
-from xdate import correlate
 
 # common_interval finds a range of years in the provided dataframe where there is maximum overlap between series over the longest period of years.
 def common_interval(data):
@@ -73,7 +72,7 @@ def common_interval(data):
 # rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
 # Can use osborn, frank and 67spline methods to generate rbar values.
 # Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.
-def get_running_rbar(data, method="frank", min_seg_ratio=0.33, corr_type="Pearson"):
+def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
     # how we deal with nans will depend on method chosen for finding rbar. 
     # drop all series with nans for osborn, but drop only if they are not up to fraction of seg_length for frank
 
@@ -84,15 +83,15 @@ def get_running_rbar(data, method="frank", min_seg_ratio=0.33, corr_type="Pearso
     
     elif method == "frank":
         rel_data = data.copy()
-        #drop_columns = []
+        drop_columns = []
 
         # Identify columns that need to be dropped and drop them
         
-        #for column in rel_data:
-        #    num_valid_elems = rel_data[column].size
-        #    if num_valid_elems/data.shape[0] < min_seg_ratio:
-        #        drop_columns.append(column)
-        #rel_data = rel_data.drop(columns=drop_columns)
+        for column in rel_data:
+            num_valid_elems = rel_data[column].size
+            if num_valid_elems/data.shape[0] < min_seg_ratio:
+                drop_columns.append(column)
+        rel_data = rel_data.drop(columns=drop_columns)
 
         r_bar = mean_series_intercorrelation(rel_data, corr_type, min_seg_ratio)
 
@@ -110,20 +109,16 @@ def get_running_rbar(data, method="frank", min_seg_ratio=0.33, corr_type="Pearso
     return None
 
 def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio):
-    count = 0
-    total_corr = 0
-    series_names = data_set.columns
-    for i in range(len(series_names)-1):
-        for j in range(i+1, len(series_names)):
-            comb_matrix = data_set[[series_names[i], series_names[j]]].dropna()
+    presence_df = data_set.notnull().astype('int')
+    trans_presence_df = presence_df.transpose()
 
-            if (comb_matrix.shape[0]/data_set.shape[0] < 0.33):
-                continue
+    corr_mat = data_set.corr(corr_type)
+    np.fill_diagonal(corr_mat.values, np.nan)
 
-            corr_res = correlate(data_set[[series_names[i], series_names[j]]].dropna(), corr_type)
-            if not np.isnan(corr_res):
-                total_corr += corr_res
-                count += 1
-    if count == 0:
-        return np.nan
-    return total_corr/count
+    overlap_mat = trans_presence_df @ presence_df
+
+    min_overlap = data_set.shape[0] * min_seg_ratio
+
+    corr_mat.where(overlap_mat > min_overlap, inplace=True)
+    
+    return corr_mat.mean().mean()

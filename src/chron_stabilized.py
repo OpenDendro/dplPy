@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 
 
-def chron_stabilized(rwi_data, win_length=50, biweight=True, running_rbar=False):
+def chron_stabilized(rwi_data, win_length=50, min_seg_ratio=0.33, biweight=True, running_rbar=False):
+    print("Generating variance stabilized chronology...\n")
     # Add checks and warnings here. window length should be an integer > the chronology
     # length. Window length is also recommended to be >= 30 and < 50% of chronology length.
 
@@ -30,7 +31,7 @@ def chron_stabilized(rwi_data, win_length=50, biweight=True, running_rbar=False)
         if data_segment.shape[0] < win_length:
             continue
         target_index = int(i + target)
-        rbar_array[target_index] = get_running_rbar(data_segment)
+        rbar_array[target_index] = get_running_rbar(data_segment, min_seg_ratio)
 
     rbar_array = pad_rbar_array(rbar_array)
 
@@ -40,9 +41,8 @@ def chron_stabilized(rwi_data, win_length=50, biweight=True, running_rbar=False)
     samp_deps = reg_chron["Sample depth"].to_numpy()
     denom = np.multiply(samp_deps-1, rbar_array) + 1
 
-    n_eff = np.divide(samp_deps, denom), rbar_array
-
-    rbar_const = mean_series_intercorrelation(zero_mean_data, "Pearson", 0)
+    n_eff = np.minimum(np.divide(samp_deps, denom), samp_deps)
+    rbar_const = mean_series_intercorrelation(zero_mean_data, "pearson", 0)
 
     stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_const))
 
@@ -51,8 +51,7 @@ def chron_stabilized(rwi_data, win_length=50, biweight=True, running_rbar=False)
     else:
         stabilized_chron =  pd.DataFrame(data={"Adjusted CRN": stabilized_means + mean_val, "Sample depth": samp_deps}, index=reg_chron.index)
 
-    print(stabilized_chron.to_string())
-
+    print("SUCCESS!\n")
     return stabilized_chron
     
 def pad_rbar_array(rbar_array):
