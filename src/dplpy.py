@@ -189,11 +189,6 @@ def xdate_from_parser(args):
 def series_corr_from_parser(args):
     series_corr(input=args.input)
 
-def common_interval_from_parser(args):
-    common_interval(input=args.input)
-
-def rbar_from_parser(args):
-    rbar(input=args.input)
 # creates whitespace
 print("")
 
@@ -211,7 +206,6 @@ from autoreg import ar_func, autoreg
 from chron import chron
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
-from rbar import rbar, common_interval
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

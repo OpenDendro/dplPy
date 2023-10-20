@@ -40,20 +40,27 @@ import pandas as pd
 import numpy as np
 
 from readers import readers
-def summary(inp):
+def summary(inp: pd.DataFrame | str):
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):
         series_data = readers(inp)
     else:
-        print("\nUnable to generate summary report. Invalid input")
-        print("Note: for file pathname inputs, only CSV and RWL file formats are accepted\n")
-        print("example usages:")
-        print(">>> import dplpy as dpl")
-        print(">>> data = dpl.readers('../tests/data/csv/file.csv')")
-        print(">>> dpl.summary(data)\n")
-        print(">>> dpl.summary('../tests/data/csv/file.csv')\n")
+        errorMsg = """
+Unable to generate summary report. Input must be string path to file to be read
+or Dataframe object.
 
+Note: for file pathname inputs, only CSV and RWL file formats are accepted
+
+Example usages:
+
+>>> import dplpy as dpl
+>>> data = dpl.readers('../tests/data/csv/file.csv')
+>>> dpl.summary(data)
+>>> dpl.summary('../tests/data/csv/file.csv')
+
+"""
+        raise TypeError(errorMsg)
 
     summary = series_data.describe()
     return summary

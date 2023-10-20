@@ -16,3 +16,4 @@ dependencies:
     - csaps
     - jupyterlab
     - notebook
+    - pytest
