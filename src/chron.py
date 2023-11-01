@@ -47,7 +47,10 @@ from autoreg import ar_func
 
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
-def chron(rwi_data, biweight=True, prewhiten=False, plot=True):
+def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
+    if not isinstance(rwi_data, pd.DataFrame):
+        raise TypeError("Expected pandas dataframe as input, got " + str(type(rwi_data)) + " instead")
+    
     chron_data = {}
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
