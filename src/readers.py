@@ -77,7 +77,7 @@ Example usages:
         Error reading file. Check that file exists and that file formatting is consistent with {format} format.
         If your file contains headers, run dpl.headers(file_path, header=True)
         """.format(format=FORMAT)
-        return
+        raise errorMsg
     series_data.set_index('Year', inplace = True, drop = True)
 
     # Display message to show that reading was successful

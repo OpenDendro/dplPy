@@ -44,15 +44,17 @@ import warnings
 
 def ar_func(data, max_lag=5):
     if isinstance(data, pd.DataFrame):
-        res = {}
+        start_df = pd.DataFrame(index=pd.Index(data.index))
+        to_concat = [start_df]
         for column in data.columns:
-            res[column] = ar_func_series(data[column], max_lag).tolist()
+            to_concat.append(ar_func_series(data[column], max_lag))
+        res = pd.concat(to_concat, axis=1)
         return res
     elif isinstance(data, pd.Series):
         res = ar_func_series(data, max_lag)
         return res
     else:
-        return TypeError("argument should be either pandas dataframe or pandas series.")
+        raise TypeError("Data argument should be either pandas dataframe or pandas series.")
 
 # This function returns residuals plus mean of the best fit AR
 # model of the data
@@ -60,7 +62,7 @@ def ar_func_series(data, max_lag):
     nullremoved_data = data.dropna()
     pars = autoreg(nullremoved_data, max_lag)
     
-    y = nullremoved_data.to_numpy()
+    y = nullremoved_data
     
     yi = fitted_values(y, pars)
 
@@ -70,13 +72,18 @@ def ar_func_series(data, max_lag):
 
     # Add mean to the residuals
     for i in range(len(res)):
-        res[i] += mean
+        res.iloc[i] += mean
 
     return res
 
 # This method selects the best AR model with a specified maximum order
 # The best model is selected based on AIC value
-def autoreg(data, max_lag=5):
+def autoreg(data: pd.Series, max_lag=5):
+    # validate data?
+    if not isinstance(data, pd.Series):
+        raise TypeError("Data argument should be pandas series. Received " + str(type(data)) + " instead.")
+
+    # Need to change this to only ignore specific warnings instead of all
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         ar_data = ar_select_order(data.dropna(), max_lag, ic='aic', old_names=False)
@@ -86,13 +93,13 @@ def autoreg(data, max_lag=5):
 # This function calculates the in-sample predicted values of a series,
 # given an array containing the original data and the parameters for
 # the AR model
-def fitted_values(data_array, params):
-    mean = np.mean(data_array)
+def fitted_values(data_series, params):
+    mean = np.mean(data_series)
     results = []
     
-    for i in range((len(params)-1), len(data_array)):
-        pred = params[0]
+    for i in range((len(params)-1), len(data_series)):
+        pred = params.iloc[0]
         for j in range(1, len(params)):
-            pred += (params[j] * data_array[i-j])
+            pred += (params.iloc[j] * data_series.iloc[i-j])
         results.append(pred)
     return np.asarray(results)

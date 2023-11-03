@@ -98,6 +98,7 @@ def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
         return r_bar
     
     elif method == "67spline":
+        # probably need to update this
         rel_data = data.copy()
         signs = rel_data.where(rel_data < 0, 1)
         signs = signs.where(signs >= 0, -1)

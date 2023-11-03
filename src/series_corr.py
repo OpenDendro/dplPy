@@ -46,25 +46,35 @@ import matplotlib.pyplot as plt
 
 
 # Analyzes the crossdating of one series compared to the master chronology
-def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05, plot=True):
-    # Identify first and last valid indexes, for separating into bins.
+def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05):
+    # Check types of inputs
+    if not isinstance(data, pd.DataFrame):
+        errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
+        raise TypeError(errorMsg)
+    
+    if not isinstance(series_name, str):
+        errorMsg = "Expected string input as series name, got " + str(type(series_name)) + " instead."
+        raise TypeError(errorMsg)
+
+    if series_name not in data.columns:
+        errorMsg = "Series named " + series_name + " not found in provided dataframe."
+        raise ValueError(errorMsg)
 
     rwi_data = detrend(data, fit="horizontal", plot=False)
-
-    # if detrending returns error, raise to output
-    if isinstance(rwi_data, ValueError) or isinstance(rwi_data, TypeError):
-        raise rwi_data
  
     # drop nans, prewhiten series if necessary
-    ready_series = {}
+    df_start = pd.DataFrame(index=pd.Index(data.index))
+    to_concat = [df_start]
     for series in rwi_data:
         nullremoved_data = rwi_data[series].dropna()
         if prewhiten is True:
             res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
             offset = len(nullremoved_data) - len(res)
-            ready_series[series] = pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:])
+            to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
         else:
-            ready_series[series] = nullremoved_data
+            to_concat.append(nullremoved_data)
+    ready_series = pd.concat(to_concat, axis=1)
+    ready_series = ready_series.rename_axis(data.index.name)
 
     removed = ready_series.pop(series_name)
     new_chron = chron(ready_series, plot=False)["Mean RWI"]
@@ -79,7 +89,7 @@ def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=5
 
     start, end = get_rel_range(data_first, data_last, ser_first, ser_last, bin_floor, seg_length)
     
-    plt.style.use('seaborn-darkgrid')
+    plt.style.use('seaborn-v0_8-darkgrid')
     wid = max((end - start)//30, 1)
     hei = 10
     base_corr = get_crit(p_val)

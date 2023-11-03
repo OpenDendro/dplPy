@@ -2,18 +2,31 @@ from rbar import get_running_rbar, mean_series_intercorrelation
 from chron import chron
 import numpy as np
 import pandas as pd
+import warnings
 
 
-def chron_stabilized(rwi_data, win_length=50, min_seg_ratio=0.33, biweight=True, running_rbar=False):
+def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, biweight=True, running_rbar=False):
+    if not isinstance(rwi_data, pd.DataFrame):
+        raise TypeError("Expected data input to be a pandas dataframe, not " + str(type(rwi_data)) + ".")
+    
+    
+    num_years = rwi_data.shape[0]
+
+    if win_length > num_years:
+        raise ValueError("Window length should not be greater than the number of rows in the dataset")
+    
+    if min_seg_ratio <= 0 or min_seg_ratio > 1:
+        raise ValueError("min_seg_ratio cannot be <= 0 or > 1")
+    
+    if win_length < 0.3*num_years or win_length >= 0.5*num_years:
+        warnings.warn("We recommend using a window length greater than 30%% but less than 50%% of the chronology length\n")
+    
     print("Generating variance stabilized chronology...\n")
-    # Add checks and warnings here. window length should be an integer > the chronology
-    # length. Window length is also recommended to be >= 30 and < 50% of chronology length.
 
     # give rbar function a range of years (window length) to calculate rbar for
     # calculate rbar for that window, using either osborn's or frank's or 67spline
     # get rbar for each relevant segment of the dataframe
 
-    num_years = rwi_data.shape[0]
 
     mean_val = rwi_data.mean().mean()
 
@@ -42,8 +55,7 @@ def chron_stabilized(rwi_data, win_length=50, min_seg_ratio=0.33, biweight=True,
     denom = np.multiply(samp_deps-1, rbar_array) + 1
 
     n_eff = np.minimum(np.divide(samp_deps, denom), samp_deps)
-    rbar_const = mean_series_intercorrelation(zero_mean_data, "pearson", 0)
-
+    rbar_const = mean_series_intercorrelation(zero_mean_data, "pearson", min_seg_ratio)
     stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_const))
 
     if running_rbar:
@@ -55,6 +67,7 @@ def chron_stabilized(rwi_data, win_length=50, min_seg_ratio=0.33, biweight=True,
     return stabilized_chron
     
 def pad_rbar_array(rbar_array):
+    # double check that rbar cannot be 0
     first = 0
     first_valid = 0
     for val in rbar_array:

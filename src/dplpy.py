@@ -189,6 +189,12 @@ def xdate_from_parser(args):
 def series_corr_from_parser(args):
     series_corr(input=args.input)
 
+def chron_stabilized_from_parser(args):
+    chron_stabilized(input=args.input)
+
+def write_from_parser(args):
+    write(input=args.input)
+
 # creates whitespace
 print("")
 
@@ -204,8 +210,10 @@ from plot import plot
 from detrend import detrend
 from autoreg import ar_func, autoreg
 from chron import chron
+from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
+from writers import write
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages
