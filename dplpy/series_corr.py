@@ -64,7 +64,6 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
     # drop nans, prewhiten series if necessary
     df_start = pd.DataFrame(index=pd.Index(data.index))
     to_concat = [df_start]
-
     for series in rwi_data:
         nullremoved_data = rwi_data[series].dropna()
         if prewhiten is True:
@@ -90,7 +89,6 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
     start, end = get_rel_range(data_first, data_last, ser_first, ser_last, bin_floor, seg_length)
     
     plt.style.use('seaborn-v0_8-darkgrid')
-
     wid = max((end - start)//30, 1)
     hei = 10
     base_corr = get_crit(p_val)
