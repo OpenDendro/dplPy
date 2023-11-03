@@ -50,7 +50,7 @@ import numpy as np
 from readers import readers
 from statsmodels.tsa.ar_model import AutoReg
 
-def stats(inp):
+def stats(inp: pd.DataFrame | str):
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):

@@ -1,5 +1,12 @@
 # Scripts for testing
 src/test_*.py
+src/*.txt
+src/misc.py
+
+# IDE stuff
+.DS_Store
+.vscode/
+tests/data/.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

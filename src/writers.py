@@ -48,14 +48,23 @@ from chron import chron
 from detrend import detrend, detrend_series
 import os
 
-def write(data, label, format):
-    print("Entered function")
-    """
+"""
     This function converts common ring width
     data files from one type to another
     It also allows you to append files that are missing metadata and write them back out
-    Accepted file types are CSV, RWL, TXT
-    """
+    Accepted file types are CSV, RWL, CRN (in dev) and TXT (in dev)
+"""
+def write(data, label, format):
+
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
+    
+    if not isinstance(label, str):
+        raise TypeError("Expected label to be of type str, not " + str(type(label)))
+    
+    if not isinstance(format, str):
+        raise TypeError("Expected format to be of type str, not " + str(type(format)))
+    
     filename = label + "." + format
     print("Writing to " + filename)
     output = open(filename, "w")
@@ -67,6 +76,12 @@ def write(data, label, format):
         write_crn(data, label, output)
     elif format == "txt":
         write_txt(data, output)
+<<<<<<< HEAD
+    else:
+        output.close()
+        raise ValueError("Invalid file format given as parameter. Accepted file formats are csv, rwl, crn and txt")
+=======
+>>>>>>> main
 
     output.close()
     print("Done.")
@@ -97,14 +112,22 @@ def write_rwl(data, file):
         file.write(series.rjust(6) + "\t")
         file.write(str(i).rjust(4) + "\t")
         while i <= end:
+<<<<<<< HEAD
+            file.write((f"{data[series][i]:.3f}").lstrip('0').replace('.', '').rjust(4, '0') + "\t")
+=======
             file.write((f"{data[series][i]:.2f}").lstrip('0').replace('.', '').rjust(3) + "\t")
+>>>>>>> main
             i += 1
             if i % 10 == 0:
                 file.write("\n")
                 file.write(series.rjust(6) + "\t")
                 file.write(str(i).rjust(4) + "\t")
                     
+<<<<<<< HEAD
+        file.write(str(-9999))
+=======
         file.write(str(999))
+>>>>>>> main
         file.write("\n")
 
 

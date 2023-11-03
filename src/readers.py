@@ -44,7 +44,7 @@ import sys
 import pandas as pd
 import numpy as np
 
-def readers(filename, skip_lines=0, header=False):
+def readers(filename: str, skip_lines=0, header=False):
     """
     This function imports common ring width data files into Python as arrays
     Accepted file types are CSV and RWL
@@ -58,18 +58,26 @@ def readers(filename, skip_lines=0, header=False):
     elif filename.upper().endswith(".RWL"):
         series_data = process_rwl_pandas(filename, skip_lines, header)
     else:
-        print("\nUnable to read file, please check that you're using a supported type\n")
-        print("Accepted file types: .csv and .rwl")
-        print("example usages:\n>>> import dplpy as dpl")
-        print(">>> data = dpl.readers('../tests/data/csv/filename.csv')")
-        print(">>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True")
-        return
+        errorMsg = """
+
+Unable to read file, please check that you're using a supported type
+Accepted file types are .csv and .rwl
+
+Example usages:
+>>> import dplpy as dpl
+>>> data = dpl.readers('../tests/data/csv/filename.csv')
+>>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
+"""
+        
+        raise ValueError(errorMsg)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
-        print("\nError reading file. Check that file exists and that file formatting is consistent with " + FORMAT + " format.")
-        print("If your file contains headers, run dpl.readers(file_path, header=True)")
-        return
+        errorMsg = """
+        Error reading file. Check that file exists and that file formatting is consistent with {format} format.
+        If your file contains headers, run dpl.headers(file_path, header=True)
+        """.format(format=FORMAT)
+        raise errorMsg
     series_data.set_index('Year', inplace = True, drop = True)
 
     # Display message to show that reading was successful

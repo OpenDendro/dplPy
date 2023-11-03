@@ -40,17 +40,26 @@ from smoothingspline import spline
 from autoreg import ar_func
 import curvefit
 
-def detrend(data, fit="spline", method="residual", plot=True, period=None):
+def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
     if isinstance(data, pd.DataFrame):
+<<<<<<< HEAD
+        res = pd.DataFrame(index=pd.Index(data.index))
+        to_add = [res]
+        for column in data.columns:
+            to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
+        output_df = pd.concat(to_add, axis=1)
+        return output_df.rename_axis(data.index.name)
+=======
         res = pd.DataFrame(index=data.index)
         to_add = [res]
         for column in data.columns:
             to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
         return pd.concat(to_add, axis=1)
+>>>>>>> main
     elif isinstance(data, pd.Series):
         return detrend_series(data, data.name, fit, method, plot)
     else:
-        return TypeError("argument should be either pandas dataframe or pandas series.")
+        raise TypeError("argument should be either pandas dataframe or pandas series.")
 
 # Takes a series as input and by default fits it to a spline, then 
 # detrends it by calculating residuals
@@ -74,8 +83,7 @@ def detrend_series(data, series_name, fit, method, plot, period=None):
         yi = curvefit.horizontal(x, y)
     else:
         # give error message for unsupported curve fit
-        print()
-        return ValueError("unsupported keyword for curve-fit type. See documentation for more info.")
+        raise ValueError("unsupported keyword for curve-fit type. See documentation for more info.")
     
     if method == "residual":
         detrended_data = residual(y, yi)
@@ -83,8 +91,7 @@ def detrend_series(data, series_name, fit, method, plot, period=None):
         detrended_data = difference(y, yi)
     else:
         # give error message for unsupported detrending method
-        print()
-        return ValueError("unsupported keyword for detrending method. See documentation for more info.")
+        raise ValueError("unsupported keyword for detrending method. See documentation for more info.")
     
     if plot:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(7,3))
