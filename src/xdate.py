@@ -47,11 +47,14 @@ import scipy
 # Main crossdating function, returns a dataframe of each series' segment correlations compared to the same
 # segments in the master chronology.
 def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
+<<<<<<< HEAD
     # Check types of inputs
     if not isinstance(data, pd.DataFrame):
         errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
         raise TypeError(errorMsg)
     
+=======
+>>>>>>> main
     # Identify first and last valid indexes, for separating into bins.
     bins, bin_data = get_bins(data.first_valid_index(), data.last_valid_index(), bin_floor, slide_period)
 
@@ -62,13 +65,18 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
         raise rwi_data
 
     # drop nans, prewhiten series if necessary
+<<<<<<< HEAD
     df_start = pd.DataFrame(index=pd.Index(data.index))
     to_concat = [df_start]
+=======
+    ready_series = {}
+>>>>>>> main
     for series in rwi_data:
         nullremoved_data = rwi_data[series].dropna()
         if prewhiten is True:
             res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
             offset = len(nullremoved_data) - len(res)
+<<<<<<< HEAD
             to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
         else:
             to_concat.append(nullremoved_data)
@@ -79,6 +87,14 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
     ready_series = ready_series.rename_axis(data.index.name)
     print(ready_series)
 
+=======
+            ready_series[series] = pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:])
+        else:
+            ready_series[series] = nullremoved_data
+
+    ready_series_copy = ready_series.copy()
+    
+>>>>>>> main
     series_names = []
     series_corr = []
 
@@ -132,7 +148,11 @@ def xdate_plot(data):
     series_by_start_date = data_stats.sort_values(by='first')['series']
 
     # Change the style of plot
+<<<<<<< HEAD
     plt.style.use('seaborn-v0_8-darkgrid')
+=======
+    plt.style.use('seaborn-darkgrid')
+>>>>>>> main
 
     years = data.index.to_numpy()
 

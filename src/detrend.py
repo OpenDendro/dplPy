@@ -42,12 +42,20 @@ import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
     if isinstance(data, pd.DataFrame):
+<<<<<<< HEAD
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
         for column in data.columns:
             to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
+=======
+        res = pd.DataFrame(index=data.index)
+        to_add = [res]
+        for column in data.columns:
+            to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
+        return pd.concat(to_add, axis=1)
+>>>>>>> main
     elif isinstance(data, pd.Series):
         return detrend_series(data, data.name, fit, method, plot)
     else:
