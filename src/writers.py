@@ -76,12 +76,9 @@ def write(data, label, format):
         write_crn(data, label, output)
     elif format == "txt":
         write_txt(data, output)
-<<<<<<< HEAD
     else:
         output.close()
         raise ValueError("Invalid file format given as parameter. Accepted file formats are csv, rwl, crn and txt")
-=======
->>>>>>> main
 
     output.close()
     print("Done.")
@@ -112,22 +109,14 @@ def write_rwl(data, file):
         file.write(series.rjust(6) + "\t")
         file.write(str(i).rjust(4) + "\t")
         while i <= end:
-<<<<<<< HEAD
             file.write((f"{data[series][i]:.3f}").lstrip('0').replace('.', '').rjust(4, '0') + "\t")
-=======
-            file.write((f"{data[series][i]:.2f}").lstrip('0').replace('.', '').rjust(3) + "\t")
->>>>>>> main
             i += 1
             if i % 10 == 0:
                 file.write("\n")
                 file.write(series.rjust(6) + "\t")
                 file.write(str(i).rjust(4) + "\t")
                     
-<<<<<<< HEAD
         file.write(str(-9999))
-=======
-        file.write(str(999))
->>>>>>> main
         file.write("\n")
 
 
