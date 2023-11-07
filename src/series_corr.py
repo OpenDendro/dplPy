@@ -44,15 +44,6 @@ import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
-<<<<<<< HEAD
-=======
-
-# Analyzes the crossdating of one series compared to the master chronology
-def series_corr(data, series_name, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05, plot=True):
-    # Identify first and last valid indexes, for separating into bins.
-
-    rwi_data = detrend(data, fit="horizontal", plot=False)
->>>>>>> main
 
 # Analyzes the crossdating of one series compared to the master chronology
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05):
@@ -98,11 +89,8 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
 
     start, end = get_rel_range(data_first, data_last, ser_first, ser_last, bin_floor, seg_length)
     
-<<<<<<< HEAD
     plt.style.use('seaborn-v0_8-darkgrid')
-=======
-    plt.style.use('seaborn-darkgrid')
->>>>>>> main
+
     wid = max((end - start)//30, 1)
     hei = 10
     base_corr = get_crit(p_val)
