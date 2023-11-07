@@ -198,6 +198,15 @@ def write_from_parser(args):
 def series_corr_from_parser(args):
     series_corr(input=args.input)
 
+def chron_stabilized_from_parser(args):
+    chron_stabilized(input=args.input)
+
+def write_from_parser(args):
+    write(input=args.input)
+
+def series_corr_from_parser(args):
+    series_corr(input=args.input)
+
 def common_interval_from_parser(args):
     common_interval(input=args.input)
 
@@ -222,6 +231,7 @@ from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
 from writers import write
+from rbar import rbar, common_interval
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

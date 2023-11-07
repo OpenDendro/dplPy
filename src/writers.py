@@ -116,6 +116,7 @@ def write_rwl(data, file):
                 file.write(series.rjust(6) + "\t")
                 file.write(str(i).rjust(4) + "\t")
                     
+
         file.write(str(-9999))
         file.write("\n")
 

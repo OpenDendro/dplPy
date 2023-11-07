@@ -47,7 +47,7 @@ def common_interval(data):
 
     num_years = crn.shape[0]
 
-
+    
     # across-column sum of non-NaN values to get the sample size = sample size
     sample_depth = np.sum(~np.isnan(crn), axis=1)
     # allocate
@@ -69,7 +69,7 @@ def common_interval(data):
     # this gives the same answer as MATLAB - 1828 to 1982 common interval
     return year[int(start_year)], year[int(start_year+window_width-1)]
 
-
+  
 # rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
 # Can use osborn, frank and 67spline methods to generate rbar values.
 # Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.
@@ -126,4 +126,3 @@ def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio):
     corr_mat.where(overlap_mat > min_overlap, inplace=True)
     
     return corr_mat.mean().mean()
-
