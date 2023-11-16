@@ -104,7 +104,6 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
             print(range)
             start = int(re.split("(?<=\d)-", range)[0])
             end = int(re.split("(?<=\d)-", range)[1])
-
             if start >= removed.first_valid_index() and end <= removed.last_valid_index():
                 segment = removed.loc[start:end]
 
@@ -201,7 +200,6 @@ def get_ar_lag(data):
     n = len(data)
     res = min(int(n-1), int(10 * np.log(n)))
     return res
-
 
 # Generates the bins given the first and last years of recorded data, the bin floor and
 # the desired number of years in a period (bin).

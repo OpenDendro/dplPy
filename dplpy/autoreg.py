@@ -91,7 +91,6 @@ def autoreg(data: pd.Series, max_lag=5):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
-
     results = ar_data.model.fit()
     return results.params
 
