@@ -40,7 +40,7 @@ import matplotlib.pyplot as plt
 from readers import readers
 from stats import stats
 
-def plot(inp, type="line"):
+def plot(inp: pd.DataFrame | str, type="seg"):
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):
@@ -54,6 +54,8 @@ def plot(inp, type="line"):
         spag_plot(inp)
     elif type == "seg":
         seg_plot(inp)
+    else:
+        raise ValueError("Unsupported plot type.")
 
 def spag_plot(data):
     # obtain a list of series names sorted by the start date
@@ -61,7 +63,7 @@ def spag_plot(data):
     series_by_start_date = data_stats.sort_values(by='first')['series']
 
     # Change the style of plot
-    plt.style.use('seaborn-darkgrid')
+    plt.style.use('seaborn-v0_8-darkgrid')
 
     years = data.index.to_numpy()
 
@@ -92,7 +94,7 @@ def seg_plot(data):
     series_by_start_date = data_stats.sort_values(by='first')['series']
 
     # Change the style of plot
-    plt.style.use('seaborn-darkgrid')
+    plt.style.use('seaborn-v0_8-darkgrid')
 
     years = data.index.to_numpy()
 

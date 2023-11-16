@@ -1,8 +1,6 @@
 import dplpy as dpl
 import pandas as pd
 import pytest
-import io
-from unittest.mock import patch, Mock
 
 def test_series_corr_wrong_data_type():
     with pytest.raises(TypeError) as errorMsg:

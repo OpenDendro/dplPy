@@ -83,10 +83,14 @@ def autoreg(data: pd.Series, max_lag=5):
     if not isinstance(data, pd.Series):
         raise TypeError("Data argument should be pandas series. Received " + str(type(data)) + " instead.")
 
+    
+    max_allowable_lag = len(data.dropna())//2 - 1
+    max_lag_used = max_lag if max_lag <= max_allowable_lag else max_allowable_lag
+
     # Need to change this to only ignore specific warnings instead of all
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        ar_data = ar_select_order(data.dropna(), max_lag, ic='aic', old_names=False)
+        ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
     results = ar_data.model.fit()
     return results.params
 

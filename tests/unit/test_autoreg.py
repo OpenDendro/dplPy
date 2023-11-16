@@ -2,7 +2,6 @@ import dplpy as dpl
 import pandas as pd
 import numpy as np
 import pytest
-from autoreg import fitted_values, ar_func_series
 from unittest.mock import patch, Mock
 
 def mock_ar_sel_order_method(inp_ser, max_lag, ic='aic', old_names=False):

@@ -1,7 +1,7 @@
 import dplpy as dpl
 import pandas as pd
 from unittest.mock import patch, Mock
-from statsmodels.tsa.ar_model import AutoReg, AutoRegResultsWrapper
+from statsmodels.tsa.ar_model import AutoReg
 
 # Data being read:
 # SeriesA  1   10 30  50  70  90  110 130 150 999

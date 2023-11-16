@@ -111,10 +111,10 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight):
         i = 0
         for year in series_years[offset:]:
             if year not in whitened_data:
-                whitened_data[year] = [1, ar_fit_data[series][i]]
+                whitened_data[year] = [1, ar_fit_data[series].iloc[i]]
             else:
                 whitened_data[year][0] += 1
-                whitened_data[year].append(ar_fit_data[series][i])
+                whitened_data[year].append(ar_fit_data[series].iloc[i])
             i += 1
 
     whitened_means = []

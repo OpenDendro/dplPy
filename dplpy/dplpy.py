@@ -35,13 +35,7 @@ __license__ = "GNU GPLv3"
 # >>> dpl.writers(input="tests/csv/ca533.csv",output="ca533.rwl")
 
 import argparse
-import os
-import sys
 import webbrowser
-
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
-lpath = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(lpath)
 
 # Help Menu
 def help():
@@ -149,6 +143,20 @@ def readme_from_parser(args):
 #
 #dplpy_version()
 
+from readers import readers
+from summary import summary
+from stats import stats
+from report import report
+from plot import plot
+from detrend import detrend
+from autoreg import ar_func, autoreg
+from chron import chron
+from chron_stabilized import chron_stabilized
+from xdate import xdate, xdate_plot
+from series_corr import series_corr
+from writers import write
+
+
 # set the definition for the Readers functions (from readers.py)
 def readers_from_parser(args):
     readers(input=args.input)
@@ -198,40 +206,12 @@ def write_from_parser(args):
 def series_corr_from_parser(args):
     series_corr(input=args.input)
 
-def chron_stabilized_from_parser(args):
-    chron_stabilized(input=args.input)
-
-def write_from_parser(args):
-    write(input=args.input)
-
-def series_corr_from_parser(args):
-    series_corr(input=args.input)
-
-def common_interval_from_parser(args):
-    common_interval(input=args.input)
-
-def rbar_from_parser(args):
-    rbar(input=args.input)
 # creates whitespace
 print("")
 
 spacing = "                               "
 
 # Import definition functions from other files in the src/ path
-
-from readers import readers
-from summary import summary
-from stats import stats
-from report import report
-from plot import plot
-from detrend import detrend
-from autoreg import ar_func, autoreg
-from chron import chron
-from chron_stabilized import chron_stabilized
-from xdate import xdate, xdate_plot
-from series_corr import series_corr
-from writers import write
-from rbar import rbar, common_interval
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="dplPy v0.1") # update version as we update packages

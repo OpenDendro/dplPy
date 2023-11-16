@@ -1,9 +1,6 @@
 import dplpy as dpl
 import pandas as pd
-import numpy as np
 import pytest
-from rbar import get_running_rbar, mean_series_intercorrelation
-from chron import chron
 from unittest.mock import patch, Mock
 
 def mock_get_running_rbar_method(data, min_seg_ratio, method="osborn", corr_type="pearson"):
