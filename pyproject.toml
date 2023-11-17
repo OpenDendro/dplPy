@@ -7,6 +7,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="dplpy"
+description="dendrochronology library for Python"
+readme="README.md"
 version="0.1"
 authors=[
     {name='Tyson Lee Swetnam', email='tswetnam@arizona.edu'},
