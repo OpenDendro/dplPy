@@ -2,7 +2,6 @@ import dplpy as dpl
 import pandas as pd
 import pytest
 import io
-from unittest.mock import patch, Mock
 
 open_wrapper = io.TextIOWrapper(
     io.BytesIO(),

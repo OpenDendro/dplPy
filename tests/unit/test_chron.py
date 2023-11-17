@@ -8,7 +8,7 @@ def mock_tbrm_out(inp):
 
 def mock_ar_func_out(inp_series):
     inp_series += 0.01
-    return inp_series.to_numpy()
+    return inp_series
 
 def test_chron_simple_means():
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
@@ -31,7 +31,6 @@ def test_wrong_input():
         dpl.chron("string")
     
     assert "Expected pandas dataframe as input, got <class 'str'> instead" == str(errorMsg.value)
-
 
 @patch('chron.tbrm')
 @patch('chron.ar_func')

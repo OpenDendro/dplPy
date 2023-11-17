@@ -42,11 +42,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import scipy
+import re
 
 
 # Main crossdating function, returns a dataframe of each series' segment correlations compared to the same
 # segments in the master chronology.
-def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
+def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
     # Check types of inputs
     if not isinstance(data, pd.DataFrame):
         errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
@@ -69,9 +70,12 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
     for series in rwi_data:
         nullremoved_data = rwi_data[series].dropna()
         if prewhiten is True:
-            res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
-            offset = len(nullremoved_data) - len(res)
-            to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
+            try:
+                res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
+                offset = len(nullremoved_data) - len(res)
+                to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
+            except ZeroDivisionError:
+                print("Zero division error for series:", series, ". Dropping series.")
         else:
             to_concat.append(nullremoved_data)
 
@@ -79,7 +83,6 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
 
     ready_series_copy = ready_series.copy()
     ready_series = ready_series.rename_axis(data.index.name)
-    print(ready_series)
 
     series_names = []
     series_corr = []
@@ -99,8 +102,9 @@ def xdate(data, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100,
         
         # evaluation of current series vs chronology of others by segments of years (the bins created earlier)
         for range in bins:
-            start = int(range.split("-")[0])
-            end = int(range.split("-")[1])
+            print(range)
+            start = int(re.split("(?<=\d)-", range)[0])
+            end = int(re.split("(?<=\d)-", range)[1])
             if start >= removed.first_valid_index() and end <= removed.last_valid_index():
                 segment = removed.loc[start:end]
 
@@ -195,7 +199,8 @@ def get_graph_color(corr_val):
 # Determines the max lag to use for AR modeling function.
 def get_ar_lag(data):
     n = len(data)
-    return min(int(n-1), int(10 * np.log(n)))
+    res = min(int(n-1), int(10 * np.log(n)))
+    return res
 
 # Generates the bins given the first and last years of recorded data, the bin floor and
 # the desired number of years in a period (bin).

@@ -77,7 +77,7 @@ Example usages:
         Error reading file. Check that file exists and that file formatting is consistent with {format} format.
         If your file contains headers, run dpl.headers(file_path, header=True)
         """.format(format=FORMAT)
-        raise errorMsg
+        raise ValueError(errorMsg)
     series_data.set_index('Year', inplace = True, drop = True)
 
     # Display message to show that reading was successful
@@ -147,7 +147,7 @@ def read_rwl(lines):
                     rwl_data[series_id]["div"] = 1000
                     continue
                 data = float(int(line[i]))
-            except ValueError: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
+            except ValueError as valerr: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
                 return None, None, None
             rwl_data[series_id][line_start+i-2] = data
     return rwl_data, first_date, last_date

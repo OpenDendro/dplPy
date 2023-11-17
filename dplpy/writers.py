@@ -55,7 +55,6 @@ import os
     Accepted file types are CSV, RWL, CRN (in dev) and TXT (in dev)
 """
 def write(data, label, format):
-
     if not isinstance(data, pd.DataFrame):
         raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
     
@@ -83,11 +82,13 @@ def write(data, label, format):
     output.close()
     print("Done.")
 
+
 def conv_data(data):
     if np.isnan(data):
         return "NA"
     else:
         return str(data)
+
 
 def write_csv(data, file):
     file.write('"Year","')
@@ -100,6 +101,7 @@ def write_csv(data, file):
         file.write(",".join(map(conv_data, row)))
         file.write('\n')
 
+
 # Incomplete. Doesn't account yet for varying precision standards for RWL files (lines ending in 999 vs -9999)
 def write_rwl(data, file):
     for series in data.columns:
@@ -109,6 +111,16 @@ def write_rwl(data, file):
         file.write(series.rjust(6) + "\t")
         file.write(str(i).rjust(4) + "\t")
         while i <= end:
+            if np.isnan(data[series][i]):
+                file.write(str(-9999))
+                file.write("\n")
+                while i <= end and np.isnan(data[series][i]):
+                    i += 1
+                if i <= end:
+                    file.write(series.rjust(6) + "\t")
+                    file.write(str(i).rjust(4) + "\t")
+                continue
+
             file.write((f"{data[series][i]:.3f}").lstrip('0').replace('.', '').rjust(4, '0') + "\t")
             i += 1
             if i % 10 == 0:
@@ -147,6 +159,7 @@ def write_crn(data, site_id, file, site_name="Unnamed object", species_code="UNK
             else:
                 break
     file.write("9990  0")
+
 
 def write_txt(data, file):
     header = ["year", "num".rjust(7), "seg".rjust(7), "age".rjust(7), "raw".rjust(7), "std".rjust(7), "res".rjust(7), "ars".rjust(7)]

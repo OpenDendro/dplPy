@@ -42,7 +42,7 @@ from stats import stats
 import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 
-def report(inp):
+def report(inp: pd.DataFrame | str):
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):

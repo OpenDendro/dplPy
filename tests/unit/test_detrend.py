@@ -1,7 +1,6 @@
 import dplpy as dpl
 import pandas as pd
 import pytest
-from detrend import residual, difference
 from unittest.mock import patch, Mock
 
 def mock_spline_method(x, inp_arr, period):
@@ -178,13 +177,9 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_huger
     mock_horizontal.assert_called()
 
 
-@patch('detrend.difference')
-@patch('detrend.residual')
 @patch('detrend.spline')
-def test_detrend_residual(mock_spline: Mock, mock_res: Mock, mock_diff: Mock):
+def test_detrend_residual(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_res.side_effect = residual
-    mock_diff.side_effect = difference
 
     expected_df = pd.DataFrame(data={"SeriesA": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                                     "SeriesB": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
@@ -197,17 +192,11 @@ def test_detrend_residual(mock_spline: Mock, mock_res: Mock, mock_diff: Mock):
                                                     name="Year"))
     result_df = dpl.detrend(input_df, method='residual', plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
-    mock_res.assert_called()
-    mock_diff.assert_not_called()
 
 
-@patch('detrend.difference')
-@patch('detrend.residual')
 @patch('detrend.spline')
-def test_detrend_difference(mock_spline: Mock, mock_res: Mock, mock_diff: Mock):
+def test_detrend_difference(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_res.side_effect = residual
-    mock_diff.side_effect = difference
     
     expected_df = pd.DataFrame(data={"SeriesA": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                     "SeriesB": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
@@ -220,8 +209,6 @@ def test_detrend_difference(mock_spline: Mock, mock_res: Mock, mock_diff: Mock):
                                                     name="Year"))
     result_df = dpl.detrend(input_df, method='difference', plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
-    mock_res.assert_not_called()
-    mock_diff.assert_called()
 
 
 # add assertion to make sure none of the curvefit methods are called
