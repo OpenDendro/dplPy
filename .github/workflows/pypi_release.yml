@@ -2,11 +2,8 @@
 name: Publish to PyPI
 on:
   push:
-<<<<<<< HEAD
     branches:
       - main
-=======
->>>>>>> e8cc338 (Create pypi_release.yml)
     tags:
       - "*"
 
