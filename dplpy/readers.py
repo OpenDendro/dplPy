@@ -60,8 +60,8 @@ def readers(filename: str, skip_lines=0, header=False):
     else:
         errorMsg = """
 
-Unable to read file, please check that you're using a supported type
-Accepted file types are .csv and .rwl
+Unable to read the file, please check that you're using a supported type
+Accepted file types are currently .csv and .rwl
 
 Example usages:
 >>> import dplpy as dpl
