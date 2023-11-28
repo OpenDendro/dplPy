@@ -125,29 +125,42 @@ def read_rwl(lines):
     last_date = -sys.maxsize
 
     for line in lines:
-        line = line.rstrip("\n").split()
+        line = line.rstrip("\n")
 
-        series_id = line[0]
+        if line[7] != '-' and line[6] != '-':
+            series_id = line[:8].strip()
+            iyr = int(line[8:12])
+        elif line[7] == '-':
+            series_id = line[:7].strip()
+            iyr = int(line[7:12]) 
+        elif line[6] == '-':
+            series_id = line[:6].strip()
+            iyr = int(line[6:12])
+
         if series_id not in rwl_data:
             rwl_data[series_id] = {}
+
+        dataline = [line[i:i+6] for i in range(12, len(line), 6) if line[i:i+6].strip()]
             
         # keep track of the first and last date in the dataset
-        line_start = int(line[1])
+        line_start = int(iyr)
         first_date = min(first_date, line_start)
-        last_date = max(last_date, (line_start+len(line)-3))
+        last_date = max(last_date, (line_start+len(dataline)-1))
 
         # will implement some standardization here so that all data read is consistent, and all data written in rwl
         # can be written to one of the two popular precisions.
-        for i in range(2, len(line)):
+        for i in range(0, len(dataline)):
             try:
-                if line[i] == "999":
+                if dataline[i].strip() == "999":
                     rwl_data[series_id]["div"] = 100
                     continue
-                elif line[i] == "-9999":
+                elif dataline[i].strip() == "-9999":
                     rwl_data[series_id]["div"] = 1000
                     continue
-                data = float(int(line[i]))
+                data = float(int(dataline[i]))
             except ValueError as valerr: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
+                print("Error:", valerr)
+                print("See line:", line)
                 return None, None, None
-            rwl_data[series_id][line_start+i-2] = data
+            rwl_data[series_id][line_start+i] = data
     return rwl_data, first_date, last_date

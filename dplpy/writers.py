@@ -108,28 +108,40 @@ def write_rwl(data, file):
         start = data[series].first_valid_index()
         end = data[series].last_valid_index()
         i = start
-        file.write(series.rjust(6) + "\t")
-        file.write(str(i).rjust(4) + "\t")
+
+        if i < 0:
+            file.write(series.ljust(7))
+            file.write(str(i).rjust(5))
+        else:
+            file.write(series.ljust(8))
+            file.write(str(i).rjust(4))
         while i <= end:
             if np.isnan(data[series][i]):
-                file.write(str(-9999))
+                file.write(str(-9999).rjust(6))
                 file.write("\n")
                 while i <= end and np.isnan(data[series][i]):
                     i += 1
                 if i <= end:
-                    file.write(series.rjust(6) + "\t")
-                    file.write(str(i).rjust(4) + "\t")
+                    if i < 0:
+                        file.write(series.ljust(7))
+                        file.write(str(i).rjust(5))
+                    else:
+                        file.write(series.ljust(8))
+                        file.write(str(i).rjust(4))
                 continue
 
-            file.write((f"{data[series][i]:.3f}").lstrip('0').replace('.', '').rjust(4, '0') + "\t")
+            file.write((f"{data[series][i]:.3f}").lstrip('0').replace('.', '').rjust(4, '0').rjust(6))
             i += 1
             if i % 10 == 0:
                 file.write("\n")
-                file.write(series.rjust(6) + "\t")
-                file.write(str(i).rjust(4) + "\t")
-                    
+                if i < 0:
+                    file.write(series.ljust(7))
+                    file.write(str(i).rjust(5))
+                else:
+                    file.write(series.ljust(8))
+                    file.write(str(i).rjust(4))
 
-        file.write(str(-9999))
+        file.write(str(-9999).rjust(6))
         file.write("\n")
 
 

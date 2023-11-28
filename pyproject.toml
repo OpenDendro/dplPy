@@ -11,6 +11,7 @@ version="0.1"
 authors=[
     {name='Tyson Lee Swetnam', email='tswetnam@arizona.edu'},
     {name='Ifeoluwa Ale', email='ifeoluwaale@arizona.edu'},
+    {name='Kevin Anchukaitis', email='kanchukaitis@arizona.edu'},
 ]
 license={file='LICENSE'}
 requires-python = '>=3.11'
