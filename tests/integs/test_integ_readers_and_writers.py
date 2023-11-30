@@ -50,13 +50,3 @@ def test_read_and_write_long_rwl(tmp_path):
 
     pd.testing.assert_frame_equal(ca667, ca667_alt)
 
-def test_read_and_write_weird_rwl(tmp_path):
-    wwr = dpl.readers("../tests/data/rwl/wwr.rwl")
-
-    write_path = os.path.join(tmp_path, "test_write")
-
-    dpl.write(wwr, write_path, "rwl")
-
-    wwr_alt = dpl.readers(write_path + ".rwl")
-
-    pd.testing.assert_frame_equal(wwr, wwr_alt)

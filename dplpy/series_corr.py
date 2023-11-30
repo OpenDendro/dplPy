@@ -38,7 +38,6 @@ from detrend import detrend
 from autoreg import ar_func_series
 from chron import chron
 from xdate import get_ar_lag, correlate, compare_segment, get_bins, get_crit
-
 import pandas as pd
 import numpy as np
 import scipy

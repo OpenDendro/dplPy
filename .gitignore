@@ -1,3 +1,8 @@
+# Scripts for testing
+src/test_*.py
+src/*.txt
+src/misc.py
+
 # IDE stuff
 .DS_Store
 .vscode/

@@ -1,7 +1,10 @@
 import pytest
 import dplpy as dpl
+import pandas as pd
+import os
 
 def test_chron_no_prewhiten_no_biweight():
+    print(os.getcwd())
     data = dpl.readers("../tests/data/csv/ca533.csv")
 
     res = dpl.chron(data, biweight=False, prewhiten=False, plot=False)
