@@ -71,8 +71,8 @@ def test_write_rwl(tmpdir):
     
     dpl.write(input_df, file.strpath[:-4], "rwl")
 
-    expected_rwl_lines = ['SeriesA    1  0100  0300  0500  0700 -9999\n',
-                          'SeriesB    1  0200  0400  0600  0800 -9999\n']
+    expected_rwl_lines = ['SeriesA\t   1\t0100\t0300\t0500\t0700\t-9999\n',
+                            'SeriesB\t   1\t0200\t0400\t0600\t0800\t-9999\n']
 
     assert expected_rwl_lines == file.readlines()
 

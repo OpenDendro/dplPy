@@ -206,14 +206,6 @@ def write_from_parser(args):
 def series_corr_from_parser(args):
     series_corr(input=args.input)
 
-def series_corr_from_parser(args):
-    series_corr(input=args.input)
-
-def common_interval_from_parser(args):
-    common_interval(input=args.input)
-
-def rbar_from_parser(args):
-    rbar(input=args.input)
 # creates whitespace
 print("")
 

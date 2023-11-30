@@ -60,15 +60,15 @@ def mock_open_output(file_path, open_type):
     )
 
     if file_path == "valid_rwl_correct_format.rwl":
-        wrapper.write("SeriesA 1       10    30    50    70   999\n")
-        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
+        wrapper.write("SeriesA  1   10 30 50 70 999\n")
+        wrapper.write("SeriesB  1   200 400 600 800 -9999\n")
         wrapper.seek(0,0)
     elif file_path == "valid_rwl_with_headers.rwl":
         wrapper.write("Header line 1\n")
         wrapper.write("Header line 2\n")
         wrapper.write("Header line 3\n")
-        wrapper.write("SeriesA 1       10    30    50    70   999\n")
-        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
+        wrapper.write("SeriesA  1   10 30 50 70 999\n")
+        wrapper.write("SeriesB  1   200 400 600 800 -9999\n")
         wrapper.seek(0,0)
     else:
         raise OSError("File not found")
