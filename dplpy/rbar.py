@@ -73,7 +73,6 @@ def common_interval(data):
 # rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
 # Can use osborn, frank and 67spline methods to generate rbar values.
 # Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.
-
 def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
     # how we deal with nans will depend on method chosen for finding rbar. 
     # drop all series with nans for osborn, but drop only if they are not up to fraction of seg_length for frank
