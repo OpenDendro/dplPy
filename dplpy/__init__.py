@@ -2,7 +2,7 @@
 
 __author__ = "Tyson Lee Swetnam"
 __email__ = "tswetnam@arizona.edu"
-__version__ = "0.1"
+__version__ = "0.1.testing"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -28,10 +28,12 @@ __license__ = "GNU GPLv3"
 import os
 import sys
 
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
 lpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(lpath)
 
 del os, sys
+
 
 _hard_dependencies = ("pandas", "numpy", "scipy", "csaps", "matplotlib", "statsmodels")
 _missing_dependencies = []
