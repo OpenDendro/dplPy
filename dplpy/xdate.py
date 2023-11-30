@@ -53,7 +53,6 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
         errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
         raise TypeError(errorMsg)
     
-
     # Identify first and last valid indexes, for separating into bins.
     bins, bin_data = get_bins(data.first_valid_index(), data.last_valid_index(), bin_floor, slide_period)
 
