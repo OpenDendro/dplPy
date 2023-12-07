@@ -1,48 +1,75 @@
-# dplPy
-The Dendrochronology Program Library for Python
+ <p align="center">
+ <img src="docs/assets/dplpy.png" width="175"> 
+
+# dplPy - the Dendrochronology Program Library in Python
+The Dendrochronology Program Library (DPL) for Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html)  created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
+
+The development of dplPy is supported by the Paleoclimate program of the US National Science Foundation. 
+
+<p align="center">
+<img src="docs/assets/nsf.png" width="200"/>
+
 
 ---
 
 
 ## Index
 
-- [Issues](#issues)
-- [Requirements](#requirements)
-- [Building Environment](#building-environment)
-- [Using jupyter](#using-jupyter)
-    - [Linux, macOS](#linux-macos)
+- [dplPy - the Dendrochronology Program Library in Python](#dplpy---the-dendrochronology-program-library-in-python)
+  - [Index](#index)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Building directly from Github](#building-directly-from-github)
+  - [Using VSCode in your operating system](#using-vscode-in-your-operating-system)
+    - [Linux or MacOS](#linux-or-macos)
     - [Windows](#windows)
-- [Functionalities and usage](#functionalities-and-usage)
-    - [Loading data](#loading-data)
-    - [Data Summary](#data-summary)
-    - [Data Stastics](#data-stastics)
-    - [Data Report](#data-report)
+  - [Functionalities and Usage](#functionalities-and-usage)
+    - [Loading data using  `readers`](#loading-data-using--readers)
+    - [Data Summary from `summary`](#data-summary-from-summary)
+    - [Data Stastics from `stats`](#data-stastics-from-stats)
+    - [Data Report from `report`](#data-report-from-report)
     - [Plotting](#plotting)
+    - [Detrending using `detrend`](#detrending-using-detrend)
     - [Autoregressive (AR) modeling](#autoregressive-ar-modeling)
-    - [Detrending](#detrending)
-    - [Chronology](#chronology)
-
----
-
-## Issues
-
-We're using [ZenHub](https://app.zenhub.com/workspaces/opendendro-60ec698d8790d700171ceee8/board?repos=385244315) to manage our [GitHub Issues](https://github.com/opendendro/dplpy/issues)
+    - [Build a chronology with `chron`](#build-a-chronology-with-chron)
+    - [Crossdate with `xdate`](#crossdate-with-xdate)
 
 ---
 
 ## Requirements
 
-:warning: **Note**: DplPy has been successfully tested on Ubuntu 20, Ubuntu 22, macOS (Intel, M2).
-
+- Python (>=3.10)
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html))
 - (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
 - (Suggested) [VSCode](https://code.visualstudio.com/)
 
-## Building Environment
+Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`.
 
-> :warning: **it is recommended to _NOT_ use GitHub Codespaces (as of Mar 2022)**
+:warning: dplPy has been successfully tested thus far on Ubuntu 20, Ubuntu 22, macOS (Intel and M2). Other operating systems may experience unexpected errors or conflicts.  Please let the developers know. 
+
+## Installation
+
+dplPy is now available to [install via pip](https://pypi.org/project/dplpy/):
+
+```
+pip install dplpy
+```
+
+You can install a conda virtual environment using the [environment.yml for the project](https://github.com/OpenDendro/dplPy/blob/main/environment.yml):
+
+```
+$ conda env create -f environment.yml     
+```
+
+---
+
+
+## Building directly from Github
+
+You can still still install dplPy firectly from Github if you wish:
 
 1\. Clone and change directory to this repository
+
 
 ```
 $ git clone https://github.com/OpenDendro/dplPy.git
@@ -69,36 +96,25 @@ $ conda activate dplpy
 
 Your environment should be successfully built.
 
-4\. Your python environment should be able to import `numpy`, `pandas`, `matplotlib`, `statsmodels` and `csaps`:
-
-![env_3](docs/assets/env_3.png)
+4\. Your python environment should be able to import `numpy`, `pandas`, `matplotlib`, `statsmodels` and `csaps`.
 
 ---
 
-## Using Jupyter
+## Using VSCode in your operating system
 
-The Conda enviroment is essential as it provides will all necessary packages. To execute the code, use Jupyter Notebook.
-
-:warning: **Note**: if using Jupyter from the terminal, you need to ensure that the kernel is findable by doing the following command once the environment is active:
-
-```
-python -m ipykernel install --user --name dplpy --display-name "Python (dplpy)"
-```
-
-### Linux, MacOS
+### Linux or MacOS
 
 1\. In your VSCode terminal, activate the conda environment with `conda activate dplpy3`.
-2\. Open a Jupyer Notebook (`<file>.ipynb`) and select the `dplpy3` Kernel when prompted (or from the top right of your screen).
-This will automatically load the environment we created.
+
+2\. Open a Jupyer Notebook (`<file>.ipynb`) and select the `dplpy3` Kernel when prompted (or from the top right of your screen). This will automatically load the environment we created.
 
 ### Windows
 
 In VSCode:
 
 1\. In your VSCode terminal window, activate the conda environment with `conda activate dplpy3`.
-2\. In the same terminal window, start a Jupyter Notebook with `jupyter notebook`. Jupyter will then return URLs that you can copy; *Copy* one of these URLs. 
 
-![ipynb_env1](docs/assets/ipynb_env1.jpg)
+2\. In the same terminal window, start a Jupyter Notebook with `jupyter notebook`. Jupyter will then return URLs that you can copy; *Copy* one of these URLs. 
 
 3\. Open a Jupyter Notebook (`<file>.ipynb`) and from the **bottom right** of the VSCode screen, click **Jupyter Server**;
 
@@ -114,15 +130,24 @@ A dropdown menu will open from the top of the screen: select Existing and *paste
 
 ## Functionalities and Usage
 
-Import the DplPy tool with
+Import the dplPy tool with
 
 ```
 import dplpy as dpl
 ```
 
-This will load the necessary functions.
+or alternatively:
 
-### Loading data
+```
+import dplpy 
+```
+
+
+
+
+This will load the package and its functions.
+
+### Loading data using  `readers`
 
 - Description: reads data from supported file types (`csv` and `rwl`) and stores them in a dataframe.
 - Options: 
@@ -132,7 +157,7 @@ This will load the necessary functions.
     >>> data = dpl.readers("/path/to/file.rwl", header=True)
     ```
 
-### Data Summary
+### Data Summary from `summary`
 
 - Description: generates a summary of each series recorded in `rwl`  and `csv` format files
 - Usage Example:
@@ -142,7 +167,7 @@ This will load the necessary functions.
     >>> dpl.summary(data)
     ```
 
-### Data Stastics
+### Data Stastics from `stats`
 
 - Description: generates summary statistics for `rwl`  and `csv` format files
 - Usage Example:
@@ -152,7 +177,7 @@ This will load the necessary functions.
     >>> dpl.stats(data)
     ```
 
-### Data Report
+### Data Report from `report`
 
 - Description: generates a report about absent rings in the data set
 - Usage Example:
@@ -181,23 +206,8 @@ This will load the necessary functions.
     >>> dpl.plot(data[[SERIES_1, SERIES_2, SERIES_3]], type="spag")
     ```
 
-### Autoregressive (AR) modeling 
-
-- Description: ontains methods that fit series to autoregressive models and perform functions related to AR modeling.
-- Functions:
-    - `autoreg(data['Name of series'], max_lag)`: returns parameters of best fit AR model with maxlag of 5 (default) or other specified number
-    - `ar_func(data['Name of series'], max_lag)`: returns residuals plus mean of best fit from AR models with max lag of either 5 (default) or specified number
-- Options:
-    - `max_lag`: default 5, can be specified to user's needs.
-- Usage Example:
-    ```
-    >>> dpl.autoreg(data[SERIES_1])
-    # or
-    >>> dpl.ar_func(data[SERIES_2], max_lag=7)
-    ```
-
-### Detrending
-
+### Detrending using `detrend`
+ 
 - Description: Detrends a given series or data frame, first by fitting data to curve(s), and then by calculating residuals or differences compared to the original data.
 - Options:
     - `fit="spline"`: default detrending method.
@@ -218,7 +228,23 @@ This will load the necessary functions.
     >>> dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
     ```
 
-### Chronology
+
+### Autoregressive (AR) modeling 
+
+- Description: ontains methods that fit series to autoregressive models and perform functions related to AR modeling.
+- Functions:
+    - `autoreg(data['Name of series'], max_lag)`: returns parameters of best fit AR model with maxlag of 5 (default) or other specified number
+    - `ar_func(data['Name of series'], max_lag)`: returns residuals plus mean of best fit from AR models with max lag of either 5 (default) or specified number
+- Options:
+    - `max_lag`: default 5, can be specified to user's needs.
+- Usage Example:
+    ```
+    >>> dpl.autoreg(data[SERIES_1])
+    # or
+    >>> dpl.ar_func(data[SERIES_2], max_lag=7)
+    ```
+
+### Build a chronology with `chron`
 
 - Description: creates a mean value chronology for a dataset, typically the ring width indices of a detrended series. **Note: input data has to be detrended first.**
 - Options:
@@ -233,3 +259,6 @@ This will load the necessary functions.
     # Perform chronology
     >>> dpl.chron(rwi_data, biweight=False, plot=False)
     ```
+### Crossdate with `xdate`
+- Description: evaluate the dating accuracy of a set of tree-ring measurements
+- Options: 
