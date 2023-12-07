@@ -1,13 +1,12 @@
  <p align="center">
  <img src="docs/assets/dplpy.png" width="175"> 
 
-# dplPy - the Dendrochronology Program Library in Python
-The Dendrochronology Program Library (DPL) for Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html)  created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
+# dplPy 
+### the Dendrochronology Program Library in Python
+The Dendrochronology Program Library (DPL) in Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html) created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
 
-The development of dplPy is supported by the Paleoclimate program of the US National Science Foundation. 
-
-<p align="center">
-<img src="docs/assets/nsf.png" width="200"/>
+ The development of dplPy is supported by a grant from the Paleoclimate program of the US National Science Foundation (AGS-2054516) to Andy Bunn, Kevin Anchukaitis, Ed Cook, and Tyson Swetnam.
+<br>
 
 
 ---
@@ -15,9 +14,11 @@ The development of dplPy is supported by the Paleoclimate program of the US Nati
 
 ## Index
 
-- [dplPy - the Dendrochronology Program Library in Python](#dplpy---the-dendrochronology-program-library-in-python)
+- [dplPy](#dplpy)
+    - [the Dendrochronology Program Library in Python](#the-dendrochronology-program-library-in-python)
   - [Index](#index)
   - [Requirements](#requirements)
+  - [Current Version and Changelog](#current-version-and-changelog)
   - [Installation](#installation)
   - [Building directly from Github](#building-directly-from-github)
   - [Using VSCode in your operating system](#using-vscode-in-your-operating-system)
@@ -46,6 +47,10 @@ The development of dplPy is supported by the Paleoclimate program of the US Nati
 Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`.
 
 :warning: dplPy has been successfully tested thus far on Ubuntu 20, Ubuntu 22, macOS (Intel and M2). Other operating systems may experience unexpected errors or conflicts.  Please let the developers know. 
+
+## Current Version and Changelog
+
+dplPy is currently at version `v0.1.1` - Changes and new functions are currently merged into the `0.1.x` branch.
 
 ## Installation
 
