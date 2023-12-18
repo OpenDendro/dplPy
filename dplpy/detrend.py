@@ -45,12 +45,12 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
         for column in data.columns:
-            to_add.append(detrend_series(data[column], column, fit, method, plot, period=None))
+            to_add.append(detrend_series(data[column], column, fit, method, plot, period))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
     
     elif isinstance(data, pd.Series):
-        return detrend_series(data, data.name, fit, method, plot)
+        return detrend_series(data, data.name, fit, method, plot, period)
     else:
         raise TypeError("argument should be either pandas dataframe or pandas series.")
 
