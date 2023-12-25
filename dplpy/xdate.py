@@ -102,8 +102,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
         # evaluation of current series vs chronology of others by segments of years (the bins created earlier)
         for range in bins:
             # print(range) # useful for debugging but not necessary once operational
-            start = int(re.split("(?<=\d)-", range)[0])
-            end = int(re.split("(?<=\d)-", range)[1])
+            start = int(re.split("(?<=\\d)-", range)[0])
+            end = int(re.split("(?<=\\d)-", range)[1])
             if start >= removed.first_valid_index() and end <= removed.last_valid_index():
                 segment = removed.loc[start:end]
 
