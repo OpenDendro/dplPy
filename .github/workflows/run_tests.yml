@@ -1,0 +1,31 @@
+name: Python package
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"] # Goal is to run tests for different python versions
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ${{ matrix.python-version }}-requirements.txt
+          pip install pytest pytest-cov
+      - name: Run unit tests
+        run: |
+          pytest tests/unit --cov=dplpy
+      #- name: Run integ tests
+      #  run: |
+      #    pytest tests/integs -rA
