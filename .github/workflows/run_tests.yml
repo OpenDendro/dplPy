@@ -26,6 +26,6 @@ jobs:
       - name: Run unit tests
         run: |
           pytest tests/unit --cov=dplpy
-      #- name: Run integ tests
-      #  run: |
-      #    pytest tests/integs -rA
+      - name: Run integ tests
+        run: |
+          pytest tests/integs -rA
