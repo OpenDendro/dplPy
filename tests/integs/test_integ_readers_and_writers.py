@@ -8,7 +8,7 @@ def test_read_and_write_csv(tmp_path):
 
     write_path = os.path.join(tmp_path,"test_write")
     
-    dpl.write(ca533, write_path, "csv")
+    dpl.writers(ca533, write_path, "csv")
 
     ca533_alt = dpl.readers(write_path + ".csv")
 
@@ -20,7 +20,7 @@ def test_read_and_write_rwl_no_headers(tmp_path):
 
     write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.write(viet001, write_path, "rwl")
+    dpl.writers(viet001, write_path, "rwl")
 
     viet001_alt = dpl.readers(write_path + ".rwl")
 
@@ -32,7 +32,7 @@ def test_read_and_write_rwl_with_headers(tmp_path):
 
     write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.write(th001, write_path, "rwl")
+    dpl.writers(th001, write_path, "rwl")
 
     th001_alt = dpl.readers(write_path + ".rwl")
 
@@ -44,7 +44,7 @@ def test_read_and_write_long_rwl(tmp_path):
 
     write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.write(ca667, write_path, "rwl")
+    dpl.writers(ca667, write_path, "rwl")
 
     ca667_alt = dpl.readers(write_path + ".rwl")
 
@@ -55,7 +55,7 @@ def test_read_and_write_weird_rwl(tmp_path):
 
     write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.write(wwr, write_path, "rwl")
+    dpl.writers(wwr, write_path, "rwl")
 
     wwr_alt = dpl.readers(write_path + ".rwl")
 
