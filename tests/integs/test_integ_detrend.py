@@ -4,7 +4,7 @@ import pandas as pd
 import os
 
 def test_detrend_all_fits_residual():
-    data = dpl.readers("../tests/data/csv/ca533.csv")
+    data = dpl.readers("./tests/data/csv/ca533.csv")
 
     spline_data = dpl.detrend(data, fit="spline", method="residual", plot=False)
     modnegex_data = dpl.detrend(data, fit="ModNegEx", method="residual", plot=False)
@@ -15,7 +15,7 @@ def test_detrend_all_fits_residual():
     # TODO: assert detrended data for correctness
 
 def test_detrend_all_fits_difference():
-    data = dpl.readers("../tests/data/csv/ca533.csv")
+    data = dpl.readers("./tests/data/csv/ca533.csv")
 
     spline_data = dpl.detrend(data, fit="spline", method="difference", plot=False)
     modnegex_data = dpl.detrend(data, fit="ModNegEx", method="difference", plot=False)
@@ -27,7 +27,7 @@ def test_detrend_all_fits_difference():
 
 # Commented out because plots block execution in vscode. WIP
 # def test_detrend_all_fits_plot():
-#     data = dpl.readers("../integs/data/csv/ca533.csv")
+#     data = dpl.readers("./integs/data/csv/ca533.csv")
 
 #     spline_data = dpl.detrend(data, fit="spline", method="difference", plot=True)
 #     modnegex_data = dpl.detrend(data, fit="ModNegEx", method="difference", plot=True)

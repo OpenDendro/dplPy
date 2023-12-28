@@ -54,7 +54,7 @@ import os
     It also allows you to append files that are missing metadata and write them back out
     Accepted file types are CSV, RWL, CRN (in dev) and TXT (in dev)
 """
-def write(data, label, format):
+def writers(data, label, format):
     if not isinstance(data, pd.DataFrame):
         raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
     

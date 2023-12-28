@@ -1,11 +1,12 @@
 # Build the package and publish it to PyPI after tests pass.
 name: Publish to PyPI
 on:
-  push:
+  workflow_run:
+    workflows: ["run_tests"]
+    types:
+      - completed
     branches:
       - main
-    tags:
-      - "*"
 
 jobs:
   publish:

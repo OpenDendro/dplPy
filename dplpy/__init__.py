@@ -61,7 +61,7 @@ from chron import chron
 from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
-from writers import write
+from writers import writers
 
 __all__ = [
     readers,
@@ -77,5 +77,5 @@ __all__ = [
     xdate,
     xdate_plot,
     series_corr,
-    write
+    writers
 ]

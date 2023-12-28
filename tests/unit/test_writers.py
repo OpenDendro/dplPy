@@ -16,7 +16,7 @@ def test_write_invalid_type_data():
                                   "Year": [1, 2, 3, 4]})
     
     with pytest.raises(TypeError) as errorMsg:
-        dpl.write(input_df['SeriesA'], "label", "ext")
+        dpl.writers(input_df['SeriesA'], "label", "ext")
     expected_msg = "Expected input data to be pandas dataframe, not <class 'pandas.core.series.Series'>"
     assert expected_msg == str(errorMsg.value)
 
@@ -27,7 +27,7 @@ def test_write_invalid_type_label():
                                   "Year": [1, 2, 3, 4]})
     
     with pytest.raises(TypeError) as errorMsg:
-        dpl.write(input_df, 1, "ext")
+        dpl.writers(input_df, 1, "ext")
     expected_msg = "Expected label to be of type str, not <class 'int'>"
     assert expected_msg == str(errorMsg.value)
 
@@ -38,7 +38,7 @@ def test_write_invalid_type_format():
                                   "Year": [1, 2, 3, 4]})
     
     with pytest.raises(TypeError) as errorMsg:
-        dpl.write(input_df, "label", 1)
+        dpl.writers(input_df, "label", 1)
     expected_msg = "Expected format to be of type str, not <class 'int'>"
     assert expected_msg == str(errorMsg.value)
 
@@ -50,7 +50,7 @@ def test_write_csv(tmpdir):
     
     file = tmpdir.join('output.csv')
 
-    dpl.write(input_df, file.strpath[:-4], "csv")
+    dpl.writers(input_df, file.strpath[:-4], "csv")
 
     expected_csv_lines = ['"Year","SeriesA","SeriesB"\n', 
                           '1,0.1,0.2\n', 
@@ -69,7 +69,7 @@ def test_write_rwl(tmpdir):
     
     file = tmpdir.join('output.rwl')
     
-    dpl.write(input_df, file.strpath[:-4], "rwl")
+    dpl.writers(input_df, file.strpath[:-4], "rwl")
 
     expected_rwl_lines = ['SeriesA    1  0100  0300  0500  0700 -9999\n',
                           'SeriesB    1  0200  0400  0600  0800 -9999\n']

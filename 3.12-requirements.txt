@@ -1,0 +1,6 @@
+numpy==1.26.0
+statsmodels==0.14.0
+matplotlib==3.8.0
+csaps==1.1.0
+pandas==2.0.0
+scipy==1.11.3
