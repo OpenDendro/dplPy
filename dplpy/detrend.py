@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -41,6 +41,33 @@ from autoreg import ar_func
 import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
+    """
+    Online Documentation: https:/opendendro.org/dplpy-man/#detrend
+     
+    Description: Detrends a given series or dataframe, first by fitting data to curve(s), 
+                  with 'spline' as the default, and then by calculating residuals 
+                  (default = 'residual') or differences ('difference') compared to the original data. 
+                  Other supported curve fitting methods are 'ModNegex' (modified negative exponential), 
+                  'Hugershoff', 'linear', 'horizontal'.
+    
+    **Required Inputs**
+        <data> - a data frame loaded using dpl.readers()
+        <fit> - fitting method of curves, e.g., 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), and 'spline', default 'spline'
+        <method> - intercomparison method, options: 'difference' or 'residual', default 'residual'
+        <plot> - plot the results, default 'True'
+    
+    Example Usage:
+    
+        # Detrend the entire dataframe
+        >>> dpl.detrend(<data>)
+
+        # Detrending a series part of the dataframe
+        >>> dpl.detrend(<data>["<series>"])
+
+        # Detrending function and its options
+        >>> dpl.detrend(<data>["<series>"], fit="<fitting method>", method="<comparison method>", plot=<True/False>)    
+       
+    """
     if isinstance(data, pd.DataFrame):
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
