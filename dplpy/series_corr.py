@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2023  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -46,6 +46,25 @@ import matplotlib.pyplot as plt
 
 # Analyzes the crossdating of one series compared to the master chronology
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05):
+    """
+    Online Documentation: https:/opendendro.org/dplpy-man/#series_corr
+    
+    Description: Crossdating function that focuses on the comparison of one series to the master chronology.
+    
+    **Required Inputs**
+        <data> - a data file (.CSV or .RWL), or an array imported from dpl.readers()
+        <series> - a series name from the <data> array
+        <prewhiten> - run pre-whitening on the time series, options: 'True' or 'False', default is 'False'
+        <corr> - select correlation type if 'prewhiten=True', options: 'Pearson' or 'Spearman', default is 'Pearson'
+        <seg_length> - segment length (years), default '50'
+        <bin_floor> - select bin size, default '100'  
+        <p_val> - select a p-value, e.g., '0.05', '0.01', '0.001', default '0.05'
+        <plot> - plot the output, default is 'True'
+    
+    Example Usage:
+        >>> dpl.series_corr(ca533, "CAM191", prewhiten=False, corr="Pearson", bin_floor=10)    
+    
+    """
     # Check types of inputs
     if not isinstance(data, pd.DataFrame):
         errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
