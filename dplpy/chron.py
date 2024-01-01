@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2024  OpenDendro
+   Copyright (C) 2021  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -48,29 +48,6 @@ from autoreg import ar_func
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#chron
-    Description: Creates a mean value chronology for a dataset, typically the ring width 
-                 indices of a detrended series. Takes three optional arguments 'biweight', 
-                 'prewhiten', and 'plot'. They determine whether to find means using Tukey's 
-                 bi-weight robust mean (default 'True'), whether to prewhiten data by fitting 
-                 to an AR model (default 'False'), and whether to plot the results of the 
-                 chronology (default 'True').
-    
-    **Required Inputs**
-        <data> - a data frame loaded using readers
-        <prewhiten> - run pre-whitening on the time series, options: True or False, default is False  
-        <biweight> - use Tukey's bi-weight robust mean, default True
-        <plot> - plot the results, default True
-
-    Example Usage: 
-        >>> import dplpy as dpl 
-        >>> data = dpl.readers("../tests/data/csv/file.csv")
-        >>> rwi_data = dpl.detrend(data)
-        >>> dpl.chron(rwi_data)
-        >>> dpl.chron(rwi_data, prewhiten=True)
-        >>> chron_data = dpl.chron(rwi_data, biweight=False, plot=False)
-    """
     if not isinstance(rwi_data, pd.DataFrame):
         raise TypeError("Expected pandas dataframe as input, got " + str(type(rwi_data)) + " instead")
     

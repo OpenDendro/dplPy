@@ -3,7 +3,7 @@ from sys import intern
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2024  OpenDendro
+   Copyright (C) 2022  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -43,26 +43,6 @@ import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 
 def report(inp: pd.DataFrame | str):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#report
-    
-    Description: Generates a report about the input dataset that includes:
-                    Number of dated series
-                    Number of measurements
-                    Avg series length (years)
-                    Range (total years)
-                    Span (start-end year)
-                    Mean (Standard Deviation) series intercorrelation
-                    Mean (Standard Deviation) AR1
-                    Years with absent rings listed by series
-
-    **Required Inputs**
-        <data> - a data file (.CSV or .RWL), or an array imported from dpl.readers()   
-    
-    Example Usage:
-        >>> dpl.report(<data>)
-
-    """
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):

@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2024  OpenDendro
+   Copyright (C) 2022  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -46,18 +46,8 @@ import numpy as np
 
 def readers(filename: str, skip_lines=0, header=False):
     """
-    Online Documentation:  https:/opendendro.org/dplpy-man/#readers
-    
-    Description: This function imports common ring width data files (.csv, .rwls) into Python as arrays
-    
-    **Required Inputs**
-        <filename> - a file (.CSV or .RWL), or the full path and file name
-    
-    Example usages:
-        >>> import dplpy as dpl
-        >>> data = dpl.readers('../tests/data/csv/filename.csv')
-        >>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
-    
+    This function imports common ring width data files into Python as arrays
+    Accepted file types are CSV and RWL
     """
     FORMAT = "." + filename.split(".")[-1]
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
@@ -69,23 +59,22 @@ def readers(filename: str, skip_lines=0, header=False):
         series_data = process_rwl_pandas(filename, skip_lines, header)
     else:
         errorMsg = """
-        Error: Unsupported file type '{file_extension}'.
-        
-        Unable to read file, please check that you're using a supported type
-        Accepted file types are .csv and .rwl
 
-        Example usages:
-        >>> import dplpy as dpl
-        >>> data = dpl.readers('../tests/data/csv/filename.csv')
-        >>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
-        """
+Unable to read file, please check that you're using a supported type
+Accepted file types are .csv and .rwl
+
+Example usages:
+>>> import dplpy as dpl
+>>> data = dpl.readers('../tests/data/csv/filename.csv')
+>>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
+"""
         
         raise ValueError(errorMsg)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
         errorMsg = """
-        Error reading file contents. Check that file exists and file formatting is consistent with {format} format.
+        Error reading file. Check that file exists and that file formatting is consistent with {format} format.
         If your file contains headers, run dpl.headers(file_path, header=True)
         """.format(format=FORMAT)
         raise ValueError(errorMsg)
