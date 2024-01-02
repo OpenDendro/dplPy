@@ -27,15 +27,6 @@ __license__ = "GNU GPLv3"
 # Description: Contains methods that fit series to autoregressive models and perform functions 
 #              related to AR modeling.
 #              NOTE: This function only accepts pandas series and dataframes as parameters.
-# example usage:
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.autoreg(data['Name of series']) -> returns parameters of best fit AR model
-#                                            with maxlag of 5 (default) or other 
-#                                            specified number
-# >>> dpl.ar_func(data['Name of series']) -> returns residuals plus mean of best fit 
-#                                            from AR models with max lag of either 5 
-#                                            (default) or specified number
 
 from statsmodels.tsa.ar_model import ar_select_order
 import pandas as pd
@@ -43,25 +34,40 @@ import numpy as np
 import warnings
 
 def ar_func(data, max_lag=5):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#ar_func
-    
-    Description: Contains methods that fit series to autoregressive models and perform functions 
-                 related to AR modeling.
+    """Auto Regressive (AR) functions 
+      
+    Extended Summary
+    ---------------
+    Contains methods that fit series to autoregressive models and perform functions 
+    related to AR modeling.
   
     NOTE: This function only accepts pandas series and dataframes as parameters. 
    
-    **Required Inputs**
-        <data>["<series>"] -  a data file (.CSV or .RWL), or an array imported from dpl.readers()
-        <series> - an individual series within a chronology file
-        <lag> - years, default 5
+    Parameters
+    ----------
+    data :  str
+            a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    series: str
+            an individual series within a chronology `data` file.
+    lag:    int, default 5
+            nuber of years.
    
-    Example usage:
-        >>> import dplpy as dpl 
-        >>> data = dpl.readers("../tests/data/csv/file.csv")
-        >>> dpl.ar_func(data['series name']) -> returns residuals plus mean of best fit 
-                                                from AR models with max lag of either 5 
-                                                (default) or specified number
+    Returns
+    -------
+    data :  pandas dataframe
+    
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.ar_func(data['series name']) -> returns residuals plus mean of best fit 
+                                            from AR models with max lag of either 5 
+                                            (default) or specified number
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#ar_func 
+    
     """
     if isinstance(data, pd.DataFrame):
         start_df = pd.DataFrame(index=pd.Index(data.index))
@@ -99,25 +105,39 @@ def ar_func_series(data, max_lag):
 # This method selects the best AR model with a specified maximum order
 # The best model is selected based on AIC value
 def autoreg(data: pd.Series, max_lag=5):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#autoreg
+    """ autoregressive (AR) models and perform functions related to AR modeling.
     
-    Description: Contains methods that fit series to autoregressive models and perform functions 
-                 related to AR modeling.
+    Extended Summary
+    ----------------
+    Contains methods that fit series to autoregressive models and perform functions 
+    related to AR modeling.
   
     NOTE: This function only accepts pandas series and dataframes as parameters. 
-   
-    **Required Inputs**
-        <data>["<series>"] -  a data file (.CSV or .RWL), or an array imported from dpl.readers()
-        <series> - an individual series within a chronology file
-        <lag> - years, default 5
-   
-    Example usage:
-        >>> import dplpy as dpl 
-        >>> data = dpl.readers("../tests/data/csv/file.csv")
-        >>> dpl.autoreg(data['series name']) -> returns parameters of best fit AR model
+
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    series : str
+             an individual series within a chronology `data` file.
+    lag : int, default 5
+          nuber of years.
+            
+    Returns
+    -------
+    data :  pandas dataframe
+        
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.autoreg(data['series name']) -> returns parameters of best fit AR model
                                             with maxlag of 5 (default) or other 
                                             specified number
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#autoreg
+    
     """
     # validate data?
     if not isinstance(data, pd.Series):

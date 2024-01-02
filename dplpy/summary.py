@@ -41,22 +41,30 @@ import numpy as np
 
 from readers import readers
 def summary(inp: pd.DataFrame | str):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#summary
+    """ Summarizes a chronology
     
-    Description: This function summarizes a chronology from an array
+    Extended Summary
+    ----------------
+    This function summarizes a chronology from an array
     
-    **Required Inputs**
-        <data> - a data file (.CSV or .RWL), or an array imported from dpl.readers()
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+   
+    Returns
+    -------
+    data : pandas dataframe
     
-    Example Usage:
-        >>> import dplpy as dpl 
-        >>> data = dpl.readers("../tests/data/csv/ca533.csv")
-        >>> dpl.summary(data)
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.summary(data)
     
-        >>> dpl.summary("../tests/data/csv/ca533.csv")
-    
-    Note: For file path inputs, only .CSV or .RWL file formats are accepted
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#summary
     
     """
     if isinstance(inp, pd.DataFrame):

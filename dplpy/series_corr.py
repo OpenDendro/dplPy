@@ -46,23 +46,42 @@ import matplotlib.pyplot as plt
 
 # Analyzes the crossdating of one series compared to the master chronology
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#series_corr
+    """Crossdating correlation function
     
-    Description: Crossdating function that focuses on the comparison of one series to the master chronology.
+    Extended Summary
+    ----------------
+    Crossdating correlation function that focuses on the comparison of one series to the master chronology.
     
-    **Required Inputs**
-        <data> - a data file (.CSV or .RWL), or an array imported from dpl.readers()
-        <series> - a series name from the <data> array
-        <prewhiten> - run pre-whitening on the time series, options: 'True' or 'False', default is 'False'
-        <corr> - select correlation type if 'prewhiten=True', options: 'Pearson' or 'Spearman', default is 'Pearson'
-        <seg_length> - segment length (years), default '50'
-        <bin_floor> - select bin size, default '100'  
-        <p_val> - select a p-value, e.g., '0.05', '0.01', '0.001', default '0.05'
-        <plot> - plot the output, default is 'True'
+    Parameters
+    ----------
+    data : pandas dataframe
+           a data file (.CSV or .RWL), or an array imported from dpl.readers()
+    series : str    
+             a series name from the dataframe
+    prewhiten : boolean, default False
+                run pre-whitening on the time series, options: 'True' or 'False'.
+    corr : str, default 'Spearman'
+           select correlation type if 'prewhiten=True', options: 'Pearson' or 'Spearman'.
+    seg_length :  int, default 50
+                  segment length (years).
+    bin_floor : int, default 100
+                select bin size.
+    p_val : double, default 0.05
+            select a p-value, e.g., '0.05', '0.01', '0.001'.
+    plot :  boolean, default True
+            plot the output.
     
-    Example Usage:
-        >>> dpl.series_corr(ca533, "CAM191", prewhiten=False, corr="Pearson", bin_floor=10)    
+    Returns
+    -------
+    data : pandas dataframe
+    
+    Examples
+    --------
+    >>> dpl.series_corr(ca533, "CAM191", prewhiten=False, corr="Pearson", bin_floor=10)    
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#series_corr
     
     """
     # Check types of inputs

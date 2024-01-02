@@ -26,9 +26,6 @@ __license__ = "GNU GPLv3"
 # Title: smoothingspline.py
 # Description: This contains the spline method which fits a series to
 #              a spline curve.
-# example usage (in other file):
-# from smoothingspline import spline
-# yi = spline(series)
 
 from math import cos
 from math import pi

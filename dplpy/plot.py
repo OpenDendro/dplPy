@@ -41,22 +41,37 @@ from readers import readers
 from stats import stats
 
 def plot(inp: pd.DataFrame | str, type="seg"):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#plot
+    """Plots a given dataframe
     
-    Description: Plots a given dataframe or series of a specific dataframe in either 
-                 line ('default'), spaghetti ('spag') or segment ('seg') plots.
+    Extended Description
+    --------------------
+    Plots a given dataframe or series of a specific dataframe in either 
+    line ('default'), spaghetti ('spag') or segment ('seg') plots.
                  
-    **Reqired Inputs**
-        <data> - a data frame loaded using dpl.readers()
-        <series> - a single time series within the data array
-        <type> - type of plot to generate, e.g., line, spaghetti (spag), or segment (seg). default line
+    Parameters
+    ----------
+    data : str 
+           a data frame loaded using dpl.readers()
+    series : str
+             a single time series within the data array
+    type : str, default line
+           type of plot to generate, e.g., line, spaghetti ('spag'), or segment ('seg') or 'line'.
+
+    Returns
+    -------
+    plot : matplotlib.pyplot figure
+           a plot of the data
     
-    Example Usage:
-        # Plot entire data
-        >>> dpl.plot(<data>)
-        # Plot series subset of dataframe with a specified plot type
-        >>> dpl.plot(<data>["<series>"], type=<plot type>)
+    Examples
+    --------
+    >>> dpl.plot(<data>)
+    # Plot series subset of dataframe with a specified plot type
+    >>> dpl.plot(<data>["<series>"], type=<plot type>)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#plot
+    
     """
     if isinstance(inp, pd.DataFrame):
         series_data = inp

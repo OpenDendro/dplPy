@@ -27,13 +27,6 @@ __license__ = "GNU GPLv3"
 # Description: Contains functions for finding best interval of overlapping series over a long
 #              period of years, and calculating rbar constant for a dataset over this best
 #              period of overlap
-#
-# example usage: 
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> rwi_data = dpl.detrend(data, plot=False)
-# >>> start, end = dpl.common_interval(data)
-# >>> rwi_rbar = dpl.rbar(rwi_data, start, end, method="osborn")
 
 import pandas as pd
 import numpy as np

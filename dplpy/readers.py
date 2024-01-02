@@ -28,36 +28,38 @@ __license__ = "GNU GPLv3"
 # Project: OpenDendro- Readers
 # Description: Reads data from supported file types (*.CSV and *.RWL)
 #              and stores them in a dataframe
-#
-# example usages: 
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
-# 
-# example command line application:
-# $ python src/dplpy.py reader --input ./data/file.csv
-#
-# define `readers` module as a definition function
-# input is expected to be a file path with file name and extension
+
 import os
 import sys
 import pandas as pd
 import numpy as np
 
 def readers(filename: str, skip_lines=0, header=False):
-    """
-    Online Documentation:  https:/opendendro.org/dplpy-man/#readers
+    """Imports a common ring width data file
     
-    Description: This function imports common ring width data files (.csv, .rwls) into Python as arrays
+    Extended Summary
+    ----------------
+    This function imports common ring width data files (.csv, .rwls) as arrays
     
-    **Required Inputs**
-        <filename> - a file (.CSV or .RWL), or the full path and file name
+    Parameters
+    ----------
+    filename : str
+               a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
     
-    Example usages:
-        >>> import dplpy as dpl
-        >>> data = dpl.readers('../tests/data/csv/filename.csv')
-        >>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
+    Returns
+    -------
+    data : pandas dataframe
     
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#readers
+
     """
     FORMAT = "." + filename.split(".")[-1]
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")

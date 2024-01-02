@@ -28,13 +28,7 @@ __license__ = "GNU GPLv3"
 # Author: Ifeoluwa Ale
 # Title: report.py
 # Description: Generates a report about absent rings in the data set
-# example usage:
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.report(data)
-#
-# >>> dpl.report("../tests/data/csv/file.csv")
-# Note: for file pathname inputs, only CSV and RWL file formats are accepted
+
 
 import pandas as pd
 from readers import readers
@@ -43,24 +37,39 @@ import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 
 def report(inp: pd.DataFrame | str):
-    """
-    Online Documentation: https:/opendendro.org/dplpy-man/#report
+    """Generates a report
     
-    Description: Generates a report about the input dataset that includes:
-                    Number of dated series
-                    Number of measurements
-                    Avg series length (years)
-                    Range (total years)
-                    Span (start-end year)
-                    Mean (Standard Deviation) series intercorrelation
-                    Mean (Standard Deviation) AR1
-                    Years with absent rings listed by series
+    Extended Summary
+    ----------------
+    Generates a text report about the input dataset that includes:
+        Number of dated series
+        Number of measurements
+        Avg series length (years)
+        Range (total years)
+        Span (start-end year)
+        Mean (Standard Deviation) series intercorrelation
+        Mean (Standard Deviation) AR1
+        Years with absent rings listed by series
     
-    **Required Inputs**
-        <data> - a data file (.CSV or .RWL), or an array imported from dpl.readers()   
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+              
+    Returns
+    -------
+    data : pandas dataframes
     
-    Example Usage:
-        >>> dpl.report(<data>)
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.report(data) 
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#report
+
     """
     if isinstance(inp, pd.DataFrame):
         series_data = inp
