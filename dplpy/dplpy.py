@@ -91,7 +91,7 @@ def help_from_parser(args):
 # Open the Website README (Manual documentation) 
 def readme():
     try:
-        a = webbrowser.open("https://opendendro.org/python/", new=2)
+        a = webbrowser.open("https://opendendro.org/dplpy-man/", new=2)
         print("Success: Check your web browser for a new tab")
         if a == False:
             print("Your computer does not use a monitor, and cannot display the webpages")
