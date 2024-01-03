@@ -152,7 +152,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
                 bin_data[range].append(seg_corr)
             else:
                 bin_data[range].append(np.nan)
-        ready_series_copy[series] = removed
+        #ready_series_copy[series] = removed
+        ready_series_copy = pd.concat([ready_series_copy, removed], axis=1)
         
         if show_flags is True:
             print_flags(series, flags)
