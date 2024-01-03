@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -41,6 +41,32 @@ import numpy as np
 
 from readers import readers
 def summary(inp: pd.DataFrame | str):
+    """ Summarizes a chronology
+    
+    Extended Summary
+    ----------------
+    This function summarizes a chronology from an array
+    
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+   
+    Returns
+    -------
+    data : pandas dataframe
+    
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.summary(data)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#summary
+    
+    """
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):

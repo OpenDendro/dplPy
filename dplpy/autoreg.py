@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -27,15 +27,6 @@ __license__ = "GNU GPLv3"
 # Description: Contains methods that fit series to autoregressive models and perform functions 
 #              related to AR modeling.
 #              NOTE: This function only accepts pandas series and dataframes as parameters.
-# example usage:
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.autoreg(data['Name of series']) -> returns parameters of best fit AR model
-#                                            with maxlag of 5 (default) or other 
-#                                            specified number
-# >>> dpl.ar_func(data['Name of series']) -> returns residuals plus mean of best fit 
-#                                            from AR models with max lag of either 5 
-#                                            (default) or specified number
 
 from statsmodels.tsa.ar_model import ar_select_order
 import pandas as pd
@@ -43,6 +34,41 @@ import numpy as np
 import warnings
 
 def ar_func(data, max_lag=5):
+    """Auto Regressive (AR) functions 
+      
+    Extended Summary
+    ---------------
+    Contains methods that fit series to autoregressive models and perform functions 
+    related to AR modeling.
+  
+    NOTE: This function only accepts pandas series and dataframes as parameters. 
+   
+    Parameters
+    ----------
+    data :  str
+            a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    series: str
+            an individual series within a chronology `data` file.
+    lag:    int, default 5
+            nuber of years.
+   
+    Returns
+    -------
+    data :  pandas dataframe
+    
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.ar_func(data['series name']) -> returns residuals plus mean of best fit 
+                                            from AR models with max lag of either 5 
+                                            (default) or specified number
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#ar_func 
+    
+    """
     if isinstance(data, pd.DataFrame):
         start_df = pd.DataFrame(index=pd.Index(data.index))
         to_concat = [start_df]
@@ -79,6 +105,40 @@ def ar_func_series(data, max_lag):
 # This method selects the best AR model with a specified maximum order
 # The best model is selected based on AIC value
 def autoreg(data: pd.Series, max_lag=5):
+    """ autoregressive (AR) models and perform functions related to AR modeling.
+    
+    Extended Summary
+    ----------------
+    Contains methods that fit series to autoregressive models and perform functions 
+    related to AR modeling.
+  
+    NOTE: This function only accepts pandas series and dataframes as parameters. 
+
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    series : str
+             an individual series within a chronology `data` file.
+    lag : int, default 5
+          nuber of years.
+            
+    Returns
+    -------
+    data :  pandas dataframe
+        
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.autoreg(data['series name']) -> returns parameters of best fit AR model
+                                            with maxlag of 5 (default) or other 
+                                            specified number
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#autoreg
+    
+    """
     # validate data?
     if not isinstance(data, pd.Series):
         raise TypeError("Data argument should be pandas series. Received " + str(type(data)) + " instead.")

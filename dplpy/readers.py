@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,26 +28,38 @@ __license__ = "GNU GPLv3"
 # Project: OpenDendro- Readers
 # Description: Reads data from supported file types (*.CSV and *.RWL)
 #              and stores them in a dataframe
-#
-# example usages: 
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
-# 
-# example command line application:
-# $ python src/dplpy.py reader --input ./data/file.csv
-#
-# define `readers` module as a definition function
-# input is expected to be a file path with file name and extension
+
 import os
 import sys
 import pandas as pd
 import numpy as np
 
 def readers(filename: str, skip_lines=0, header=False):
-    """
-    This function imports common ring width data files into Python as arrays
-    Accepted file types are CSV and RWL
+    """Imports a common ring width data file
+    
+    Extended Summary
+    ----------------
+    This function imports common ring width data files (.csv, .rwls) as arrays
+    
+    Parameters
+    ----------
+    filename : str
+               a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    
+    Returns
+    -------
+    data : pandas dataframe
+    
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#readers
+
     """
     FORMAT = "." + filename.split(".")[-1]
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")

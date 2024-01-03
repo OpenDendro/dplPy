@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -48,6 +48,44 @@ import re
 # Main crossdating function, returns a dataframe of each series' segment correlations compared to the same
 # segments in the master chronology.
 def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
+    """Crossdating function
+    
+    Extended Summary
+    ----------------
+
+    Parameters
+    ----------
+    data : pandas dataframe
+           a data file (.CSV or .RWL), or an array imported from dpl.readers()
+    prewhiten : boolean, default True
+                prewhiten series using AR modeling
+    corr : str, default Spearman
+           correlation type, options: 'Pearson' or 'Spearman'
+    slide_period : int, default 50
+                   period window (years)
+    bin_floor : int, default 100
+                bin size
+    p_val : float, default 0.05
+            p-value, options: '0.05', '0.01', '0.001'
+    show_flags : boolean, default True
+                 show flags in the output
+                   
+    Returns
+    -------
+    data : pandas dataframe
+    plot : matplotlib.pyplot figure
+    
+    Examples
+    --------
+    >>> ca533_rwi = dpl.detrend(ca533, fit="spline", method="residual", plot=False)
+    # Crossdating of detrended data
+    >>> dpl.xdate(ca533_rwi, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True)
+
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#xdate
+            
+    """
     # Check types of inputs
     if not isinstance(data, pd.DataFrame):
         errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."

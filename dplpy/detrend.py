@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -27,11 +27,6 @@ __license__ = "GNU GPLv3"
 # Description: Detrends a given series or data frame, first by fitting data to curve(s), 
 #              with spline(s) as the default, and then by calculating residuals or differences 
 #              compared to the original data (residuals by default).
-# example usage:
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.detrend(data)
-# >>> dpl.detrend(data['Name of series'])
 
 from tkinter import Y
 import pandas as pd
@@ -60,6 +55,48 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
 def detrend_series(data, series_name, fit, method, plot, period=None):
+    """Detrends a given series or dataframe
+    
+    Extended Summary
+    ----------------
+    Detrends a given series or dataframe, first by fitting data to curve(s), 
+    with 'spline' as the default, and then by calculating residuals 
+    (default = 'residual') or differences ('difference') compared to the original data. 
+    Other supported curve fitting methods are 'ModNegex' (modified negative exponential), 
+    'Hugershoff', 'linear', 'horizontal'.
+                  
+    Parameters
+    ----------
+    data: pandas dataframe
+          a data frame loaded using dpl.readers()
+    series_name: str
+                 name of the series to be detrended
+    fit: str, default spline 
+         fitting method of curves, e.g., 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), and 'spline'.
+    method : str, default residual
+             intercomparison method, options: 'difference' or 'residual'.
+    plot : boolean, default True
+           plot the results.
+    
+    Returns
+    -------
+    data: pandas dataframe   
+    
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.detrend(data)
+    # Detrending a series part of the dataframe
+    >>> dpl.detrend(data["<series>"])
+    # Detrending function and its options
+    >>> dpl.detrend(data["<series>"], fit="<fitting method>", method="<comparison method>", plot=<True/False>)    
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#detrend
+         
+    """
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy()

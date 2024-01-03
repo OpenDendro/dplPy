@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2021  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -31,13 +31,7 @@ __license__ = "GNU GPLv3"
 #              Takes three optional arguments 'biweight', 'prewhiten', and 'plot'. They determine whether to find means using tukey's
 #              biweight robust mean (default True), whether to prewhiten data by fitting to an AR model (default False), and
 #              whether to plot the results of the chronology (default True).
-# example usage from Python Console: 
-# >>> import dplpy as dpl 
-# >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> rwi_data = dpl.detrend(data)
-# >>> dpl.chron(rwi_data)
-# >>> dpl.chron(rwi_data, prewhiten=True)
-# >>> chron_data = dpl.chron(rwi_data, biweight=False, plot=False)
+
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -48,6 +42,47 @@ from autoreg import ar_func
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
+    """Creates a mean value chronology for a dataset
+    
+    Extended Summary
+    ----------------
+    Creates a mean value chronology for a dataset, typically the ring width 
+    indices of a detrended series. Takes three optional arguments 'biweight', 
+    'prewhiten', and 'plot'. They determine whether to find means using Tukey's 
+    bi-weight robust mean (default 'True'), whether to prewhiten data by fitting 
+    to an AR model (default 'False'), and whether to plot the results of the 
+    chronology (default 'True').
+    
+    Parameters
+    ----------
+    data : pandas dataframe
+           a pandas dataframe imported from dpl.readers()
+    biweight : boolean, default True
+               use Tukey's bi-weight robust mean   
+    prewhiten : boolean, default False   
+                run pre-whitening on the time series
+    plot : boolean, default True 
+           plot the results    
+        
+    Returns
+    -------
+    data: pandas dataframe
+        a data frame loaded using readers
+    
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> rwi_data = dpl.detrend(data)
+    >>> dpl.chron(rwi_data)
+    >>> dpl.chron(rwi_data, prewhiten=True)
+    >>> chron_data = dpl.chron(rwi_data, biweight=False, plot=False)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#chron
+    
+    """
     if not isinstance(rwi_data, pd.DataFrame):
         raise TypeError("Expected pandas dataframe as input, got " + str(type(rwi_data)) + " instead")
     

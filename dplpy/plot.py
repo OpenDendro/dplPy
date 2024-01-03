@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -41,6 +41,38 @@ from readers import readers
 from stats import stats
 
 def plot(inp: pd.DataFrame | str, type="seg"):
+    """Plots a given dataframe
+    
+    Extended Description
+    --------------------
+    Plots a given dataframe or series of a specific dataframe in either 
+    line ('default'), spaghetti ('spag') or segment ('seg') plots.
+                 
+    Parameters
+    ----------
+    data : str 
+           a data frame loaded using dpl.readers()
+    series : str
+             a single time series within the data array
+    type : str, default line
+           type of plot to generate, e.g., line, spaghetti ('spag'), or segment ('seg') or 'line'.
+
+    Returns
+    -------
+    plot : matplotlib.pyplot figure
+           a plot of the data
+    
+    Examples
+    --------
+    >>> dpl.plot(<data>)
+    # Plot series subset of dataframe with a specified plot type
+    >>> dpl.plot(<data>["<series>"], type=<plot type>)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#plot
+    
+    """
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):
