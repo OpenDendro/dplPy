@@ -167,8 +167,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
 # Variation of xdate function that plots a graph that color codes the segment correlations. 
 # Will be merged into original xdate function when completed, so that users can choose to
 # show the graph by passing an optional argument.
-def xdate_plot(data):
-    plot_data = xdate(data, slide_period=50, bin_floor=10, show_flags=False)
+def xdate_plot(data: pd.DataFrame, slide_period=50, bin_floor=10):
+    plot_data = xdate(data, slide_period=slide_period, bin_floor=bin_floor, show_flags=False)
     bins = plot_data.index.to_numpy()
 
     # obtain a list of series names sorted by the start date
@@ -181,7 +181,7 @@ def xdate_plot(data):
     years = data.index.to_numpy()
 
     # set width and height of the window based on the data
-    dimensions = (max((years[-1] - years[0])//80, 1), max(len(data.columns)//2, 1.5))
+    dimensions = (max((years[-1] - years[0])//80, 8), max(len(data.columns)//2, 8))
     lin_wid = 7.5
 
     plt.figure(figsize=(dimensions))
@@ -193,15 +193,31 @@ def xdate_plot(data):
     num=0
     for column_name in series_by_start_date:
         num+=1
+        first = np.nan
+        second = np.nan
+        penult = np.nan
+        last = np.nan
+        
         for i in range(0, len(bins)-1, 2):
             bin_range1 = list(map(int, bins[i].split("-")))
             bin_range2 = list(map(int, bins[i+1].split("-")))
-            if (bin_range1[0] >= data[column_name].first_valid_index() and bin_range2[1] <= data[column_name].last_valid_index()):
+
+            # plot for bin range 1 if valid
+            if (bin_range1[0] >= data[column_name].first_valid_index() and bin_range1[1] <= data[column_name].last_valid_index()):
                 range_1_color = get_graph_color(plot_data.loc[bins[i]][column_name])
-                range_2_color = get_graph_color(plot_data.loc[bins[i+1]][column_name])
-                
                 plt.plot(bin_range1, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_1_color)
+                first = np.nanmin([first, bin_range1[0]])
+                second = np.nanmin([second, bin_range1[1]])
+
+            # plot for bin range 2 if valid
+            if (bin_range2[0] >= data[column_name].first_valid_index() and bin_range2[1] <= data[column_name].last_valid_index()):
+                range_2_color = get_graph_color(plot_data.loc[bins[i+1]][column_name])
                 plt.plot(bin_range2, np.zeros((2,), dtype=int) + (offset * (num-1)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_2_color)
+                penult = np.nanmax([penult, bin_range2[0]])
+                last = np.nanmax([last, bin_range2[1]])
+        
+        # pad before and after first 2 and last 2 bins with greens
+        pad_start_and_end_of_series_graph(data[column_name], first, second, penult, last, num, offset, lin_wid)
         y_divisions.append(offset*(num-1))
 
     # set y-axis to display series names at equal intervals, and x-axis to display years
@@ -211,24 +227,43 @@ def xdate_plot(data):
     # Show the graph
     plt.show()
 
+def pad_start_and_end_of_series_graph(series, first, second, penult, last, num, offset, lin_wid):
+    if not np.isnan(first):
+        first_range = [series.first_valid_index(), first]
+        plt.plot(first_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
+
+                       
+    if not np.isnan(second):
+        second_range = [series.first_valid_index(), second]
+        plt.plot(second_range, np.zeros((2,), dtype=int) + (offset * (num-1)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
+    
+    if not np.isnan(penult):
+        penult_range = [penult, series.last_valid_index()]
+        plt.plot(penult_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
+
+    if not np.isnan(last):
+        last_range = [last, series.last_valid_index()]
+        plt.plot(last_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
+
+
 # Helper function that determines the color of a segment of the graph depending on the correlation value.
 def get_graph_color(corr_val):
     if corr_val == np.nan:
         return '#00ff00'
     elif corr_val < 0.1:
-        return '#ff9999'
+        return '#ff0d1a'
     elif corr_val < 0.3:
-        return '#ccccff'
+        return '#add8ff'
     elif corr_val < 0.4:
-        return '#9999ff'
+        return '#9cc7ff'
     elif corr_val < 0.5:
-        return '#6666ff'
+        return '#33b6ff'
     elif corr_val < 0.6:
-        return '#3333ff'
+        return '#0033ff'
     elif corr_val < 0.7:
         return '#0000ff'
     elif corr_val < 0.8:
-        return '#0000cc'
+        return '#0000dd'
     elif corr_val < 0.9:
         return '#0000b3'
     elif corr_val < 1:
@@ -237,7 +272,7 @@ def get_graph_color(corr_val):
 # Determines the max lag to use for AR modeling function.
 def get_ar_lag(data):
     n = len(data)
-    res = min(int(n-1), int(10 * np.log(n)))
+    res = min(int(n-1), int(10 * np.log10(n)))
     return res
 
 # Generates the bins given the first and last years of recorded data, the bin floor and

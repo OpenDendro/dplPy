@@ -40,12 +40,12 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
         for column in data.columns:
-            to_add.append(detrend_series(data[column], column, fit, method, plot, period))
+            to_add.append(detrend_series(data[column], fit, method, plot, period))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
     
     elif isinstance(data, pd.Series):
-        return detrend_series(data, data.name, fit, method, plot, period)
+        return detrend_series(data, fit, method, plot, period)
     else:
         raise TypeError("argument should be either pandas dataframe or pandas series.")
 
@@ -54,7 +54,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
 # Can specify what type of alternate curve-fits, or if the user
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
-def detrend_series(data, series_name, fit, method, plot, period=None):
+def detrend_series(data: pd.Series, fit, method, plot, period=None):
     """Detrends a given series or dataframe
     
     Extended Summary
@@ -97,6 +97,7 @@ def detrend_series(data, series_name, fit, method, plot, period=None):
     .. [1] https:/opendendro.org/dplpy-man/#detrend
          
     """
+    series_name = data.name
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy()
