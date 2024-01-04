@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -51,6 +51,33 @@ from readers import readers
 from statsmodels.tsa.ar_model import AutoReg
 
 def stats(inp: pd.DataFrame | str):
+    """Generates summary statistics
+    
+    Extended Summary
+    ----------------
+    Generates summary statistics for .RWL and .CSV format files. 
+    It outputs a table with 'first', 'last', 'year', 'mean', 'median', 'stdev', 
+    'skew', 'gini', 'ar1' for each series in data file.
+    
+    Parameters
+    ----------
+    data : str
+           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    
+    Returns
+    -------
+    data : pandas dataframe
+    
+    Examples
+    --------
+    >>> dpl.stats(<data>)
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#stats
+    
+    
+    """
     if isinstance(inp, pd.DataFrame):
         series_data = inp
     elif isinstance(inp, str):

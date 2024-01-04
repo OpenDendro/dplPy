@@ -2,7 +2,7 @@
 
 __author__ = "Tyson Lee Swetnam"
 __email__ = "tswetnam@arizona.edu"
-__version__ = "0.1.testing"
+__version__ = "0.1.2"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -28,7 +28,6 @@ __license__ = "GNU GPLv3"
 import os
 import sys
 
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
 lpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(lpath)
 
@@ -62,7 +61,7 @@ from chron import chron
 from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
-from writers import write
+from writers import writers
 
 __all__ = [
     readers,
@@ -78,5 +77,5 @@ __all__ = [
     xdate,
     xdate_plot,
     series_corr,
-    write
+    writers
 ]

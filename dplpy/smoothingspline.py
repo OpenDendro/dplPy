@@ -1,6 +1,6 @@
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2022  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,9 +26,6 @@ __license__ = "GNU GPLv3"
 # Title: smoothingspline.py
 # Description: This contains the spline method which fits a series to
 #              a spline curve.
-# example usage (in other file):
-# from smoothingspline import spline
-# yi = spline(series)
 
 from math import cos
 from math import pi

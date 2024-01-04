@@ -2,7 +2,7 @@ from __future__ import print_function
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2021  OpenDendro
+   Copyright (C) 2024  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ def help():
         print("from Python Console:")
         print(">>> import dplpy")
         print(">>> dplpy.readme() \n")
-        print("or visit our website click url: https://opendendro.org/dplpy \n")
+        print("or visit our website click url: https://opendendro.org/python \n")
         print("READERS \n")
         print("Import ring width series in a terminal: \n")
         print("$ python src/dplpy.py reader --input /folder/filename.csv \n")
@@ -91,7 +91,7 @@ def help_from_parser(args):
 # Open the Website README (Manual documentation) 
 def readme():
     try:
-        a = webbrowser.open("https://opendendro.github.io/opendendro/python/", new=2)
+        a = webbrowser.open("https://opendendro.org/dplpy-man/", new=2)
         print("Success: Check your web browser for a new tab")
         if a == False:
             print("Your computer does not use a monitor, and cannot display the webpages")
@@ -234,7 +234,7 @@ def main(args=None):
 
 # README Documentation pages parser
     parser_readme = subparsers.add_parser(
-        "readme", help="Goes to the website: https://opendendro.github.io/opendendro/python/"
+        "readme", help="Goes to the website: https://opendendro.org/python/"
     )
 
     parser_readme.set_defaults(func=readme_from_parser)
