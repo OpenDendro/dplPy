@@ -32,7 +32,3 @@ dependencies=[
 
 [tool.setuptools]
 packages = ["dplpy"]
-
-[tool.setuptools.packages.find]
-include = ["dplpy"]
-namespaces = false
