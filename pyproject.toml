@@ -29,3 +29,6 @@ dependencies=[
     "statsmodels>=0.14.0; python_version>='3.12'",
     "scipy>=1.11.3"
 ]
+
+[tool.setuptools]
+packages = ["dplpy"]
