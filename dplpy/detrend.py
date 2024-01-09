@@ -129,7 +129,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None):
     
         axes[0].plot(x, y, "k-", x, yi, "r-", linewidth=2)
         axes[0].set_xlabel('Year')
-        axes[0].set_ylabel('Length')
+        axes[0].set_ylabel('Ring Width')
         axes[0].set_title(series_name + " curve fit to " + fit)
 
         axes[1].plot(x, detrended_data, 'k-')

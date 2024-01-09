@@ -69,6 +69,8 @@ def readers(filename: str, skip_lines=0, header=False):
         series_data = pd.read_csv(filename, skiprows=skip_lines)
     elif filename.upper().endswith(".RWL"):
         series_data = process_rwl_pandas(filename, skip_lines, header)
+    elif filename.upper().endswith(".RAW"):
+        series_data = process_rwl_pandas(filename, skip_lines, header)
     else:
         errorMsg = """
 
