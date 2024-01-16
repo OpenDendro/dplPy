@@ -48,7 +48,7 @@ Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scip
 
 ## Current Version and Changelog
 
-dplPy is currently at version `v0.1.1` - Changes and new functions are currently merged into the `0.1.x` branch.
+dplPy is currently at version `v0.1.2` - The project is changing to a new development structure where all development will be on `main` and releases and updates to [Pypi](https://pypi.org/project/dplpy/) will be branched and tagged from `main`.
 
 ## Installation
 
@@ -57,6 +57,13 @@ dplPy is now available to [install via pip](https://pypi.org/project/dplpy/):
 ```
 pip install dplpy
 ```
+
+To ensure you have the latest version of dplPy installed, you can run:
+
+```
+pip install dplpy --upgrade
+```
+
 
 You can install a conda virtual environment using the [environment.yml for the project](https://github.com/OpenDendro/dplPy/blob/main/environment.yml):
 
