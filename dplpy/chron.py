@@ -167,7 +167,7 @@ def plot_chron(years, depths, means, whitened_means):
     # create figure and axis objects with subplots()
     fig,ax = plt.subplots()
 
-    if whitened_means != None:
+    if whitened_means is not None:
         y_val = whitened_means
         y_label = "Mean Res"
     else:

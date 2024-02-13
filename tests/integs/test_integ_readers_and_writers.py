@@ -1,4 +1,3 @@
-import pytest
 import dplpy as dpl
 import pandas as pd
 import os

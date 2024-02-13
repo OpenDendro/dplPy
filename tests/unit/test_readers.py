@@ -108,6 +108,7 @@ def test_correct_rwl_format(mock_open: Mock):
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
                                      index=pd.Index(data=[1, 2, 3, 4], 
                                                     name="Year"))
+    print(results)
     pd.testing.assert_frame_equal(results, expected_df)
 
 '''
@@ -119,6 +120,7 @@ def test_correct_rwl_skip_lines(mock_open: Mock):
     mock_open.side_effect = mock_open_output
 
     results = dpl.readers("valid_rwl_correct_format.rwl", skip_lines=1)
+    print(results)
     mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", "r")
 
     expected_df = pd.DataFrame(data={"SeriesB": [0.2, 0.4, 0.6, 0.8]},

@@ -1,7 +1,6 @@
 import dplpy as dpl
 import pandas as pd
 import pytest
-import io
 from unittest.mock import patch, Mock
 
 def test_xdate_invalid_input():
@@ -24,7 +23,7 @@ def mock_ar_func_func(data, max_lag):
     return 2 * data
 
 def mock_chron_func(data, plot=True):
-    if plot != False:
+    if plot:
         return None
     samp_dep = data.count(axis='columns')
     mean_rwis = data.mean(axis=1)

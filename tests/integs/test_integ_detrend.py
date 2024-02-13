@@ -1,7 +1,4 @@
-import pytest
 import dplpy as dpl
-import pandas as pd
-import os
 
 def test_detrend_all_fits_residual():
     data = dpl.readers("./tests/data/csv/ca533.csv")

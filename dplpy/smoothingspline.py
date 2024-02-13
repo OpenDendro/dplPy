@@ -37,11 +37,18 @@ def get_param(amp, period):
     spline_param = 1/(((cos(2 * pi * freq) + 2) * (1 - amp)/(12 * amp * (cos(2 * pi * freq) - 1) ** 2))+ 1)
     return spline_param
 
+def get_period(period, n):
+    if period is None:
+        return n * 0.67
+    elif period < 0:
+        return n * abs(period)/100  
+    elif period <= 1:
+        return n * period
+    else:
+        return period
+
 # Fits a curve to the series given as input and returns the y-values of the curve
 def spline(x, y, period=None):
-    if period == None:
-        period = len(x) * 0.67
-    
-    p = get_param(0.5, period)
+    p = get_param(0.5, get_period(period, len(x)))
     yi = csaps(x, y, x, smooth=p)
     return yi

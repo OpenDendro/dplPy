@@ -1,6 +1,4 @@
-import pytest
 import dplpy as dpl
-import pandas as pd
 
 def test_chron_stab_no_biweight():
     data = dpl.readers("./tests/data/csv/ca533.csv")

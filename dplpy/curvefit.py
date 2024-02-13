@@ -29,7 +29,6 @@ __license__ = "GNU GPLv3"
 #              modified negative exponential, linear and horizontal.
 
 import numpy as np
-import pandas as pd
 from scipy.optimize import curve_fit
 
 # Modified hugershoff function

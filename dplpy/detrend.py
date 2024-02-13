@@ -28,11 +28,9 @@ __license__ = "GNU GPLv3"
 #              with spline(s) as the default, and then by calculating residuals or differences 
 #              compared to the original data (residuals by default).
 
-from tkinter import Y
 import pandas as pd
 import matplotlib.pyplot as plt
 from smoothingspline import spline
-from autoreg import ar_func
 import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
@@ -141,7 +139,10 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None):
     
         plt.show()
 
-    return pd.Series(detrended_data, index=x, name=series_name)
+    return pd.Series(detrended_data, index=pd.Index(data=x, name="Year"), name=series_name).combine(data, pick_first)
+
+def pick_first(a, b):
+    return a
 
 # Detrends by finding ratio of original series data to curve data
 def residual(y, yi):

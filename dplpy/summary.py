@@ -37,7 +37,6 @@ __license__ = "GNU GPLv3"
 
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
-import numpy as np
 
 from readers import readers
 def summary(inp: pd.DataFrame | str):

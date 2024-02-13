@@ -1,5 +1,4 @@
 from __future__ import print_function
-from sys import intern
 
 __copyright__ = """
    dplPy for tree ring width time series analyses

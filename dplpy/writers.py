@@ -45,8 +45,7 @@ __license__ = "GNU GPLv3"
 import pandas as pd
 import numpy as np
 from chron import chron
-from detrend import detrend, detrend_series
-import os
+from detrend import detrend
 
 """
     This function converts common ring width

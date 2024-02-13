@@ -158,7 +158,6 @@ def autoreg(data: pd.Series, max_lag=5):
 # given an array containing the original data and the parameters for
 # the AR model
 def fitted_values(data_series, params):
-    mean = np.mean(data_series)
     results = []
     
     for i in range((len(params)-1), len(data_series)):

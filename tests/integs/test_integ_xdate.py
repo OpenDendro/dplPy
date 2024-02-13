@@ -1,7 +1,4 @@
-import pytest
 import dplpy as dpl
-import pandas as pd
-import os
 
 def test_xdate_diff_bins():
     ca533 = dpl.readers("./tests/data/csv/ca533.csv")

@@ -28,7 +28,6 @@ __license__ = "GNU GPLv3"
 #              period of years, and calculating rbar constant for a dataset over this best
 #              period of overlap
 
-import pandas as pd
 import numpy as np
 from detrend import detrend
 from chron import chron

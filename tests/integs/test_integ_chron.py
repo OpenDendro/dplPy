@@ -1,4 +1,3 @@
-import pytest
 import dplpy as dpl
 
 def test_chron_no_prewhiten_no_biweight():

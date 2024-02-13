@@ -1,4 +1,17 @@
 from __future__ import print_function
+from readers import readers
+from summary import summary
+from stats import stats
+from report import report
+from plot import plot
+from detrend import detrend
+from autoreg import ar_func, autoreg
+from chron import chron
+from chron_stabilized import chron_stabilized
+from xdate import xdate
+from series_corr import series_corr
+from writers import write
+
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -93,7 +106,7 @@ def readme():
     try:
         a = webbrowser.open("https://opendendro.org/dplpy-man/", new=2)
         print("Success: Check your web browser for a new tab")
-        if a == False:
+        if a is False:
             print("Your computer does not use a monitor, and cannot display the webpages")
     except Exception as e:
         print(e)
@@ -143,18 +156,6 @@ def readme_from_parser(args):
 #
 #dplpy_version()
 
-from readers import readers
-from summary import summary
-from stats import stats
-from report import report
-from plot import plot
-from detrend import detrend
-from autoreg import ar_func, autoreg
-from chron import chron
-from chron_stabilized import chron_stabilized
-from xdate import xdate, xdate_plot
-from series_corr import series_corr
-from writers import write
 
 
 # set the definition for the Readers functions (from readers.py)
@@ -203,17 +204,6 @@ def chron_stabilized_from_parser(args):
 def write_from_parser(args):
     write(input=args.input)
 
-def series_corr_from_parser(args):
-    series_corr(input=args.input)
-
-def series_corr_from_parser(args):
-    series_corr(input=args.input)
-
-def common_interval_from_parser(args):
-    common_interval(input=args.input)
-
-def rbar_from_parser(args):
-    rbar(input=args.input)
 # creates whitespace
 print("")
 

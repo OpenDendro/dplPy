@@ -126,4 +126,4 @@ def test_chron_stabilized_weird_winlen(mock_mean_series_corr: Mock, mock_chron: 
     
     expected_msg = "We recommend using a window length greater than 30%% but less than 50%% of the chronology length\n"
     with pytest.warns(UserWarning, match=expected_msg):
-        result_df = dpl.chron_stabilized(input_df, win_length=100)
+        dpl.chron_stabilized(input_df, win_length=100)
