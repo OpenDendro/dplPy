@@ -44,12 +44,12 @@ def summary(inp: pd.DataFrame | str):
     
     Extended Summary
     ----------------
-    This function summarizes a chronology from an array
+    This function summarizes a given dataframe of tree widths/rings.
     
     Parameters
     ----------
     data : str
-           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+        a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
    
     Returns
     -------

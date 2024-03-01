@@ -47,13 +47,31 @@ import numpy as np
 from chron import chron
 from detrend import detrend
 
-"""
-    This function converts common ring width
-    data files from one type to another
-    It also allows you to append files that are missing metadata and write them back out
-    Accepted file types are CSV, RWL, CRN (in dev) and TXT (in dev)
-"""
-def writers(data, label, format):
+def writers(data: pd.DataFrame, label: str, format: str):
+    """ Output dplpy datasets to .csv, .rwl and .crn files.
+
+    Extended Summary
+    ----------------
+    Given a pandas dataframe representing tree-ring widths, this function writes
+    its contents to a .csv, .rwl or .crn file as indicated by the `format`
+    parameter. The file will be created in the same directory unless a different
+    path is included in `label`.
+
+    Parameters
+    ----------
+    data : pandas dataframe
+        a pandas dataframe representing tree ring widths
+    label : str
+        name (can include file path) to give the file.
+        should not include file extension.
+    format : str
+        type of file to be created. can be 'csv', 'rwl' or 'crn'.
+                   
+    Returns
+    -------
+    None
+    
+    """
     if not isinstance(data, pd.DataFrame):
         raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
     

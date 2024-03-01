@@ -33,28 +33,25 @@ import pandas as pd
 import numpy as np
 import warnings
 
-def ar_func(data, max_lag=5):
+def ar_func(data: pd.DataFrame | pd.Series, max_lag=5) -> (pd.DataFrame | pd.Series):
     """Auto Regressive (AR) functions 
       
     Extended Summary
     ---------------
-    Contains methods that fit series to autoregressive models and perform functions 
-    related to AR modeling.
-  
-    NOTE: This function only accepts pandas series and dataframes as parameters. 
-   
+    Fits a given data to an the best-fit autoregressive model, returns the residuals
+    of AR fit relative to the original data + the mean of the original data.
+
     Parameters
     ----------
-    data :  str
-            a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
-    series: str
-            an individual series within a chronology `data` file.
-    lag:    int, default 5
-            nuber of years.
+    data : pd.DataFrame | pd.Series
+        a pandas dataframe imported from dpl.readers() or a series extracted
+        from such a dataframe.
+    lag: int, default 5
+        max lag to consider when selecting the AR model.
    
     Returns
     -------
-    data :  pandas dataframe
+    res :  pandas dataframe or series, depending on which was given as input.
     
     Examples
     --------
@@ -83,8 +80,8 @@ def ar_func(data, max_lag=5):
         raise TypeError("Data argument should be either pandas dataframe or pandas series.")
 
 # This function returns residuals plus mean of the best fit AR
-# model of the data
-def ar_func_series(data, max_lag):
+# model of the data.
+def ar_func_series(data: pd.Series, max_lag) -> pd.Series: 
     nullremoved_data = data.dropna()
     pars = autoreg(nullremoved_data, max_lag)
     
@@ -102,30 +99,26 @@ def ar_func_series(data, max_lag):
 
     return res
 
-# This method selects the best AR model with a specified maximum order
-# The best model is selected based on AIC value
+
 def autoreg(data: pd.Series, max_lag=5):
-    """ autoregressive (AR) models and perform functions related to AR modeling.
+    """ Auto Regressive (AR) functions
     
     Extended Summary
     ----------------
-    Contains methods that fit series to autoregressive models and perform functions 
-    related to AR modeling.
-  
-    NOTE: This function only accepts pandas series and dataframes as parameters. 
+    Selects the best AR model with a specified maximum order for the given data,
+    and returns the parameters for the model. The best model is selected based 
+    on AIC value.
 
     Parameters
     ----------
-    data : str
-           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
     series : str
-             an individual series within a chronology `data` file.
+        an individual (Pandas) series representing tree rings/widths.
     lag : int, default 5
-          nuber of years.
+        nuber of years.
             
     Returns
     -------
-    data :  pandas dataframe
+    params: array containing the parameters of best-fit AR model in order.
         
     Examples
     --------

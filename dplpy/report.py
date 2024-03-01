@@ -52,12 +52,12 @@ def report(inp: pd.DataFrame | str):
     
     Parameters
     ----------
-    data : str
-           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+    data : str or pandas dataframe
+        a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
               
     Returns
     -------
-    data : pandas dataframes
+    None
     
     Examples
     --------

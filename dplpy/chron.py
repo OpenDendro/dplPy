@@ -42,7 +42,7 @@ from autoreg import ar_func
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
-    """Creates a mean value chronology for a dataset
+    """Creates a mean value chronology for a dataset of tree-ring widths.
     
     Extended Summary
     ----------------
@@ -56,18 +56,19 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
     Parameters
     ----------
     data : pandas dataframe
-           a pandas dataframe imported from dpl.readers()
+        a pandas dataframe imported from dpl.readers()
     biweight : boolean, default True
-               use Tukey's bi-weight robust mean   
+        use Tukey's bi-weight robust mean   
     prewhiten : boolean, default False   
-                run pre-whitening on the time series
+        run pre-whitening on the time series before building
+        chronology
     plot : boolean, default True 
-           plot the results    
+        plot the results    
         
     Returns
     -------
     data: pandas dataframe
-        a data frame loaded using readers
+        a dataframe representing the mean-value chronology.
     
     Examples
     --------

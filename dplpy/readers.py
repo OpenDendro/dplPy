@@ -39,12 +39,18 @@ def readers(filename: str, skip_lines=0, header=False):
     
     Extended Summary
     ----------------
-    This function imports common ring width data files (.csv, .rwls) as arrays
+    This function reads data from common ring width data files (.csv, .rwls)
+    and stores them in pandas dataframes.
     
     Parameters
     ----------
     filename : str
-               a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+        a data file (.CSV, .RWL or .RAW)
+    header : boolean, default False
+        a flag indicating whether a 3-line header is at the top of the file.
+    skip_lines : int, default 0
+        indicates how many of the first few lines of the file to skip
+        when reading it.
     
     Returns
     -------

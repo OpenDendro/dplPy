@@ -56,13 +56,13 @@ def stats(inp: pd.DataFrame | str):
     Extended Summary
     ----------------
     Generates summary statistics for .RWL and .CSV format files. 
-    It outputs a table with 'first', 'last', 'year', 'mean', 'median', 'stdev', 
+    It outputs a dataframe with 'first', 'last', 'year', 'mean', 'median', 'stdev', 
     'skew', 'gini', 'ar1' for each series in data file.
     
     Parameters
     ----------
     data : str
-           a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+        a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
     
     Returns
     -------

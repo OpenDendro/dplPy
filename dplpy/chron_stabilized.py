@@ -6,6 +6,60 @@ import warnings
 
 
 def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, biweight=True, running_rbar=False):
+    """ Variance Stabilization functions
+    
+    Extended Summary
+    ----------------
+    Builds a variance stabilized mean-value chronology from a pandas dataframe
+    of detrended ring widths, by multiplying the chronology with the square
+    root of the effective independent sample size, Neff, defined as 
+
+    Neff = n(t) / 1+(n(t)-1)rbar(t)
+
+        where n(t) is the number of series at time t, and rbar is the 
+        interseries correlation. 
+
+    In the limiting cases, when the rbar is zero or unity, Neff obtains 
+    values of the true sample size and unity, respectively.
+    Neff is calculated over different segments of the data of
+    length `win_length`, and only series with at least `min_seg_ratio` of
+    valid values in the segment are considered.
+
+
+    Parameters
+    ----------
+    rwi_data : pd.DataFrame
+        a Pandas dataset representing detrended tree rings/widths.
+    win_length : int, default 50
+        an integer for specifying the window lengths where interseries correlations
+        will be calculated.
+    min_seg_ratio : float, default 0.33
+        the minimum ratio of non-NA values to the window length for a series to be
+        considered in an Neff calculation.
+    biweight : boolean, default True
+        flag indicating whether or not to use Tukey's bi-weight robust mean when
+        calculating the mean-value chronology
+    running_rbar : boolean, default False
+        flag indicating whether or not to return the running interseries
+        correlations as part of chronology output
+            
+    Returns
+    -------
+    stabilized_chron: a pandas dataframe of a mean value chronology with stabilized
+                      variance.
+        
+    Examples
+    --------
+    >>> import dplpy as dpl 
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.chron_stabilized(data, win_length=60, min_seg_ratio=0.4) -> returns mean
+                                            value chronology with stabilized
+                                            variance.
+    References
+    ----------
+    .. [1] https://rdrr.io/cran/dplR/man/chron.stabilized.html
+    
+    """
     if not isinstance(rwi_data, pd.DataFrame):
         raise TypeError("Expected data input to be a pandas dataframe, not " + str(type(rwi_data)) + ".")
     

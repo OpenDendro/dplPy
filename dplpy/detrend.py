@@ -34,6 +34,44 @@ from smoothingspline import spline
 import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
+    """Detrends a given series or dataframe
+    
+    Extended Summary
+    ----------------
+    Detrends a given series or dataframe, first by fitting data to curve(s), 
+    with 'spline' as the default, and then by calculating residuals 
+    (default = 'residual') or differences ('difference') compared to the original data. 
+    Other supported curve fitting methods are 'ModNegex' (modified negative exponential), 
+    'Hugershoff', 'linear', 'horizontal'.
+                  
+    Parameters
+    ----------
+    data: pandas dataframe or series
+        a data frame loaded using dpl.readers(), or a series extracted from such a datafame.
+    fit: str, default spline 
+        fitting method of curve. can be 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), and 'spline'.
+    method : str, default residual
+        detrending method, can be 'difference' or 'residual'.
+    plot : boolean, default True
+        flag indicating whether or not to plot the results.
+    
+    Returns
+    -------
+    data: pandas dataframe or series of detrended data.
+    
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> data = dpl.readers("../tests/data/csv/file.csv")
+    >>> dpl.detrend(data) # Detrends all series in a dataframe
+    >>> dpl.detrend(data["SeriesA"]) # Detrends only SeriesA
+    >>> dpl.detrend(data["SeriesA"], fit="ModNegex", method="residual", plot=True)    
+    
+    References
+    ----------
+    .. [1] https:/opendendro.org/dplpy-man/#detrend
+         
+    """
     if isinstance(data, pd.DataFrame):
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
@@ -53,48 +91,6 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
 def detrend_series(data: pd.Series, fit, method, plot, period=None):
-    """Detrends a given series or dataframe
-    
-    Extended Summary
-    ----------------
-    Detrends a given series or dataframe, first by fitting data to curve(s), 
-    with 'spline' as the default, and then by calculating residuals 
-    (default = 'residual') or differences ('difference') compared to the original data. 
-    Other supported curve fitting methods are 'ModNegex' (modified negative exponential), 
-    'Hugershoff', 'linear', 'horizontal'.
-                  
-    Parameters
-    ----------
-    data: pandas dataframe
-          a data frame loaded using dpl.readers()
-    series_name: str
-                 name of the series to be detrended
-    fit: str, default spline 
-         fitting method of curves, e.g., 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), and 'spline'.
-    method : str, default residual
-             intercomparison method, options: 'difference' or 'residual'.
-    plot : boolean, default True
-           plot the results.
-    
-    Returns
-    -------
-    data: pandas dataframe   
-    
-    Examples
-    --------
-    >>> import dplpy as dpl
-    >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.detrend(data)
-    # Detrending a series part of the dataframe
-    >>> dpl.detrend(data["<series>"])
-    # Detrending function and its options
-    >>> dpl.detrend(data["<series>"], fit="<fitting method>", method="<comparison method>", plot=<True/False>)    
-    
-    References
-    ----------
-    .. [1] https:/opendendro.org/dplpy-man/#detrend
-         
-    """
     series_name = data.name
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()

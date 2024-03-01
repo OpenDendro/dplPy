@@ -54,25 +54,23 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
     Parameters
     ----------
     data : pandas dataframe
-           a data file (.CSV or .RWL), or an array imported from dpl.readers()
+        a dataframe imported from dpl.readers()
     series : str    
-             a series name from the dataframe
+        a series name from the dataframe
     prewhiten : boolean, default False
-                run pre-whitening on the time series, options: 'True' or 'False'.
+        run pre-whitening on the time series, options: 'True' or 'False'.
     corr : str, default 'Spearman'
-           select correlation type if 'prewhiten=True', options: 'Pearson' or 'Spearman'.
+        select correlation type, can be 'Pearson' or 'Spearman'.
     seg_length :  int, default 50
-                  segment length (years).
+        segment lengths (years).
     bin_floor : int, default 100
-                select bin size.
+       select bin floor.
     p_val : double, default 0.05
-            select a p-value, e.g., '0.05', '0.01', '0.001'.
-    plot :  boolean, default True
-            plot the output.
+        select a p-value, e.g., '0.05', '0.01', '0.001'.
     
     Returns
     -------
-    data : pandas dataframe
+    None
     
     Examples
     --------
