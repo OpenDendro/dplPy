@@ -48,7 +48,7 @@ Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scip
 
 ## Current Version and Changelog
 
-dplPy is currently at version `v0.1.2` - The project is changing to a new development structure where all development will be on `main` and releases and updates to [Pypi](https://pypi.org/project/dplpy/) will be branched and tagged from `main`.
+dplPy is currently at version `v0.1.5` - The project has changing to a new development structure where all development will be on `main` and releases and updates to [Pypi](https://pypi.org/project/dplpy/) will be branched to a version number and deployed.
 
 ## Installation
 
