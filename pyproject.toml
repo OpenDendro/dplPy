@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 name="dplpy"
 description="Dendrochronology Program Library for Python"
 readme="README.md"
-version="0.1.4"
+version="0.1.5"
 authors=[
     {name='Tyson Lee Swetnam', email='tswetnam@arizona.edu'},
     {name='Ifeoluwa Ale', email='ifeoluwaale@arizona.edu'},
