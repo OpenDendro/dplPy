@@ -70,6 +70,11 @@ def mock_open_output(file_path, open_type):
         wrapper.write("SeriesA 1       10    30    50    70   999\n")
         wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
         wrapper.seek(0,0)
+    elif file_path == "valid_rwl_with_blanks.rwl":
+        wrapper.write("SeriesA 1       10    30    50    70   999\n")
+        wrapper.write("                                          \n")
+        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
+        wrapper.seek(0,0)
     else:
         raise OSError("File not found")
 
@@ -144,3 +149,18 @@ def test_correct_rwl_with_headers(mock_open: Mock):
                                      index=pd.Index(data=[1, 2, 3, 4], 
                                                     name="Year"))
     pd.testing.assert_frame_equal(results, expected_df)
+
+@patch('builtins.open')
+def test_rwl_with_blank_lines(mock_open: Mock):
+    mock_open.side_effect = mock_open_output
+
+    expected_warning = "Empty line found at line 2"
+    expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                     "SeriesB": [0.2, 0.4, 0.6, 0.8]},
+                                     index=pd.Index(data=[1, 2, 3, 4], 
+                                                    name="Year"))
+
+    with pytest.warns(UserWarning, match=expected_warning):
+        results = dpl.readers("valid_rwl_with_blanks.rwl")
+        mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", "r")
+        pd.testing.assert_frame_equal(results, expected_df)

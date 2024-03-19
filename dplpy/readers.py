@@ -33,6 +33,7 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+import warnings
 
 def readers(filename: str, skip_lines=0, header=False):
     """Imports a common ring width data file
@@ -116,7 +117,7 @@ def process_rwl_pandas(filename, skip_lines, header):
     with open(filename, "r") as rwl_file:
         file_lines = rwl_file.readlines()[skip_lines:]
     
-    rwl_data, first_date, last_date = read_rwl(file_lines)
+    rwl_data, first_date, last_date = read_rwl(file_lines, skip_lines)
     if rwl_data is None:
         return None
 
@@ -139,15 +140,19 @@ def process_rwl_pandas(filename, skip_lines, header):
     return df
 
 # Extract raw data from lines of .rwl file and store in a nested dictionary
-def read_rwl(lines):
+def read_rwl(lines, skip_lines):
     rwl_data = {}
     first_date = sys.maxsize
     last_date = -sys.maxsize
-    line_ct = 0
+    line_ct = skip_lines
     for line in lines:
         try:
             line = line.rstrip("\n")
-
+            if len(line.strip()) < 7:
+                line_ct += 1
+                warn_msg = "Empty line found at line " + str(line_ct) + "\n"
+                warnings.warn(warn_msg)
+                continue
             if line[7] != '-' and line[6] != '-':
                 series_id = line[:8].strip()
                 iyr = int(line[8:12])
@@ -181,7 +186,8 @@ def read_rwl(lines):
                 rwl_data[series_id][line_start+i] = data
             line_ct += 1
 
-        except ValueError: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
+        except (ValueError, IndexError) as err: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
             print("Error reading line", line_ct + 1, ":\n", line, "\n")
+            print(err)
             return None, None, None
     return rwl_data, first_date, last_date

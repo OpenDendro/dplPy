@@ -59,3 +59,14 @@ def test_read_and_write_weird_rwl(tmp_path):
     wwr_alt = dpl.readers(write_path + ".rwl")
 
     pd.testing.assert_frame_equal(wwr, wwr_alt)
+
+def test_read_and_write_rwl_with_blanks(tmp_path):
+    nm580 = dpl.readers("./tests/data/rwl/nm580l.rwl", header=True)
+    
+    write_path = os.path.join(tmp_path, "test_write")
+
+    dpl.writers(nm580, write_path, "rwl")
+
+    nm580_alt = dpl.readers(write_path + ".rwl")
+
+    pd.testing.assert_frame_equal(nm580, nm580_alt)
