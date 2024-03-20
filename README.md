@@ -1,5 +1,5 @@
  <p align="center">
- <img src="docs/assets/dplpy.png" width="175"> 
+ <img src="./docs/assets/dplpy.png" width="175"> 
 
 # dplPy -the Dendrochronology Program Library in Python
 The Dendrochronology Program Library (DPL) in Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html) created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
@@ -31,6 +31,7 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
     - [Detrending using `detrend`](#detrending-using-detrend)
     - [Autoregressive (AR) modeling](#autoregressive-ar-modeling)
     - [Build a chronology with `chron`](#build-a-chronology-with-chron)
+    - [Build a variance stabilized chronology with `chron_stabilized`](#build-a-variance-stabilized-chronology-with-chron_stabilized)
     - [Crossdate with `xdate`](#crossdate-with-xdate)
 
 ---
@@ -38,7 +39,7 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
 ## Requirements
 
 - Python (>=3.10)
-- Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html))
+- Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html)), or [Pip](https://pip.pypa.io/en/stable/installation/)
 - (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
 - (Suggested) [VSCode](https://code.visualstudio.com/)
 
@@ -114,15 +115,17 @@ Your environment should be successfully built.
 
 ### Linux or MacOS
 
-1\. In your VSCode terminal, activate the conda environment with `conda activate dplpy3`.
+Note: The instructions in this section assume the conda environment where you have dplpy and its dependencies installed is named `dplpy`
 
-2\. Open a Jupyer Notebook (`<file>.ipynb`) and select the `dplpy3` Kernel when prompted (or from the top right of your screen). This will automatically load the environment we created.
+1\. In your VSCode terminal, activate the conda environment with `conda activate dplpy`.
+
+2\. Open a Jupyer Notebook (`<file>.ipynb`) and select the `dplpy` Kernel when prompted (or from the top right of your screen). This will automatically load the environment we created.
 
 ### Windows
 
 In VSCode:
 
-1\. In your VSCode terminal window, activate the conda environment with `conda activate dplpy3`.
+1\. In your VSCode terminal window, activate the conda environment with `conda activate dplpy`.
 
 2\. In the same terminal window, start a Jupyter Notebook with `jupyter notebook`. Jupyter will then return URLs that you can copy; *Copy* one of these URLs. 
 
@@ -141,34 +144,34 @@ A dropdown menu will open from the top of the screen: select Existing and *paste
 ## Functionalities and Usage
 
 Import the dplPy tool with
+```
+import dplpy 
+```
+or to import with an alias (we will use `dpl`):
 
 ```
 import dplpy as dpl
 ```
-
-or alternatively:
-
-```
-import dplpy 
-```
   
-This will load the package and its functions.
+This will load the package and its functions, allowing them to be accessed with the package name or alias given.
 
 
 ### Loading data using  `readers`
 
 - Description: reads data from supported file types (`csv` and `rwl`) and stores them in a dataframe.
 - Options: 
-    - `header`: input files often have a header present; Default is `False`, use `True` if input has a header.
-- Usage example:
+    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
+- Usage examples:
     ```
+    >>> data = dpl.readers("/path/to/file.csv")
+    # or
     >>> data = dpl.readers("/path/to/file.rwl", header=True)
     ```
 
 ### Data Summary from `summary`
 
 - Description: generates a summary of each series recorded in `rwl`  and `csv` format files
-- Usage Example:
+- Usage examples:
     ```
     >>> dpl.summary("/path/to/file.rwl")
     # or
@@ -187,7 +190,7 @@ This will load the package and its functions.
 
 ### Data Report from `report`
 
-- Description: generates a report about absent rings in the data set
+- Description: generates a report about ring measurements and absent rings in the data set
 - Usage Example:
     ```
     >>> dpl.report("/path/to/file.rwl")
@@ -197,7 +200,7 @@ This will load the package and its functions.
 
 ### Plotting
 
-- Description: generates plots of tree ring with data from dataframes. Currently capable of generating `line` (default), `spag` (spaghetti) and `seg` (segment) plots.
+- Description: generates plots of tree ring with data from dataframes. Currently capable of generating `line`, `spag` (spaghetti) and `seg` (segment, default) plots.
 - Options:
     - `type="line"`: creates a line plot (default)
     - `type="spag"`: creates a spaghetti plot
@@ -225,21 +228,23 @@ This will load the package and its functions.
     - `fit="horizontal"`: detrending using the horizontal method.
     - `method="residual"`: calculates residuals vs original data (default).
     - `method="difference"`: calculates differences vs original data.
-    - `Plot`: plotting results default is `True`, accepts `False`.
+    - `plot=True|False`: whether or not to plot results, default is `True`.
 - Usage Example:
     ```
+    # detrend with default options
     >>> dpl.detrend(data)
-    # or
+    
+    # specify fit to hugershoff curve and detrend with difference
     >>> dpl.detrend(data, fit="Hugershoff", method="difference")
 
-    # User is able to select specific series of interests.
+    # detrend only SERIES_1, SERIES_2 and SERIES_3
     >>> dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
     ```
 
 
 ### Autoregressive (AR) modeling 
 
-- Description: ontains methods that fit series to autoregressive models and perform functions related to AR modeling.
+- Description: Contains methods that fit series to autoregressive models and perform functions related to AR modeling.
 - Functions:
     - `autoreg(data['Name of series'], max_lag)`: returns parameters of best fit AR model with maxlag of 5 (default) or other specified number
     - `ar_func(data['Name of series'], max_lag)`: returns residuals plus mean of best fit from AR models with max lag of either 5 (default) or specified number
@@ -267,6 +272,42 @@ This will load the package and its functions.
     # Perform chronology
     >>> dpl.chron(rwi_data, biweight=False, plot=False)
     ```
+
+### Build a variance stabilized chronology with `chron_stabilized`
+
+- Description: Builds a variance stabilized mean-value chronology for a dataset of **detrended** ring width indices, by multiplying the chronology with the square root of the effective independent sample size, $ Neff $.
+
+    Note: where n(t) is the number of series at time t, and rbar is the running interseries correlation, 
+
+    $$ Neff = { n(t) \over 1+(n(t)-1)rbar(t) } $$
+
+- Options:
+    - `win_length`: an integer for specifying the window lengths where interseries correlations will be calculated (default `50`). Should not be greater than the number of years in the dataset, recommended to be between 30% and 50% of the number of years.
+    - `min_seg_ratio`: the minimum ratio of non-NA values to the window length for a series to be considered in an Neff calculation (default `0.33`).
+    - `biweight`: boolean indicating whether or not to use Tukey's bi-weight robust mean when calculating the mean-value chronology; default `True`.
+    - `running_rbar`: boolean indicating whether or not to return the running interseries correlations as part of chronology output; default `False`.
+- Usage Example:
+    ```
+    # Detrend data first!
+    >>> rwi_data = dpl.detrend(data)
+
+    # Perform chronology with default args
+    >>> dpl.chron_stabilized(rwi_data)
+
+    # Specify win_length, min_seg_ratio and running_rbar
+    >>> dpl.chron_stabilized(rwi_data, win_length=60, min_seg_ratio=0.5, running_rbar=True)
+    ```
+
 ### Crossdate with `xdate`
-- Description: evaluate the dating accuracy of a set of tree-ring measurements
-- Options: 
+- Description: This function calculates correlation serially between each tree-ring series and a master chronology built from all the other series in the dataset (leave-one-out principle).
+- Options:
+    - `prewhiten`: default `True`, determines whether or not to prewhiten series using AR modeling
+    - `corr`: default `'Spearman'`, the type of correlation to use. Can be `'Pearson'` or `'Spearman'`.
+    - `slide_period`: default `50`, the number of years to compare to the master chronology at a time.
+    - `bin_floor`: default `100`, determines the minimum bin year. The minimum bin year is calculated as $ \lceil (min\_yr/bin\_floor)\rceil*bin.floor $ where `min_yr` is the first year in the dataset.
+    - `p_val`: default `0.05`, determines the critical value below which interseries correlations are flagged.
+    - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
+- Usage examples:
+    ```
+    
+    ```
