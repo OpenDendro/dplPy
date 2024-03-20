@@ -51,7 +51,7 @@ def ar_func(data: pd.DataFrame | pd.Series, max_lag=5) -> (pd.DataFrame | pd.Ser
    
     Returns
     -------
-    res :  pandas dataframe or series, depending on which was given as input.
+    res :  pandas dataframe or series of AR-modeled data, depending on which was given as input.
     
     Examples
     --------
@@ -111,10 +111,10 @@ def autoreg(data: pd.Series, max_lag=5):
 
     Parameters
     ----------
-    series : str
+    series : pd.Series
         an individual (Pandas) series representing tree rings/widths.
     lag : int, default 5
-        nuber of years.
+        max lag to consider when selecting the AR model.
             
     Returns
     -------

@@ -45,28 +45,23 @@ def plot(inp: pd.DataFrame | str, type="seg"):
     
     Extended Description
     --------------------
-    Plots a given dataframe or series of a specific dataframe in either 
-    line ('default'), spaghetti ('spag') or segment ('seg') plots.
+    Plots a given dataframe in line ('line'), spaghetti ('spag') or segment ('seg') plots.
                  
     Parameters
     ----------
-    data : str 
-           a data frame loaded using dpl.readers()
-    series : str
-             a single time series within the data array
+    data : str | DataFrame
+            a file path to a .csv or .rwl file containing the data, or a data frame loaded using dpl.readers()
     type : str, default line
            type of plot to generate, e.g., line, spaghetti ('spag'), or segment ('seg') or 'line'.
 
     Returns
     -------
-    plot : matplotlib.pyplot figure
-           a plot of the data
+    None
     
     Examples
     --------
     >>> dpl.plot(<data>)
-    # Plot series subset of dataframe with a specified plot type
-    >>> dpl.plot(<data>["<series>"], type=<plot type>)
+    >>> dpl.plot(<data>, type=<plot type>)
     
     References
     ----------
