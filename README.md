@@ -1,5 +1,5 @@
  <p align="center">
- <img src="./docs/assets/dplpy.png" width="175"> 
+ <img src="https://github.com/OpenDendro/dplPy/blob/main/docs/assets/dplpy.png?raw=true" width="175"> 
 
 # dplPy -the Dendrochronology Program Library in Python
 The Dendrochronology Program Library (DPL) in Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html) created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
@@ -24,15 +24,17 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
     - [Windows](#windows)
   - [Functionalities and Usage](#functionalities-and-usage)
     - [Loading data using  `readers`](#loading-data-using--readers)
+    - [Loading data from online sources using `readers_url`](#loading-data-from-online-sources-using-readers_url)
     - [Data Summary from `summary`](#data-summary-from-summary)
     - [Data Stastics from `stats`](#data-stastics-from-stats)
     - [Data Report from `report`](#data-report-from-report)
-    - [Plotting](#plotting)
+    - [Plotting raw data with `plot`](#plotting-raw-data-with-plot)
     - [Detrending using `detrend`](#detrending-using-detrend)
     - [Autoregressive (AR) modeling](#autoregressive-ar-modeling)
     - [Build a chronology with `chron`](#build-a-chronology-with-chron)
     - [Build a variance stabilized chronology with `chron_stabilized`](#build-a-variance-stabilized-chronology-with-chron_stabilized)
     - [Crossdate with `xdate`](#crossdate-with-xdate)
+    - [Output data to files using `writers`](#output-data-to-files-using-writers)
 
 ---
 
@@ -168,6 +170,18 @@ This will load the package and its functions, allowing them to be accessed with 
     >>> data = dpl.readers("/path/to/file.rwl", header=True)
     ```
 
+### Loading data from online sources using  `readers_url`
+**Note: This function is still in development and has only been tested so far with `rwl` raw data files from the [NCEI website](https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/)**
+
+- Description: reads `rwl` formatted data directly from online sources.
+- Options: 
+    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
+- Usage examples:
+    ```
+    >>> data = dpl.readers_url("http://link/to/file.rwl")
+    >>> data = dpl.readers_url("http://link/to/file.rwl", header=True)
+    ```
+
 ### Data Summary from `summary`
 
 - Description: generates a summary of each series recorded in `rwl`  and `csv` format files
@@ -198,7 +212,7 @@ This will load the package and its functions, allowing them to be accessed with 
     >>> dpl.report(data)
     ```
 
-### Plotting
+### Plotting raw data with `plot`
 
 - Description: generates plots of tree ring with data from dataframes. Currently capable of generating `line`, `spag` (spaghetti) and `seg` (segment, default) plots.
 - Options:
@@ -309,5 +323,29 @@ This will load the package and its functions, allowing them to be accessed with 
     - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
 - Usage examples:
     ```
-    
+    >>> ca533_rwi = dpl.detrend(ca533, plot=False)
+
+    # Crossdating of detrended data with default args
+    >>> dpl.xdate(ca533_rwi)
+
+    # Crossdating with Pearson correlation and show flags 
+    # (other options set to defaults when not specified).
+    >>> dpl.xdate(ca533_rwi, corr="Pearson" show_flags=True)
+    ```
+
+### Output data to files using  `writers`
+
+- Description: writes data from dataframe to supported file types (`csv`, `rwl`, `crn`, `txt`).
+- Required parameters: 
+    - `data`: dataframe with ring widths (presumably one read from `readers` or `readers_url`)
+    - `label`: name (can include file path) to give to the created file. **should not include file extension**
+    - `format`: extension for file to be created. Can be `'csv'`, `'rwl'`, `'crn'` or `'txt'`.
+
+- Usage examples:
+    ```
+    # Write data to file_name.csv in current working directory.
+    >>> dpl.writers(data, "file_name", "csv")
+
+    # Write data to file_name.csv in ./path/to/ directory.
+    >>> dpl.writers(data, "./path/to/file_name", "csv")
     ```
