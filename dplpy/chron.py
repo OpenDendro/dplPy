@@ -90,12 +90,12 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
     chron_data = {}
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
-        for year in series_data.keys().tolist():
+        for year, value in series_data.items():
             if year not in chron_data:
-                chron_data[year] = [1, series_data[year]]
+                chron_data[year] = [1, value]
             else:
                 chron_data[year][0] += 1
-                chron_data[year].append(series_data[year])
+                chron_data[year].append(value)
     
     years, means, depths = get_chron_info(chron_data, biweight)
     chron_res = pd.DataFrame(data={"Year":years})
@@ -140,18 +140,14 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight):
 
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
-        series_years = series_data.keys().tolist()
         ar_fit_data[series] = ar_func(series_data)
 
-        offset = len(series_years) - len(ar_fit_data[series])
-        i = 0
-        for year in series_years[offset:]:
+        for year, value in ar_fit_data[series].items():
             if year not in whitened_data:
-                whitened_data[year] = [1, ar_fit_data[series].iloc[i]]
+                whitened_data[year] = [1, value]
             else:
                 whitened_data[year][0] += 1
-                whitened_data[year].append(ar_fit_data[series].iloc[i])
-            i += 1
+                whitened_data[year].append(value)
 
     whitened_means = []
     for year in sorted(chron_data):

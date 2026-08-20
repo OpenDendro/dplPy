@@ -90,12 +90,11 @@ def ar_func_series(data: pd.Series, max_lag) -> pd.Series:
     yi = fitted_values(y, pars)
 
     res = y[len(pars)-1:] - yi
-    
+
     mean = np.mean(y)
 
     # Add mean to the residuals
-    for i in range(len(res)):
-        res.iloc[i] += mean
+    res = res + mean
 
     return res
 
@@ -151,11 +150,20 @@ def autoreg(data: pd.Series, max_lag=5):
 # given an array containing the original data and the parameters for
 # the AR model
 def fitted_values(data_series, params):
-    results = []
-    
-    for i in range((len(params)-1), len(data_series)):
-        pred = params.iloc[0]
-        for j in range(1, len(params)):
-            pred += (params.iloc[j] * data_series.iloc[i-j])
-        results.append(pred)
-    return np.asarray(results)
+    data_arr = np.asarray(data_series, dtype=float)
+    par = np.asarray(params, dtype=float)
+
+    p = len(par) - 1
+    n = len(data_arr)
+
+    if n <= p:
+        return np.asarray([])
+
+    # pred[i] = par[0] + sum_{j=1..p} par[j] * data_arr[i-j], for i in [p, n-1].
+    # Vectorized over i via slicing; the inner sum over lags j is kept as a
+    # (typically short) Python loop so floating-point accumulation order,
+    # and therefore the result, matches the original nested-loop version.
+    results = np.full(n - p, par[0])
+    for j in range(1, len(par)):
+        results = results + par[j] * data_arr[p - j: n - j]
+    return results

@@ -30,6 +30,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 
 def tbrm(data, c=9):
+    data = np.asarray(data, dtype=float)
     e = 1 * pow(10, -8)
     m = np.median(data)
 
@@ -37,16 +38,9 @@ def tbrm(data, c=9):
 
     u = (data - m) / ((c * s) + e)
 
-    w = np.zeros(len(data))
-
-    for i in range(len(u)):
-        if abs(u[i]) <= 1:
-            w[i] = pow((1 - pow(u[i], 2)), 2)
+    w = np.where(np.abs(u) <= 1, (1 - u ** 2) ** 2, 0.0)
 
     return np.sum(w*data)/np.sum(w)
 
 def getabs(data):
-    for i in range(len(data)):
-        data[i] = abs(data[i])
-    
-    return data
+    return np.abs(data)
