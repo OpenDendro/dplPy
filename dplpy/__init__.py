@@ -2,7 +2,7 @@
 
 __author__ = "Tyson Lee Swetnam"
 __email__ = "tswetnam@arizona.edu"
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses

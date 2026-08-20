@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.1.5
+      - v0.1.6
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.1.5
+          ref: v0.1.6
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,9 +37,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.1.5
-          release_name: v0.1.5
+          tag_name: v0.1.6
+          release_name: v0.1.6
           body: |
-            Testing auto deployment to pypi and git.
+            Compatibility fix: relax the csaps pin (was ==1.1.0, now >=1.1.0) and remove
+            the numpy<2 cap, which were blocking install under numpy 2.0 / Python 3.13.
+            Also raises minimum versions for pandas, scipy, statsmodels, and matplotlib
+            to releases confirmed compatible with numpy 2.0.
           draft: false
           prerelease: true

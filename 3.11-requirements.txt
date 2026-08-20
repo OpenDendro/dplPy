@@ -1,6 +1,6 @@
-numpy==1.23.2
-statsmodels==0.13.5
-matplotlib==3.8.0
-csaps==1.1.0
-pandas==2.0.0
-scipy==1.11.3
+numpy>=1.23.2
+statsmodels>=0.14.2
+matplotlib>=3.8.4
+csaps>=1.1.0
+pandas>=2.2.2,<3
+scipy>=1.13.0
