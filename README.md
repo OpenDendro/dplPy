@@ -39,8 +39,6 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
 
 - Python (>=3.10)
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html)), or [Pip](https://pip.pypa.io/en/stable/installation/)
-- (Suggested) [Mamba](https://mamba.readthedocs.io/en/latest/installation.html)
-- (Suggested) [VSCode](https://code.visualstudio.com/)
 
 Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`.
 
