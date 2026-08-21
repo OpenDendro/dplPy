@@ -19,9 +19,6 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
   - [Current Version and Changelog](#current-version-and-changelog)
   - [Installation](#installation)
   - [Building directly from Github](#building-directly-from-github)
-  - [Using VSCode in your operating system](#using-vscode-in-your-operating-system)
-    - [Linux or MacOS](#linux-or-macos)
-    - [Windows](#windows)
   - [Functionalities and Usage](#functionalities-and-usage)
     - [Loading data using  `readers`](#loading-data-using--readers)
     - [Loading data from online sources using `readers_url`](#loading-data-from-online-sources-using-readers_url)
@@ -110,36 +107,6 @@ $ conda activate dplpy
 Your environment should be successfully built.
 
 4\. Your python environment should be able to import `numpy`, `pandas`, `matplotlib`, `statsmodels` and `csaps`.
-
----
-
-## Using VSCode in your operating system
-
-### Linux or MacOS
-
-Note: The instructions in this section assume the conda environment where you have dplpy and its dependencies installed is named `dplpy`
-
-1\. In your VSCode terminal, activate the conda environment with `conda activate dplpy`.
-
-2\. Open a Jupyer Notebook (`<file>.ipynb`) and select the `dplpy` Kernel when prompted (or from the top right of your screen). This will automatically load the environment we created.
-
-### Windows
-
-In VSCode:
-
-1\. In your VSCode terminal window, activate the conda environment with `conda activate dplpy`.
-
-2\. In the same terminal window, start a Jupyter Notebook with `jupyter notebook`. Jupyter will then return URLs that you can copy; *Copy* one of these URLs. 
-
-3\. Open a Jupyter Notebook (`<file>.ipynb`) and from the **bottom right** of the VSCode screen, click **Jupyter Server**;
-
-![ipynb_env2](docs/assets/ipynb_env2.jpg) 
-
-A dropdown menu will open from the top of the screen: select Existing and *paste* the URL you copied.
-
-![ipynb_env3](docs/assets/ipynb_env3.jpg)
-
-4\. Jupyter Notebook will now be able to access the environment created.
 
 ---
 
