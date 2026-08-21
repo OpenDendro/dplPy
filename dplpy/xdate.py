@@ -154,10 +154,10 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
         flags = {"A":[], "B":[]}
         
         # evaluation of current series vs chronology of others by segments of years (the bins created earlier)
-        for range in bins:
-            # print(range) # useful for debugging but not necessary once operational
-            start = int(re.split("(?<=\\d)-", range)[0])
-            end = int(re.split("(?<=\\d)-", range)[1])
+        for bin_range in bins:
+            # print(bin_range) # useful for debugging but not necessary once operational
+            start = int(re.split("(?<=\\d)-", bin_range)[0])
+            end = int(re.split("(?<=\\d)-", bin_range)[1])
             if start >= removed.first_valid_index() and end <= removed.last_valid_index():
                 segment = removed.loc[start:end]
 
@@ -165,9 +165,9 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, 
 
                 if flag is not None:
                     flags[flag].append(flag_data)
-                bin_data[range].append(seg_corr)
+                bin_data[bin_range].append(seg_corr)
             else:
-                bin_data[range].append(np.nan)
+                bin_data[bin_range].append(np.nan)
         #ready_series_copy[series] = removed
         ready_series_copy = pd.concat([ready_series_copy, removed], axis=1)
         
@@ -264,7 +264,7 @@ def pad_start_and_end_of_series_graph(series, first, second, penult, last, num, 
 
 # Helper function that determines the color of a segment of the graph depending on the correlation value.
 def get_graph_color(corr_val):
-    if corr_val == np.nan:
+    if np.isnan(corr_val):
         return '#00ff00'
     elif corr_val < 0.1:
         return '#ff0d1a'
@@ -313,10 +313,10 @@ def get_bins(first_year, last_year, bin_floor, slide_period):
 
 # Returns the correlation value of the given data. Can find Spearman or Pearson's
 # correlations
-def correlate(data, type):
-    if type == "Spearman":
+def correlate(data, corr_type):
+    if corr_type == "Spearman":
         return scipy.stats.spearmanr(data, axis=0).correlation
-    elif type == "Pearson":
+    elif corr_type == "Pearson":
         return np.corrcoef(data, rowvar=False)[0, 1]
 
 def get_crit(alpha=0.01, n=50, type="one-tailed"):
@@ -335,13 +335,13 @@ def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, s
     flag = None
 
     if segment.size < slide_period:
-        return
+        return np.nan, None, None
     series_name = segment.name
     data = pd.concat([segment, new_chron], axis=1, join='inner')
     original = correlate(data, correlation_type)
 
     # Will set threshold to 99% confidence p value that is based on segment length.
-    if original < get_crit(p_val):
+    if original < get_crit(p_val, n=slide_period):
         flag = "A"
 
     if not slide:

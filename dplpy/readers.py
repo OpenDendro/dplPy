@@ -128,7 +128,10 @@ def process_rwl_pandas(filename, skip_lines, header):
     
     df = pd.DataFrame(data={"Year":indexes})
 
-    # store raw data in pandas dataframe
+    # store raw data in pandas dataframe. Build each series' column in a list first and
+    # concat once at the end rather than repeatedly concatenating inside the loop -- the
+    # latter is O(n^2) and gets very slow for files with many series.
+    series_columns = []
     for series in rwl_data:
         series_data = []
         for i in range(first_date, last_date):
@@ -136,7 +139,8 @@ def process_rwl_pandas(filename, skip_lines, header):
                 series_data.append(rwl_data[series][i]/rwl_data[series]["div"])
             else:
                 series_data.append(np.nan)
-        df = pd.concat([df, pd.Series(data=series_data, name=series)], axis=1)
+        series_columns.append(pd.Series(data=series_data, name=series))
+    df = pd.concat([df] + series_columns, axis=1)
     return df
 
 # Extract raw data from lines of .rwl file and store in a nested dictionary

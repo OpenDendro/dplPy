@@ -58,8 +58,9 @@ def common_interval(data):
     # row (startyear) and column (block length) position of maximum value - is this an OK way to do this? tried other things that didn't work
 
     start_year, window_width = np.where(N0 == np.nanmax(N0))
+    # In case of a tie for the maximum, arbitrarily take the first one found.
     # this gives the same answer as MATLAB - 1828 to 1982 common interval
-    return year[int(start_year)], year[int(start_year+window_width-1)]
+    return year[int(start_year[0])], year[int(start_year[0] + window_width[0] - 1)]
 
   
 # rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.

@@ -62,20 +62,23 @@ from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
 from writers import writers
+from cli import help, readme
 
 __all__ = [
-    readers,
-    summary,
-    stats,
-    report,
-    plot,
-    detrend,
-    ar_func,
-    autoreg,
-    chron,
-    chron_stabilized,
-    xdate,
-    xdate_plot,
-    series_corr,
-    writers
+    "readers",
+    "summary",
+    "stats",
+    "report",
+    "plot",
+    "detrend",
+    "ar_func",
+    "autoreg",
+    "chron",
+    "chron_stabilized",
+    "xdate",
+    "xdate_plot",
+    "series_corr",
+    "writers",
+    "help",
+    "readme",
 ]

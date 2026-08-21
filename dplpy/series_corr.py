@@ -126,7 +126,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
     plt.style.use('seaborn-v0_8-darkgrid')
     wid = max((end - start)//30, 1)
     hei = 10
-    base_corr = get_crit(p_val)
+    base_corr = get_crit(p_val, n=seg_length)
     
     dimensions = (wid, hei)
     plt.figure(num=1, figsize=(dimensions))

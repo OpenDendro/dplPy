@@ -104,13 +104,13 @@ def stats(inp: pd.DataFrame | str):
     return statistics
 
 def get_gini(data_array):
-    # might need to work on more efficient solution
-    # Mean absolute difference
-    mad = np.abs(np.subtract.outer(data_array, data_array)).mean()
-    # Relative mean absolute difference
-    rmad = mad/np.mean(data_array)
-    # Gini coefficient
-    g = 0.5 * rmad
+    # Sort-based O(n log n) formula, equivalent to the mean-absolute-difference
+    # definition but avoids materializing an O(n^2) pairwise difference matrix.
+    sorted_data = np.sort(np.asarray(data_array, dtype=float))
+    n = len(sorted_data)
+    ranks = np.arange(1, n + 1)
+    total = np.sum(sorted_data)
+    g = (2 * np.sum(ranks * sorted_data) - (n + 1) * total) / (n * total)
     return g
 
 # gets skew values for each series

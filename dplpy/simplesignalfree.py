@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
 from scipy.signal import medfilt
-import dplpy as dpl
 from math import cos
 from math import pi
 from csaps import csaps
-from dplpy.smoothingspline import spline
+from readers import readers
+from stats import stats
+from chron import chron
+from smoothingspline import spline
 from agedepspline import ads_R2Py
 
 # Date: 01/24/2024
@@ -51,7 +53,7 @@ def ssf(rwl,
     # check class of rwl
     if not isinstance(dat, pd.DataFrame):
         print("Input data needs to be a rwl DataFrame. Attempting to coerce.")
-        dat = dpl.readers(dat)  #will error if cannot coerce 
+        dat = readers(dat)  #will error if cannot coerce 
 
     
    # recode zeros to 0.001 if asked.
@@ -81,7 +83,7 @@ def ssf(rwl,
     nSeries = dat.shape[1]
     nYrs = dat.shape[0]
     medianAbsDiff = 1
-    datSummary = dpl.stats(dat)
+    datSummary = stats(dat)
     medianSegLength = datSummary['year'].median()
 
     # Make some storage objects
@@ -125,9 +127,9 @@ def ssf(rwl,
             raise ValueError("All values are 'NA'")
         elif any(np.diff(good_y) != 1):
             raise ValueError("'NA's are not allowed in the middle of the series")
-        try:
+        if isinstance(y, (pd.Series, pd.DataFrame)):
             y2 = y.iloc[good_y]
-        except Exception as e:
+        else:
             y2 = y[good_y]
 
         nY2 = len(y2) #not used (in R either)
@@ -167,9 +169,9 @@ def ssf(rwl,
         datCurves = np.full_like(dat, np.nan)
 
         for i in range(n_cols):
-            try:
+            if isinstance(dat, (pd.Series, pd.DataFrame)):
                 y = dat.iloc[:, i]
-            except Exception as e:
+            else:
                 y = dat[:, i]
 
 
@@ -197,7 +199,7 @@ def ssf(rwl,
     datRWI.set_index("Years", inplace=True)
 
     # and initial chron at iter0
-    iter0Crn = dpl.chron(datRWI, biweight=True,plot=False)
+    iter0Crn = chron(datRWI, biweight=True,plot=False)
     # Check for zeros in the chronology. This can happen in VERY sensitive
     # chrons with years that mostly zeros if the chron is built with tukey's
     # biweight robust mean (e.g., co021). This causes problems with div0 later on
@@ -205,7 +207,7 @@ def ssf(rwl,
     # head off any zeros in the chron unless the data themseleves are bunk.
     # e.g., UT024.
     if any((iter0Crn.iloc[:,0]) == 0):
-        iter0Crn = dpl.chron(datRWI, biweight=False,plot=False)
+        iter0Crn = chron(datRWI, biweight=False,plot=False)
 
     # Additional check. If there are still zeros it should mean that the OG data were passed in with zeros.
     if any((iter0Crn.iloc[:, 0]) == 0):
@@ -247,14 +249,14 @@ def ssf(rwl,
         sfRWI_Array[:, :, 0] = dat.values / sfRWRescaledCurves_Array[:, :, 0]
 
     # STEP 7 - create 1st signal-free chronology
-    sfCrn_Mat[:, 0] = dpl.chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=True, plot=False).iloc[:, 0]
+    sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=True, plot=False).iloc[:, 0]
     # Check for zeros in the chronology. This can happen in VERY sensitive
     # chrons with years that mostly zeros if the chron is built with tukey's
     # biweight robust mean (e.g., co021). This causes problems with div0 later on
     # so if there are any zeros in the chron, switch straight mean which should
     # head off any zeros in the chron unless the data themseleves are bunk
     if any(sfCrn_Mat[:, 0] == 0):
-        sfCrn_Mat[:, 0] = dpl.chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False,plot=False).iloc[:, 0]
+        sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False,plot=False).iloc[:, 0]
     
     # And calc the high freq crn that will be used to determine MAD stopping crit
     hfCrn_Mat[:, 0] = sfCrn_Mat[:, 0] - spline(y=sfCrn_Mat[:, 0], x=np.arange(1, len(sfCrn_Mat[:, 0]) + 1), period=int(np.floor(medianSegLength)))
@@ -305,14 +307,14 @@ def ssf(rwl,
             sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
         
         # STEP 7 - create kth signal-free chronology
-        sfCrn_Mat[:, k] = dpl.chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=True, plot=False).iloc[:, 0]
+        sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=True, plot=False).iloc[:, 0]
         # Check for zeros in the chronology. This can happen in VERY sensitive
         # chrons with years that mostly zeros if the chron is built with tukey's
         # biweight robust mean (e.g., co021). This causes problems with div0 later on
         # so if there are any zeros in the chron, switch straight mean which should
         # head off any zeros in the chron unless the data themseleves are bunk   
         if any(sfCrn_Mat[:, k] == 0):
-            sfCrn_Mat[:, k] = dpl.chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
+            sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
 
         # Now look at diffs in fit using median abs diff in the high freq resids
         # This is the (high freq) resids from the current iter minus the resids from prior iter
