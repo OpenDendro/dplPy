@@ -16,8 +16,11 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
 
     Neff = n(t) / 1+(n(t)-1)rbar(t)
 
-        where n(t) is the number of series at time t, and rbar is the 
-        interseries correlation. 
+        where n(t) is the number of series at time t, and rbar(t) is the
+        mean pairwise correlation between all series (not "interseries
+        correlation" -- see dpl.interseries_cor() -- which correlates each
+        series against a composite chronology of the others, rather than
+        against each other series individually).
 
     In the limiting cases, when the rbar is zero or unity, Neff obtains 
     values of the true sample size and unity, respectively.
@@ -28,7 +31,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
     This is a port of dplR's chron.stabilized() (see reference below); the
     intent is to match that implementation's behavior as closely as possible,
     including its two independent window-length recommendations and its use
-    of an unfiltered overall interseries correlation (as opposed to the
+    of an unfiltered overall rbar constant (as opposed to the
     windowed rbar, which does apply the min_seg_ratio overlap filter).
 
     Parameters
@@ -36,7 +39,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
     rwi_data : pd.DataFrame
         a Pandas dataset representing detrended tree rings/widths.
     win_length : int, default 50
-        an integer for specifying the window lengths where interseries correlations
+        an integer for specifying the window lengths where rbar values
         will be calculated.
     min_seg_ratio : float, default 0.33
         the minimum ratio of non-NA values to the window length for a series to be
@@ -45,8 +48,8 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
         flag indicating whether or not to use Tukey's bi-weight robust mean when
         calculating the mean-value chronology
     running_rbar : boolean, default False
-        flag indicating whether or not to return the running interseries
-        correlations as part of chronology output
+        flag indicating whether or not to return the running rbar values
+        as part of chronology output
             
     Returns
     -------

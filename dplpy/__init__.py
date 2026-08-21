@@ -61,6 +61,7 @@ from chron import chron
 from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
+from interseries_cor import interseries_cor
 from writers import writers
 from cli import help, readme
 
@@ -78,6 +79,7 @@ __all__ = [
     "xdate",
     "xdate_plot",
     "series_corr",
+    "interseries_cor",
     "writers",
     "help",
     "readme",

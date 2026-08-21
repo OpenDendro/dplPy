@@ -291,6 +291,40 @@ def get_ar_lag(data):
     res = min(int(n-1), int(10 * np.log10(n)))
     return res
 
+# Normalizes a dataset of raw ring widths for crossdating-style comparisons:
+# divides each series by its own mean (dplPy's "horizontal" detrend, the
+# equivalent of dplR's normalize.xdate()/normalize1() without a Hanning
+# filter option), then optionally prewhitens each series with an AR model.
+# Shared by series_corr() and interseries_cor(), which both need this same
+# preparation step before building leave-one-out composite chronologies.
+def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFrame:
+    rwi_data = detrend(data, fit="horizontal", plot=False)
+
+    # if detrending returns error, raise to output
+    if isinstance(rwi_data, ValueError) or isinstance(rwi_data, TypeError):
+        raise rwi_data
+
+    # drop nans, prewhiten series if necessary
+    df_start = pd.DataFrame(index=pd.Index(data.index))
+    to_concat = [df_start]
+
+    for series in rwi_data:
+        nullremoved_data = rwi_data[series].dropna()
+        if prewhiten is True:
+            try:
+                res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
+                offset = len(nullremoved_data) - len(res)
+                to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
+            except ZeroDivisionError:
+                print("Zero division error for series:", series, ". Dropping series.")
+        else:
+            to_concat.append(nullremoved_data)
+
+    ready_series = pd.concat(to_concat, axis=1)
+    ready_series = ready_series.rename_axis(data.index.name)
+
+    return ready_series
+
 # Generates the bins given the first and last years of recorded data, the bin floor and
 # the desired number of years in a period (bin).
 def get_bins(first_year, last_year, bin_floor, slide_period):

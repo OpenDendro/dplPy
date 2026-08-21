@@ -34,10 +34,8 @@ __license__ = "GNU GPLv3"
 # >>> dpl.series_corr(data, "series_name")
 # >>> dpl.series_corr(data, "series_name", prewhiten=False, corr="Pearson", bin_floor=10)
 
-from detrend import detrend
-from autoreg import ar_func_series
 from chron import chron
-from xdate import get_ar_lag, correlate, compare_segment, get_crit
+from xdate import correlate, compare_segment, get_crit, normalize_for_crossdating
 
 import pandas as pd
 import numpy as np
@@ -94,21 +92,10 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spea
         errorMsg = "Series named " + series_name + " not found in provided dataframe."
         raise ValueError(errorMsg)
 
-    rwi_data = detrend(data, fit="horizontal", plot=False)
- 
-    # drop nans, prewhiten series if necessary
-    df_start = pd.DataFrame(index=pd.Index(data.index))
-    to_concat = [df_start]
-    for series in rwi_data:
-        nullremoved_data = rwi_data[series].dropna()
-        if prewhiten is True:
-            res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
-            offset = len(nullremoved_data) - len(res)
-            to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
-        else:
-            to_concat.append(nullremoved_data)
-    ready_series = pd.concat(to_concat, axis=1)
-    ready_series = ready_series.rename_axis(data.index.name)
+    # Horizontal-detrend and (optionally) AR-prewhiten every series -- shared
+    # with interseries_cor(), which needs this same preparation step before
+    # building its own leave-one-out composite chronologies.
+    ready_series = normalize_for_crossdating(data, prewhiten)
 
     removed = ready_series.pop(series_name)
     new_chron = chron(ready_series, plot=False)["Mean RWI"]
