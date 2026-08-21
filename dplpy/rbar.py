@@ -29,6 +29,7 @@ __license__ = "GNU GPLv3"
 #              period of overlap
 
 import numpy as np
+import pandas as pd
 from detrend import detrend
 from chron import chron
 
@@ -104,17 +105,24 @@ def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
 
     return None
 
-def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio):
-    presence_df = data_set.notnull().astype('int')
-    trans_presence_df = presence_df.transpose()
-
+def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio, apply_mask=True):
+    # corr_mat.values / .to_numpy() can come back as a read-only view under
+    # numpy 2 / pandas' copy-on-write, so np.fill_diagonal needs an explicit,
+    # independent writable copy rather than the view pandas hands back.
     corr_mat = data_set.corr(corr_type)
-    np.fill_diagonal(corr_mat.values, np.nan)
+    corr_arr = corr_mat.to_numpy(copy=True)
+    np.fill_diagonal(corr_arr, np.nan)
+    corr_mat = pd.DataFrame(corr_arr, index=corr_mat.index, columns=corr_mat.columns)
 
-    overlap_mat = trans_presence_df @ presence_df
+    if apply_mask:
+        # Only used for the moving-window rbar (dplR's rbarWinLength): a series
+        # pair needs at least min_seg_ratio of the window's years overlapping
+        # to count. The overall rbar constant (apply_mask=False) is not
+        # filtered this way in dplR -- it's a plain pairwise-complete mean.
+        presence_df = data_set.notnull().astype('int')
+        trans_presence_df = presence_df.transpose()
+        overlap_mat = trans_presence_df @ presence_df
+        min_overlap = data_set.shape[0] * min_seg_ratio
+        corr_mat = corr_mat.where(overlap_mat >= min_overlap)
 
-    min_overlap = data_set.shape[0] * min_seg_ratio
-
-    corr_mat.where(overlap_mat > min_overlap, inplace=True)
-    
     return corr_mat.mean().mean()
