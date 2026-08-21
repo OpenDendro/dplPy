@@ -82,7 +82,7 @@ def report(inp: pd.DataFrame | str):
     no_of_measurements = series_data.count().sum()
     first_year = statistics["first"].min()
     last_year = statistics["last"].max()
-    missing_rings, avg_ar = get_report_stats(series_data)
+    missing_rings, internal_nans, avg_ar = get_report_stats(series_data)
 
     print("Number of dated series:", no_of_series)
     print("Number of measurements:", no_of_measurements)
@@ -95,37 +95,33 @@ def report(inp: pd.DataFrame | str):
     print("Years with absent rings listed by series\n")
     print_missing_ring_data(missing_rings)
     print("-------------")
-    print("Years with internal NA values listed by series")
+    print("Years with internal NA values listed by series\n")
+    print_missing_ring_data(internal_nans)
 
-# Analyze the dataframe to generate report on missing data (and eventually internal NAs)
+# Analyze the dataframe to generate report on missing data (and internal NAs)
 def get_report_stats(series_data):
     ar1s = []
     missing_rings = {}
-    nans = {}
+    internal_nans = {}
     for series_name, data in series_data.items():
         missing_rings[series_name] = list(map(str, data[data==0].index.tolist()))
-        nans[series_name] = list(map(str, data[pd.isna(data)].index.tolist()))
+        internal_nans[series_name] = list(map(str, get_internal_na_years(data)))
         ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
     avg_ar = sum(ar1s)/len(ar1s)
 
-    #print(nans)
-    internal_nans = {}
-    for series_name, data in nans.items():
-        if len(data) == 0:
-            continue
-        i = 1
-        j = len(data) - 2
-        
-        while j > i:
-            if data[i] != (data[i-1] + 1) and data[j+1] != (data[j] + 1):
-                internal_nans[series_data] = data[i:j]
-                break
-            if data[i] == data[i-1] + 1:
-                i += 1
-            if data[j+1] == data[j] + 1:
-                j += 1
+    return missing_rings, internal_nans, avg_ar
 
-    return missing_rings, avg_ar
+# Finds years with NA (missing) values that fall strictly within a series' own
+# first-to-last valid year span, i.e. excludes years before the series starts
+# or after it ends (which simply lie outside its span, not gaps within it).
+def get_internal_na_years(data):
+    valid = data.dropna()
+    if valid.empty:
+        return []
+    first_valid_year = valid.index.min()
+    last_valid_year = valid.index.max()
+    within_span = data.loc[first_valid_year:last_valid_year]
+    return within_span[within_span.isna()].index.tolist()
 
 # Print data about missing rings
 def print_missing_ring_data(missing_rings):
