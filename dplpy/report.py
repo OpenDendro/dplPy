@@ -104,7 +104,7 @@ def get_report_stats(series_data):
     nans = {}
     for series_name, data in series_data.items():
         missing_rings[series_name] = list(map(str, data[data==0].index.tolist()))
-        nans[series_name] = list(map(str, data[data==np.nan].index.tolist()))
+        nans[series_name] = list(map(str, data[pd.isna(data)].index.tolist()))
         ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
     avg_ar = sum(ar1s)/len(ar1s)
 
