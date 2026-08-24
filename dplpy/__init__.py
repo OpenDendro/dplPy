@@ -62,6 +62,9 @@ from chron_stabilized import chron_stabilized
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
 from interseries_cor import interseries_cor
+from read_ids import read_ids
+from rwi_stats import rwi_stats, rwi_stats_running
+from sss import sss
 from writers import writers
 from cli import help, readme
 
@@ -80,6 +83,10 @@ __all__ = [
     "xdate_plot",
     "series_corr",
     "interseries_cor",
+    "read_ids",
+    "rwi_stats",
+    "rwi_stats_running",
+    "sss",
     "writers",
     "help",
     "readme",
