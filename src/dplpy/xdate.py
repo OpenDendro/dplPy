@@ -358,7 +358,14 @@ def get_crit(alpha=0.01, n=50, type="one-tailed"):
         tcrit = scipy.stats.t.ppf(1-(alpha/2),n-2)
     else:
         tcrit = scipy.stats.t.ppf(1-(alpha),n-2)
-    
+
+    # A critical correlation is undefined for fewer than 3 observations
+    # (degrees of freedom n-2 <= 0). Return NaN rather than dividing by zero;
+    # downstream comparisons (original < NaN) are False, so nothing is flagged
+    # -- the same outcome as before, but without the RuntimeWarnings.
+    if n <= 2:
+        return np.nan
+
     cc = pow((tcrit/np.sqrt(n-2)), 2)
     rcrit = np.sqrt(cc/(1+cc))
     return rcrit
