@@ -28,6 +28,7 @@ jobs:
           pip install -r ${{ matrix.python-version }}-requirements.txt
           pip install pytest pytest-cov
           pip install ruff
+          pip install -e .
       - name: Lint with Ruff
         run: |
           ruff --output-format=github .
