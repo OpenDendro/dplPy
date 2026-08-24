@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.1.6
+      - v0.2.0
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.1.6
+          ref: v0.2.0
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,12 +37,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.1.6
-          release_name: v0.1.6
+          tag_name: v0.2.0
+          release_name: v0.2.0
           body: |
-            Compatibility fix: relax the csaps pin (was ==1.1.0, now >=1.1.0) and remove
-            the numpy<2 cap, which were blocking install under numpy 2.0 / Python 3.13.
-            Also raises minimum versions for pandas, scipy, statsmodels, and matplotlib
-            to releases confirmed compatible with numpy 2.0.
+            dplPy v0.2.0
+
+            New functionality:
+            - chron_ars(): ARSTAN standard, residual, and re-reddened ("ARSTAN")
+              chronologies, ported from dplR / Ed Cook's FORTRAN.
+            - rwi_stats() / rwi_stats_running(): running mean interseries correlation
+              (rbar), expressed population signal (EPS), and signal-to-noise ratio (SNR),
+              over the whole record or in moving windows.
+            - sss(): subsample signal strength.
+            - interseries_cor(): mean (COFECHA-style) interseries correlation.
+            - read_ids(): derive tree/core IDs from site-tree-core series names.
+
+            Improvements and fixes:
+            - chron_stabilized() and rbar: numpy 2.0 compatibility and closer alignment
+              with dplR's behavior.
+            - tbrm(): regularization epsilon aligned with dplR's implementation.
+            - xdate: guard get_crit() against very small sample sizes (n <= 2).
+
+            Internal:
+            - Repository converted to a src/ layout. No change to the public API --
+              existing scripts (e.g. dpl.readers(...)) work unchanged.
           draft: false
           prerelease: true
