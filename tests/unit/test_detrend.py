@@ -18,6 +18,9 @@ def mock_linear_method(x, inp_arr):
 def mock_horizontal_method(x, inp_arr):
     return inp_arr * 2
 
+import importlib
+_m_detrend = importlib.import_module("dplpy.detrend")
+
 def test_detrend_with_invalid_input():
     with pytest.raises(TypeError) as errorMsg:
         dpl.detrend("input_df", fit="spline", plot=False)
@@ -28,7 +31,7 @@ def test_detrend_with_invalid_input():
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.negex')
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -58,7 +61,7 @@ def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershof
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.negex')
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_with_modnegex(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -89,7 +92,7 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_negex: Mock, mock_hugersh
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.negex')
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_with_hugershoff(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -120,7 +123,7 @@ def test_detrend_with_hugershoff(mock_spline: Mock, mock_negex: Mock, mock_huger
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.negex')
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -150,7 +153,7 @@ def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershof
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.negex')
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -177,7 +180,7 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_huger
     mock_horizontal.assert_called()
 
 
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_residual(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
 
@@ -194,7 +197,7 @@ def test_detrend_residual(mock_spline: Mock):
     pd.testing.assert_frame_equal(expected_df, result_df)
 
 
-@patch('dplpy.detrend.spline')
+@patch.object(_m_detrend, 'spline')
 def test_detrend_difference(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
     

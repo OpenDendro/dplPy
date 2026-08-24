@@ -3,6 +3,9 @@ import pandas as pd
 import pytest
 from unittest.mock import patch, Mock
 
+import importlib
+_m_xdate = importlib.import_module("dplpy.xdate")
+
 def test_xdate_invalid_input():
     
     with pytest.raises(TypeError) as errorMsg:
@@ -46,11 +49,11 @@ def mock_corr_func(data, type):
 
 
 # mock detrend, mock_chron, mock ar_func_series, 
-@patch('dplpy.xdate.correlate')
+@patch.object(_m_xdate, 'correlate')
 @patch('scipy.stats.t.ppf')
-@patch('dplpy.xdate.chron')
-@patch('dplpy.xdate.ar_func_series')
-@patch('dplpy.xdate.detrend')
+@patch.object(_m_xdate, 'chron')
+@patch.object(_m_xdate, 'ar_func_series')
+@patch.object(_m_xdate, 'detrend')
 def test_xdate_spearman_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func
@@ -80,11 +83,11 @@ def test_xdate_spearman_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron:
     mock_corr.assert_called()
 
 
-@patch('dplpy.xdate.correlate')
+@patch.object(_m_xdate, 'correlate')
 @patch('scipy.stats.t.ppf')
-@patch('dplpy.xdate.chron')
-@patch('dplpy.xdate.ar_func_series')
-@patch('dplpy.xdate.detrend')
+@patch.object(_m_xdate, 'chron')
+@patch.object(_m_xdate, 'ar_func_series')
+@patch.object(_m_xdate, 'detrend')
 def test_xdate_pearson_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func
@@ -114,11 +117,11 @@ def test_xdate_pearson_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: 
     mock_corr.assert_called()
 
 
-@patch('dplpy.xdate.correlate')
+@patch.object(_m_xdate, 'correlate')
 @patch('scipy.stats.t.ppf')
-@patch('dplpy.xdate.chron')
-@patch('dplpy.xdate.ar_func_series')
-@patch('dplpy.xdate.detrend')
+@patch.object(_m_xdate, 'chron')
+@patch.object(_m_xdate, 'ar_func_series')
+@patch.object(_m_xdate, 'detrend')
 def test_xdate_no_prewhiten(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func

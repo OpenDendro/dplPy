@@ -17,7 +17,10 @@ def mock_ar_sel_order_method(inp_ser, max_lag, ic='aic', old_names=False):
     return mock_results
     
 
-@patch('dplpy.autoreg.ar_select_order')
+import importlib
+_m_autoreg = importlib.import_module("dplpy.autoreg")
+
+@patch.object(_m_autoreg, 'ar_select_order')
 def test_ar_func_invalid_dtype(mock_ar_sel_order: Mock):
     with pytest.raises(TypeError) as errorMsg:
         dpl.ar_func("input_df")
@@ -26,7 +29,7 @@ def test_ar_func_invalid_dtype(mock_ar_sel_order: Mock):
     mock_ar_sel_order.assert_not_called()
 
 
-@patch('dplpy.autoreg.ar_select_order')
+@patch.object(_m_autoreg, 'ar_select_order')
 def test_ar_func_on_series(mock_ar_sel_order: Mock):
     mock_ar_sel_order.side_effect = mock_ar_sel_order_method
 
@@ -43,7 +46,7 @@ def test_ar_func_on_series(mock_ar_sel_order: Mock):
     mock_ar_sel_order.assert_called_once()
     
 
-@patch('dplpy.autoreg.ar_select_order')
+@patch.object(_m_autoreg, 'ar_select_order')
 def test_ar_func_on_df(mock_ar_sel_order: Mock):
     mock_ar_sel_order.side_effect = mock_ar_sel_order_method
 
@@ -60,7 +63,7 @@ def test_ar_func_on_df(mock_ar_sel_order: Mock):
     mock_ar_sel_order.assert_called()
 
 
-@patch('dplpy.autoreg.ar_select_order')
+@patch.object(_m_autoreg, 'ar_select_order')
 def test_autoreg_invalid_input(mock_ar_sel_order: Mock):
     mock_ar_sel_order.side_effect = mock_ar_sel_order_method
     with pytest.raises(TypeError) as errorMsg:
@@ -70,7 +73,7 @@ def test_autoreg_invalid_input(mock_ar_sel_order: Mock):
     mock_ar_sel_order.assert_not_called()
 
 
-@patch('dplpy.autoreg.ar_select_order')
+@patch.object(_m_autoreg, 'ar_select_order')
 def test_autoreg_valid_input(mock_ar_sel_order: Mock):
     mock_ar_sel_order.side_effect = mock_ar_sel_order_method
     data = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],

@@ -10,6 +10,9 @@ def mock_ar_func_out(inp_series):
     inp_series += 0.01
     return inp_series
 
+import importlib
+_m_chron = importlib.import_module("dplpy.chron")
+
 def test_chron_simple_means():
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
@@ -32,8 +35,8 @@ def test_wrong_input():
     
     assert "Expected pandas dataframe as input, got <class 'str'> instead" == str(errorMsg.value)
 
-@patch('dplpy.chron.tbrm')
-@patch('dplpy.chron.ar_func')
+@patch.object(_m_chron, 'tbrm')
+@patch.object(_m_chron, 'ar_func')
 def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_tbrm.side_effect = mock_tbrm_out
     mock_ar_func.side_effect = mock_ar_func_out
@@ -54,8 +57,8 @@ def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_ar_func.assert_not_called()
     
 
-@patch('dplpy.chron.tbrm')
-@patch('dplpy.chron.ar_func')
+@patch.object(_m_chron, 'tbrm')
+@patch.object(_m_chron, 'ar_func')
 def test_chron_prewhiten(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_tbrm.side_effect = mock_tbrm_out
     mock_ar_func.side_effect = mock_ar_func_out
