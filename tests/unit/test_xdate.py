@@ -46,11 +46,11 @@ def mock_corr_func(data, type):
 
 
 # mock detrend, mock_chron, mock ar_func_series, 
-@patch('xdate.correlate')
+@patch('dplpy.xdate.correlate')
 @patch('scipy.stats.t.ppf')
-@patch('xdate.chron')
-@patch('xdate.ar_func_series')
-@patch('xdate.detrend')
+@patch('dplpy.xdate.chron')
+@patch('dplpy.xdate.ar_func_series')
+@patch('dplpy.xdate.detrend')
 def test_xdate_spearman_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func
@@ -80,11 +80,11 @@ def test_xdate_spearman_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron:
     mock_corr.assert_called()
 
 
-@patch('xdate.correlate')
+@patch('dplpy.xdate.correlate')
 @patch('scipy.stats.t.ppf')
-@patch('xdate.chron')
-@patch('xdate.ar_func_series')
-@patch('xdate.detrend')
+@patch('dplpy.xdate.chron')
+@patch('dplpy.xdate.ar_func_series')
+@patch('dplpy.xdate.detrend')
 def test_xdate_pearson_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func
@@ -114,11 +114,11 @@ def test_xdate_pearson_corr(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: 
     mock_corr.assert_called()
 
 
-@patch('xdate.correlate')
+@patch('dplpy.xdate.correlate')
 @patch('scipy.stats.t.ppf')
-@patch('xdate.chron')
-@patch('xdate.ar_func_series')
-@patch('xdate.detrend')
+@patch('dplpy.xdate.chron')
+@patch('dplpy.xdate.ar_func_series')
+@patch('dplpy.xdate.detrend')
 def test_xdate_no_prewhiten(mock_detrend: Mock, mock_ar_func: Mock, mock_chron: Mock,
                              mock_ppf: Mock, mock_corr: Mock):
     mock_detrend.side_effect = mock_detrend_func

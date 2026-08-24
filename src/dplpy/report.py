@@ -30,8 +30,8 @@ __license__ = "GNU GPLv3"
 
 
 import pandas as pd
-from readers import readers
-from stats import stats
+from .readers import readers
+from .stats import stats
 import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 

@@ -37,8 +37,8 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from readers import readers
-from stats import stats
+from .readers import readers
+from .stats import stats
 
 def plot(inp: pd.DataFrame | str, type="seg"):
     """Plots a given dataframe

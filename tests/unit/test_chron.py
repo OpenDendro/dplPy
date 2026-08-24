@@ -32,8 +32,8 @@ def test_wrong_input():
     
     assert "Expected pandas dataframe as input, got <class 'str'> instead" == str(errorMsg.value)
 
-@patch('chron.tbrm')
-@patch('chron.ar_func')
+@patch('dplpy.chron.tbrm')
+@patch('dplpy.chron.ar_func')
 def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_tbrm.side_effect = mock_tbrm_out
     mock_ar_func.side_effect = mock_ar_func_out
@@ -54,8 +54,8 @@ def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_ar_func.assert_not_called()
     
 
-@patch('chron.tbrm')
-@patch('chron.ar_func')
+@patch('dplpy.chron.tbrm')
+@patch('dplpy.chron.ar_func')
 def test_chron_prewhiten(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_tbrm.side_effect = mock_tbrm_out
     mock_ar_func.side_effect = mock_ar_func_out

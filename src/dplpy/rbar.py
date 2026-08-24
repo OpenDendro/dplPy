@@ -30,8 +30,8 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
-from detrend import detrend
-from chron import chron
+from .detrend import detrend
+from .chron import chron
 
 # common_interval finds a range of years in the provided dataframe where there is maximum overlap between series over the longest period of years.
 def common_interval(data):

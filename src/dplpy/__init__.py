@@ -2,7 +2,7 @@
 
 __author__ = "Tyson Lee Swetnam"
 __email__ = "tswetnam@arizona.edu"
-__version__ = "0.1.6"
+__version__ = "0.2.0"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
@@ -25,13 +25,6 @@ __copyright__ = """
 __license__ = "GNU GPLv3"
 
 
-import os
-import sys
-
-lpath = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(lpath)
-
-del os, sys
 
 
 _hard_dependencies = ("pandas", "numpy", "scipy", "csaps", "matplotlib", "statsmodels")
@@ -50,24 +43,24 @@ if _missing_dependencies:  # pragma: no cover
 del _hard_dependencies, _dependency, _missing_dependencies
 
 
-from readers import readers
-from summary import summary
-from stats import stats
-from report import report
-from plot import plot
-from detrend import detrend
-from autoreg import ar_func, autoreg
-from chron import chron
-from chron_stabilized import chron_stabilized
-from chron_ars import chron_ars
-from xdate import xdate, xdate_plot
-from series_corr import series_corr
-from interseries_cor import interseries_cor
-from read_ids import read_ids
-from rwi_stats import rwi_stats, rwi_stats_running
-from sss import sss
-from writers import writers
-from cli import help, readme
+from .readers import readers
+from .summary import summary
+from .stats import stats
+from .report import report
+from .plot import plot
+from .detrend import detrend
+from .autoreg import ar_func, autoreg
+from .chron import chron
+from .chron_stabilized import chron_stabilized
+from .chron_ars import chron_ars
+from .xdate import xdate, xdate_plot
+from .series_corr import series_corr
+from .interseries_cor import interseries_cor
+from .read_ids import read_ids
+from .rwi_stats import rwi_stats, rwi_stats_running
+from .sss import sss
+from .writers import writers
+from .cli import help, readme
 
 __all__ = [
     "readers",

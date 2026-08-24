@@ -44,8 +44,8 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import numpy as np
-from chron import chron
-from detrend import detrend
+from .chron import chron
+from .detrend import detrend
 
 def writers(data: pd.DataFrame, label: str, format: str):
     """ Output dplpy datasets to .csv, .rwl and .crn files.

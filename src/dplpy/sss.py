@@ -47,7 +47,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from rwi_stats import rwi_stats, _resolve_tree_mapping
+from .rwi_stats import rwi_stats, _resolve_tree_mapping
 
 
 def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True):

@@ -34,8 +34,8 @@ __license__ = "GNU GPLv3"
 # >>> dpl.series_corr(data, "series_name")
 # >>> dpl.series_corr(data, "series_name", prewhiten=False, corr="Pearson", bin_floor=10)
 
-from chron import chron
-from xdate import correlate, compare_segment, get_crit, normalize_for_crossdating
+from .chron import chron
+from .xdate import correlate, compare_segment, get_crit, normalize_for_crossdating
 
 import pandas as pd
 import numpy as np

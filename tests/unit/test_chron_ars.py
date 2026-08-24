@@ -53,7 +53,7 @@ def test_chron_ars_std_is_plain_mean_when_not_biweight():
 def test_post_ar_forward_filter_matches_explicit_recurrence():
     # guards the scipy.signal.lfilter usage inside _post_ar: the zero-init AR
     # forward filter must equal the explicit recurrence y[t]=x[t]+sum phi_j y[t-j]
-    from chron_ars import _post_ar  # noqa
+    from dplpy.chron_ars import _post_ar  # noqa
     rng = np.random.RandomState(1)
     x = rng.randn(150)
     phi = np.array([0.5, -0.1, 0.05])
@@ -100,7 +100,7 @@ def test_chron_ars_matches_dplR_reference_ca533():
 
 
 def test_pooled_acf_matches_dplR_reference_ca533():
-    from chron_ars import _pooled_ar
+    from dplpy.chron_ars import _pooled_ar
     data = dpl.readers("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
     out_ar = _pooled_ar(rwi.to_numpy(dtype=float), max_lag=10, first_aic_min=True)

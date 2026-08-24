@@ -1,7 +1,7 @@
 import urllib.request
 import pandas as pd
 import numpy as np
-from readers import read_rwl, readers
+from .readers import read_rwl, readers
 
 def readers_url(url, header=False, skip_lines=0):
     FORMAT = "." + url.split(".")[-1]

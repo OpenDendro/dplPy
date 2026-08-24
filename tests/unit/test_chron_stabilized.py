@@ -16,9 +16,9 @@ def mock_chron_method(input_df, biweight=False, prewhiten=False, plot=False):
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
                                                     name="Year"))
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_valid_input(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method
@@ -45,9 +45,9 @@ def test_chron_stabilized_valid_input(mock_mean_series_corr: Mock, mock_chron: M
     mock_get_running_rbar.assert_called()
 
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_wrong_input_type(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method
@@ -63,9 +63,9 @@ def test_chron_stabilized_wrong_input_type(mock_mean_series_corr: Mock, mock_chr
     mock_get_running_rbar.assert_not_called()
 
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_invalid_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method
@@ -87,9 +87,9 @@ def test_chron_stabilized_invalid_winlen(mock_mean_series_corr: Mock, mock_chron
     mock_get_running_rbar.assert_not_called()
 
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_invalid_min_seg_ratio(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method
@@ -112,9 +112,9 @@ def test_chron_stabilized_invalid_min_seg_ratio(mock_mean_series_corr: Mock, moc
     mock_get_running_rbar.assert_not_called()
 
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_weird_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method
@@ -130,9 +130,9 @@ def test_chron_stabilized_weird_winlen(mock_mean_series_corr: Mock, mock_chron: 
         dpl.chron_stabilized(input_df, win_length=100)
 
 
-@patch('chron_stabilized.get_running_rbar')
-@patch('chron_stabilized.chron')
-@patch('chron_stabilized.mean_series_intercorrelation')
+@patch('dplpy.chron_stabilized.get_running_rbar')
+@patch('dplpy.chron_stabilized.chron')
+@patch('dplpy.chron_stabilized.mean_series_intercorrelation')
 def test_chron_stabilized_short_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
     mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
     mock_chron.side_effect = mock_chron_method

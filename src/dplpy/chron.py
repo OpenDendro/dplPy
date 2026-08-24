@@ -36,8 +36,8 @@ __license__ = "GNU GPLv3"
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from tbrm import tbrm
-from autoreg import ar_func
+from .tbrm import tbrm
+from .autoreg import ar_func
 
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.

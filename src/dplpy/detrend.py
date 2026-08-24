@@ -30,8 +30,8 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from smoothingspline import spline
-import curvefit
+from .smoothingspline import spline
+from . import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
     """Detrends a given series or dataframe

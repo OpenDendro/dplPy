@@ -38,7 +38,7 @@ __license__ = "GNU GPLv3"
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
 
-from readers import readers
+from .readers import readers
 def summary(inp: pd.DataFrame | str):
     """ Summarizes a chronology
     

@@ -24,11 +24,11 @@ def test_detrend_with_invalid_input():
     invalid_input_msg = "argument should be either pandas dataframe or pandas series."
     assert invalid_input_msg == str(errorMsg.value)
 
-@patch('curvefit.horizontal')
-@patch('curvefit.linear')
-@patch('curvefit.hugershoff')
-@patch('curvefit.negex')
-@patch('detrend.spline')
+@patch('dplpy.curvefit.horizontal')
+@patch('dplpy.curvefit.linear')
+@patch('dplpy.curvefit.hugershoff')
+@patch('dplpy.curvefit.negex')
+@patch('dplpy.detrend.spline')
 def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -54,11 +54,11 @@ def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershof
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
 
-@patch('curvefit.horizontal')
-@patch('curvefit.linear')
-@patch('curvefit.hugershoff')
-@patch('curvefit.negex')
-@patch('detrend.spline')
+@patch('dplpy.curvefit.horizontal')
+@patch('dplpy.curvefit.linear')
+@patch('dplpy.curvefit.hugershoff')
+@patch('dplpy.curvefit.negex')
+@patch('dplpy.detrend.spline')
 def test_detrend_with_modnegex(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -85,11 +85,11 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_negex: Mock, mock_hugersh
     mock_horizontal.assert_not_called()
     
 
-@patch('curvefit.horizontal')
-@patch('curvefit.linear')
-@patch('curvefit.hugershoff')
-@patch('curvefit.negex')
-@patch('detrend.spline')
+@patch('dplpy.curvefit.horizontal')
+@patch('dplpy.curvefit.linear')
+@patch('dplpy.curvefit.hugershoff')
+@patch('dplpy.curvefit.negex')
+@patch('dplpy.detrend.spline')
 def test_detrend_with_hugershoff(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -116,11 +116,11 @@ def test_detrend_with_hugershoff(mock_spline: Mock, mock_negex: Mock, mock_huger
     mock_horizontal.assert_not_called()
 
 
-@patch('curvefit.horizontal')
-@patch('curvefit.linear')
-@patch('curvefit.hugershoff')
-@patch('curvefit.negex')
-@patch('detrend.spline')
+@patch('dplpy.curvefit.horizontal')
+@patch('dplpy.curvefit.linear')
+@patch('dplpy.curvefit.hugershoff')
+@patch('dplpy.curvefit.negex')
+@patch('dplpy.detrend.spline')
 def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -146,11 +146,11 @@ def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershof
     mock_linear.assert_called()
     mock_horizontal.assert_not_called()
 
-@patch('curvefit.horizontal')
-@patch('curvefit.linear')
-@patch('curvefit.hugershoff')
-@patch('curvefit.negex')
-@patch('detrend.spline')
+@patch('dplpy.curvefit.horizontal')
+@patch('dplpy.curvefit.linear')
+@patch('dplpy.curvefit.hugershoff')
+@patch('dplpy.curvefit.negex')
+@patch('dplpy.detrend.spline')
 def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     mock_negex.side_effect = mock_negex_method
@@ -177,7 +177,7 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_huger
     mock_horizontal.assert_called()
 
 
-@patch('detrend.spline')
+@patch('dplpy.detrend.spline')
 def test_detrend_residual(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
 
@@ -194,7 +194,7 @@ def test_detrend_residual(mock_spline: Mock):
     pd.testing.assert_frame_equal(expected_df, result_df)
 
 
-@patch('detrend.spline')
+@patch('dplpy.detrend.spline')
 def test_detrend_difference(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
     

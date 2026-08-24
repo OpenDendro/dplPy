@@ -52,7 +52,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import lfilter
 
-from tbrm import tbrm
+from .tbrm import tbrm
 
 _KNOWN_PREWHITEN_METHODS = ("ar.yw", "arima.CSS-ML")
 

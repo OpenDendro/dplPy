@@ -54,7 +54,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from autoreg import ar_func
+from .autoreg import ar_func
 
 
 def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",

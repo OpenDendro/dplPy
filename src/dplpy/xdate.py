@@ -34,10 +34,10 @@ __license__ = "GNU GPLv3"
 # >>> dpl.xdate(data, prewhiten=False, corr="Pearson", show_flags=False)
 # >>> dpl.xdate(data, slide_period=50, bin_floor=10, p_val=0.02)
 
-from detrend import detrend
-from autoreg import ar_func_series
-from chron import chron
-from stats import stats
+from .detrend import detrend
+from .autoreg import ar_func_series
+from .chron import chron
+from .stats import stats
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np

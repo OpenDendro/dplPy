@@ -4,11 +4,11 @@ from scipy.signal import medfilt
 from math import cos
 from math import pi
 from csaps import csaps
-from readers import readers
-from stats import stats
-from chron import chron
-from smoothingspline import spline
-from agedepspline import ads_R2Py
+from .readers import readers
+from .stats import stats
+from .chron import chron
+from .smoothingspline import spline
+from .agedepspline import ads_R2Py
 
 # Date: 01/24/2024
 # Author: Anne Martine Wilce

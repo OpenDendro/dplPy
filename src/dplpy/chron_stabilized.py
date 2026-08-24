@@ -1,5 +1,5 @@
-from rbar import get_running_rbar, mean_series_intercorrelation
-from chron import chron
+from .rbar import get_running_rbar, mean_series_intercorrelation
+from .chron import chron
 import numpy as np
 import pandas as pd
 import warnings

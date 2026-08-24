@@ -39,8 +39,8 @@ __license__ = "GNU GPLv3"
 # >>> dpl.interseries_cor(data)
 # >>> dpl.interseries_cor(data, prewhiten=False, corr="Pearson")
 
-from chron import chron
-from xdate import normalize_for_crossdating
+from .chron import chron
+from .xdate import normalize_for_crossdating
 
 import pandas as pd
 import scipy.stats
