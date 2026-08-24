@@ -43,20 +43,18 @@ jobs:
             dplPy v0.2.0
 
             New functionality:
-            - chron_ars(): ARSTAN standard, residual, and re-reddened ("ARSTAN")
-              chronologies, ported from dplR / Ed Cook's FORTRAN.
+            - chron_ars(): based on dplR and ARSTAN, create the ARS re-reddened chronologies
             - rwi_stats() / rwi_stats_running(): running mean interseries correlation
               (rbar), expressed population signal (EPS), and signal-to-noise ratio (SNR),
-              over the whole record or in moving windows.
-            - sss(): subsample signal strength.
-            - interseries_cor(): mean (COFECHA-style) interseries correlation.
-            - read_ids(): derive tree/core IDs from site-tree-core series names.
+              over the whole record or in moving windows. Based on dplR 
+            - sss(): subsample signal strength, based on dplR
+            - interseries_cor(): mean (COFECHA-style) interseries correlation
+            - read_ids(): derive tree/core IDs from site-tree-core series names
 
             Improvements and fixes:
-            - chron_stabilized() and rbar: numpy 2.0 compatibility and closer alignment
-              with dplR's behavior.
-            - tbrm(): regularization epsilon aligned with dplR's implementation.
-            - xdate: guard get_crit() against very small sample sizes (n <= 2).
+            - chron_stabilized() and rbar: now has numpy 2.0 compatibility and closer to dplR
+            - tbrm(): regularization epsilon now the same as dplR
+            - xdate: guard get_crit() against very small sample sizes and divide by zero danger
 
             Internal:
             - Repository converted to a src/ layout. No change to the public API --
