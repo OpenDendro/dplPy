@@ -59,6 +59,7 @@ from detrend import detrend
 from autoreg import ar_func, autoreg
 from chron import chron
 from chron_stabilized import chron_stabilized
+from chron_ars import chron_ars
 from xdate import xdate, xdate_plot
 from series_corr import series_corr
 from interseries_cor import interseries_cor
@@ -79,6 +80,7 @@ __all__ = [
     "autoreg",
     "chron",
     "chron_stabilized",
+    "chron_ars",
     "xdate",
     "xdate_plot",
     "series_corr",
