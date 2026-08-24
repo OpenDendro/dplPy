@@ -31,7 +31,7 @@ import numpy as np
 
 def tbrm(data, c=9):
     data = np.asarray(data, dtype=float)
-    e = 1 * pow(10, -8)
+    e = 1 * pow(10, -6)  # regularization epsilon; matches dplR's tbrm C code (C*MAD + 1e-6)
     m = np.median(data)
 
     s = np.median(getabs(data - m)) # star?
