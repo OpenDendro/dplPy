@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.2.0
+      - v0.3.0
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.2.0
+          ref: v0.3.0
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,27 +37,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.2.0
-          release_name: v0.2.0
+          tag_name: v0.3.0
+          release_name: v0.3.0
           body: |
-            dplPy v0.2.0
+            dplPy v0.3.0
+
+            This release contains major improvement to the Tucson (.rwl) reader,
+            validated against dplR 1.7.9 and the full ITRDB (9,300+ files, of
+            which ~99.8% read in strict mode and ~99.9% in salvage mode)
 
             New functionality:
-            - chron_ars(): based on dplR and ARSTAN, create the ARS re-reddened chronologies
-            - rwi_stats() / rwi_stats_running(): running mean interseries correlation
-              (rbar), expressed population signal (EPS), and signal-to-noise ratio (SNR),
-              over the whole record or in moving windows. Based on dplR 
-            - sss(): subsample signal strength, based on dplR
-            - interseries_cor(): mean (COFECHA-style) interseries correlation
-            - read_ids(): derive tree/core IDs from site-tree-core series names
+            - stict vs salvage readers mode implemented on_error="raise" or on_error="warn")
+            - readers(): automatic header detection -- no need to pass header=True;
+              the majority of ITRDB files now read with no extra arguments.
+            - readers(on_error="warn"): salvage mode -- recover partial data from a
+              malformed file instead of failing (drop a self-overlapping or
+              mixed-precision series, rename duplicated series IDs), with
+              a report on df.attrs["dplpy_salvage"]. Intended for batch processing
+            - readers() now accepts an http(s) URL directly (e.g. an ITRDB/NOAA
+              archive file); readers_url() is retained as a simple wrapper
+            - readers(format=...): read Tucson files with nonstandard suffixes
+              (.txt, etc.) via by determining content, or force you can the format
+            - metadata() and df.attrs["dplpy_metadata"] (prototype): extract site,
+              species, region, coordinates, year range and investigators from the
+              header, attempts a country-based hemisphere correction for coordinates
 
-            Improvements and fixes:
-            - chron_stabilized() and rbar: now has numpy 2.0 compatibility and closer to dplR
-            - tbrm(): regularization epsilon now the same as dplR
-            - xdate: guard get_crit() against very small sample sizes and divide by zero danger
+            Robustness (all validated against dplR):
+            - Based heavily on Hung Nguyen's readers2.R improvements in dplR 
+            - Handles non-3-line headers, blank-field alignment, trailing notes,
+              exact-duplicate rows, and long negative (BCE) years
+            - Terminator-based precision detection fixes a silent bug that would
+              drop real 0.999 mm values. Mixed-precision series are detected now
+            - Duplicate series IDs are detected and, in strict mode, refused with
+              a specific message to the user
 
             Internal:
-            - Repository converted to a src/ layout. No change to the public API --
-              existing scripts (e.g. dpl.readers(...)) work unchanged.
+            - readers_url folded into readers
           draft: false
           prerelease: true

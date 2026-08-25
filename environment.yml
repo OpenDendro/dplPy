@@ -3,13 +3,12 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - bs4
+  - python>=3.10
   - pandas
-  - matplotlib
-  - wget
-  - statsmodels
   - numpy
   - scipy
+  - statsmodels
+  - matplotlib
   - ipykernel
   - pip
   - pip:
