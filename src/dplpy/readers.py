@@ -378,14 +378,33 @@ def read_rwl(lines, long=False):
             block_count[sid] = block_count.get(sid, 0) + 1
             prev = sid
 
-    rwl_data = {}
+    # Determine each series' measurement precision from its TERMINATOR -- the
+    # stop marker on its last row -- exactly as dplR does. This is what makes a
+    # mid-series 999 in a 0.001 mm series read as a real 0.999 mm value rather
+    # than being mistaken for a 0.01 mm stop marker (a silent bug in the older,
+    # "any 999 is a marker" logic).
+    last_row = {}
+    for r in rows:
+        if r is not None:
+            last_row[r[0]] = r          # final occurrence wins (rows are in order)
     precision = {}
+    for sid, r in last_row.items():
+        vals = r[2]
+        term = vals[-1].strip() if vals else ""
+        if term == "999":
+            precision[sid] = 100        # 0.01 mm
+        elif term == "-9999":
+            precision[sid] = 1000       # 0.001 mm
+        # otherwise unknown -> resolved by the dominant-precision fallback below
+
+    rwl_data = {}
     order = []
     neg_hits = []       # (series, year) for anomalous negatives -> NaN
     nonint_hits = 0
     year_src = {}       # sid -> {year: start-year of the row that wrote it}
     overlaps = []       # (sid, year, first_row_start, second_row_start)
     overlap_seen = set()
+    prec_shift = []     # (sid, year) where a 0.01 mm series carries a stray -9999
 
     for r in rows:
         if r is None:
@@ -395,24 +414,31 @@ def read_rwl(lines, long=False):
             rwl_data[sid] = {}
             year_src[sid] = {}
             order.append(sid)
+        prec = precision.get(sid)
         for j, tok in enumerate(vals):
             s = tok.strip()
-            if s == "999":                       # 0.01 mm stop marker
-                precision[sid] = 100
+            y = yr + j
+            if s == "-9999":
+                # -9999 is only ever the 0.001 mm stop marker. In a 0.001 mm
+                # series it is a marker -> drop. In a series terminated at
+                # 0.01 mm it signals a measurement-precision shift (e.g. an early
+                # 0.001 mm segment inside a 0.01 mm series): record to fail below.
+                if prec == 100:
+                    prec_shift.append((sid, y))
                 continue
-            if s == "-9999":                     # 0.001 mm stop marker
-                precision[sid] = 1000
-                continue
+            if s == "999":
+                if prec == 100:
+                    continue             # 0.01 mm stop marker (dplR nulls all 999 here)
+                # 0.001 mm (or unknown): 999 is a real 0.999 mm value -> keep it
             try:
                 v = int(s)
             except ValueError:
-                nonint_hits += 1                 # non-integer token: skip -> NaN
+                nonint_hits += 1         # non-integer token: skip -> NaN
                 continue
             if v < 0:
                 # Anomalous negative (not a stop marker): treat as missing.
-                neg_hits.append((sid, yr + j))
+                neg_hits.append((sid, y))
                 continue
-            y = yr + j
             if y in rwl_data[sid]:
                 # A value is already present for this (series, year): the data
                 # overlaps. Record it (keep the first value; we will refuse the
@@ -459,6 +485,30 @@ def read_rwl(lines, long=False):
             "Cannot read file -- overlapping data detected; dplPy will not guess how "
             "to resolve it.\n  " + "\n  ".join(problems)
             + "\nPlease correct the file and read it again."
+        )
+
+    # Fail on a measurement-precision shift within a single series (a 0.01 mm
+    # series that also carries a -9999). Reading such a series at one precision
+    # makes part of it 10x wrong, so -- in normal mode -- we refuse and name the
+    # series. (Salvage mode will instead drop the affected series and continue.)
+    if prec_shift:
+        affected = []
+        for sid, y in prec_shift:
+            if sid not in affected:
+                affected.append(sid)
+        where = "; ".join(
+            str(sid) + " (stray -9999 near year "
+            + str(min(y for s, y in prec_shift if s == sid)) + ")"
+            for sid in affected
+        )
+        raise ValueError(
+            "Cannot read file -- measurement-precision shift detected. These series "
+            "end with a 0.01 mm stop marker (999) but also contain a -9999 (the "
+            "0.001 mm stop marker) mid-series, so the series was measured at two "
+            "different precisions: " + where + ".\ndplPy will not guess the boundary, "
+            "because reading such a series at a single precision makes part of it 10x "
+            "wrong. Please split the series by precision (or correct the markers) and "
+            "read it again."
         )
 
     # Resolve precision for any series that never showed a stop marker: adopt

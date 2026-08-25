@@ -255,3 +255,38 @@ def test_rwl_self_overlap_reported_not_as_duplicate(tmp_path):
     assert "AAA01" in msg
     assert "1210" in msg                     # names the overlapping year
     assert "Duplicate series ID" not in msg  # NOT mislabelled as a duplicate
+
+
+def test_rwl_999_is_real_value_in_thousandths_series(tmp_path):
+    # In a 0.001 mm series (terminated by -9999), the token 999 is a real
+    # 0.999 mm ring, NOT a stop marker. Precision is taken from the series
+    # terminator, so a mid-series 999 must be kept as 0.999 (the older
+    # "any 999 is a marker" logic silently dropped it to NaN). dplR keeps it.
+    p = tmp_path / "thousandths.rwl"
+    p.write_text(
+        "AAA01   1900   500   600   999   700   800   650   720   540   610   590\n"
+        "AAA01   1910   480   999   520   540   560   580   600   620   640   660\n"
+        "AAA01   1920   700 -9999\n"
+    )
+    d = dpl.readers(str(p))
+    assert d.loc[1902, "AAA01"] == pytest.approx(0.999)   # kept, not NaN
+    assert d.loc[1911, "AAA01"] == pytest.approx(0.999)
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.5)
+    assert d.loc[1920, "AAA01"] == pytest.approx(0.7)
+
+
+def test_rwl_measurement_precision_shift_raises(tmp_path):
+    # A single series measured at two precisions -- an early 0.001 mm segment
+    # (ending in -9999) then a later 0.01 mm segment (ending in 999), the kok3a
+    # pattern from kyrg014. Reading it at one precision makes part of it 10x
+    # wrong, so normal mode must refuse and name the series.
+    p = tmp_path / "shift.rwl"
+    p.write_text(
+        "AAA01   1900   910  1180  1480  1270 -9999\n"
+        "AAA01   1910    24    20    15    23   999\n"
+    )
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p))
+    msg = str(e.value)
+    assert "precision" in msg.lower()
+    assert "AAA01" in msg
