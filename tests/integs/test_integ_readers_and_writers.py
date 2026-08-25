@@ -15,15 +15,20 @@ def test_read_and_write_csv(tmp_path):
 
 
 def test_read_and_write_rwl_no_headers(tmp_path):
-    viet001 = dpl.readers("./tests/data/rwl/viet001.rwl")
+    # cana209 is a clean, header-less Tucson file, exercising the no-header
+    # read/write round-trip. (viet001 was used here previously but is genuinely
+    # malformed -- it contains the duplicated series ID BDF02A -- so the hardened
+    # reader now correctly refuses it; that duplicate-ID behaviour is covered by
+    # the unit test test_rwl_duplicate_id_raises_and_names_series.)
+    cana209 = dpl.readers("./tests/data/rwl/cana209.rwl")
 
     write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.writers(viet001, write_path, "rwl")
+    dpl.writers(cana209, write_path, "rwl")
 
-    viet001_alt = dpl.readers(write_path + ".rwl")
+    cana209_alt = dpl.readers(write_path + ".rwl")
 
-    pd.testing.assert_frame_equal(viet001, viet001_alt)
+    pd.testing.assert_frame_equal(cana209, cana209_alt)
 
 
 def test_read_and_write_rwl_with_headers(tmp_path):
