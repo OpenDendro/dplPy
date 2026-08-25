@@ -469,3 +469,26 @@ def test_salvage_identical_overlap_not_renamed(tmp_path):
 def test_salvage_invalid_on_error_value():
     with pytest.raises(ValueError):
         dpl.readers(RWL + "ca533.rwl", on_error="bogus")
+
+
+def test_readers_reads_rwl_from_url():
+    # readers() accepts an http(s) URL directly and routes it through the same
+    # pipeline as a local file. urllib is mocked to serve a local file's bytes
+    # (no network), and the result must equal the local read.
+    from unittest.mock import patch, MagicMock
+    local = _read_quiet(RWL + "ca533.rwl")
+    raw = open(RWL + "ca533.rwl", "rb").read()
+
+    def fake_urlopen(url, *a, **k):
+        m = MagicMock()
+        m.read.return_value = raw
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        return m
+
+    with patch("dplpy.readers.urllib.request.urlopen", side_effect=fake_urlopen):
+        via_url = _read_quiet(
+            "https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/"
+            "northamerica/usa/ca533.rwl"
+        )
+    pd.testing.assert_frame_equal(local, via_url)

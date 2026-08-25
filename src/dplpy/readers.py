@@ -50,6 +50,7 @@ __license__ = "GNU GPLv3"
 
 import os
 import warnings
+import urllib.request
 from collections import Counter
 
 import pandas as pd
@@ -67,7 +68,9 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
     Parameters
     ----------
     filename : str
-        a data file (.CSV, .RWL or .RAW)
+        a data file (.CSV, .RWL or .RAW). May be a local path or an http(s) URL
+        (e.g. a file served from the NOAA/ITRDB archive) -- both are read the
+        same way.
     header : bool or None, default None
         Whether a 3-line site-metadata header sits at the top of the file.
         ``None`` (the default) auto-detects the header the way dplR does, so
@@ -95,24 +98,32 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> data = dpl.readers("../tests/data/rwl/file.rwl")           # header auto-detected
     >>> data = dpl.readers("../tests/data/rwl/file.rwl", header=True)
+    >>> data = dpl.readers("https://www.ncei.noaa.gov/pub/data/paleo/treering/"
+    ...                    "measurements/northamerica/usa/ak132x.rwl")  # read from a URL
 
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#readers
 
     """
+    if on_error not in ("raise", "warn"):
+        raise ValueError("on_error must be 'raise' or 'warn'")
+
+    # `filename` may be a local path or an http(s) URL -- read either the same way.
+    is_url = filename.lower().startswith(("http://", "https://"))
     FORMAT = "." + filename.split(".")[-1]
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
 
     # open the input file and read its data into a pandas dataframe
-    if on_error not in ("raise", "warn"):
-        raise ValueError("on_error must be 'raise' or 'warn'")
     if filename.upper().endswith(".CSV"):
-        series_data = pd.read_csv(filename, skiprows=skip_lines)
-    elif filename.upper().endswith(".RWL"):
-        series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
-    elif filename.upper().endswith(".RAW"):
-        series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
+        series_data = pd.read_csv(filename, skiprows=skip_lines)  # pandas reads paths and URLs
+    elif filename.upper().endswith((".RWL", ".RAW")):
+        if is_url:
+            raw_lines = _fetch_url_lines(filename)
+            series_data = _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
+                                              os.path.basename(filename))
+        else:
+            series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
     else:
         errorMsg = """
 
@@ -224,6 +235,14 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if on_error == "warn" and report:
         _warn_salvage_summary(source_name, report)
     return df
+
+
+def _fetch_url_lines(url):
+    """Download a Tucson file from an http(s) URL and return it as a list of
+    lines, matching what ``open(...).readlines()`` yields for a local file."""
+    with urllib.request.urlopen(url) as resp:
+        text = resp.read().decode("utf-8", errors="replace")
+    return text.split("\n")
 
 
 def _assemble_dataframe(rwl_data, precision, order):
