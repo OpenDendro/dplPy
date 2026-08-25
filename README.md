@@ -16,7 +16,7 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
 - [dplPy - the Dendrochronology Program Library in Python](#dplpy---the-dendrochronology-program-library-in-python)
   - [Index](#index)
   - [Requirements](#requirements)
-  - [Current Version and Changelog](#current-version-and-changelog)
+  - [Current Version](#current-version-and-changelog)
   - [Installation](#installation)
   - [Building directly from Github](#building-directly-from-github)
   - [Functionalities and Usage](#functionalities-and-usage)
