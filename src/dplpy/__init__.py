@@ -44,6 +44,7 @@ del _hard_dependencies, _dependency, _missing_dependencies
 
 
 from .readers import readers
+from .readers import metadata
 from .summary import summary
 from .stats import stats
 from .report import report

@@ -533,3 +533,91 @@ def test_header_lines_skipped_reported():
     # a header-less file reports 0
     ca = _read_quiet(RWL + "ca533.rwl")
     assert ca.attrs["dplpy_header_lines_skipped"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Header metadata extraction (prototype).
+# ---------------------------------------------------------------------------
+
+def test_metadata_extraction_tx042():
+    md = dpl.metadata(RWL + "tx042.rwl")
+    assert md["site_id"] == "BSC"
+    assert md["species_code"] == "PSME"
+    assert md["species_name"] == "Douglas Fir"
+    assert md["country_region"] == "Texas"
+    assert md["elevation_m"] == 2057
+    assert md["latitude"] == pytest.approx(29.25, abs=1e-3)
+    assert md["longitude"] == pytest.approx(-103.3, abs=1e-3)   # sign correct here
+    assert md["first_year"] == 1473 and md["last_year"] == 1992
+
+
+def test_metadata_extraction_th001():
+    md = dpl.metadata(RWL + "th001.rwl")
+    assert md["site_id"] == "MHGSTG"
+    assert md["species_code"] == "TEGR"
+    assert md["country_region"] == "Thailand"
+    assert md["latitude"] == pytest.approx(19.2833, abs=1e-3)
+    assert md["longitude"] == pytest.approx(98.9333, abs=1e-3)
+
+
+def test_metadata_on_df_attrs():
+    d = _read_quiet(RWL + "th001.rwl")
+    assert "dplpy_metadata" in d.attrs
+    assert d.attrs["dplpy_metadata"]["species_code"] == "TEGR"
+
+
+def test_metadata_headerless_file_is_empty():
+    # ca533 has no header -> all fields None, no crash.
+    md = dpl.metadata(RWL + "ca533.rwl")
+    assert md["n_header_lines"] == 0
+    assert md["site_id"] is None and md["species_code"] is None
+
+
+def test_dm_to_decimal_decoder():
+    from dplpy.readers import _dm_to_decimal
+    assert _dm_to_decimal("3627") == pytest.approx(36.45)
+    assert _dm_to_decimal("-2053") == pytest.approx(-20.8833, abs=1e-3)
+    assert _dm_to_decimal("00406") == pytest.approx(4.1, abs=1e-3)
+    assert _dm_to_decimal("abc") is None
+
+
+def test_metadata_hemisphere_correction_americas(tmp_path):
+    # A recognized N. American state forces West longitude even when the file
+    # stored it without the '-' sign.
+    p = tmp_path / "arz.rwl"
+    p.write_text(
+        "ARZ    1 Some Arizona Site                                   PSME\n"
+        "ARZ    2 Arizona      Douglas Fir       2000M  3530 11140    __    1500 1990\n"
+        "ARZ    3 J. Smith\n"
+        "ARZ    1500   100   200 -9999\n"
+    )
+    md = dpl.metadata(str(p))
+    assert md["country_region"] == "Arizona"
+    assert md["hemisphere_verified"] is True
+    assert md["latitude"] == pytest.approx(35.5, abs=1e-2)
+    assert md["longitude"] == pytest.approx(-111.6667, abs=1e-3)   # corrected to West
+
+
+def test_metadata_hemisphere_unverified_eastern(tmp_path):
+    # An Eastern-hemisphere country is left as decoded and flagged unverified
+    # (we don't guess sign outside the Americas).
+    p = tmp_path / "nor.rwl"
+    p.write_text(
+        "NOR    1 Some Norway Site                                    PISY\n"
+        "NOR    2 Norway   Scots pine        200  6829 1602    __    1485 1978\n"
+        "NOR    3 A. Person\n"
+        "NOR    1485   100   200 -9999\n"
+    )
+    md = dpl.metadata(str(p))
+    assert md["country_region"] == "Norway"
+    assert md["hemisphere_verified"] is False
+    assert md["longitude"] == pytest.approx(16.0333, abs=1e-3)     # left as decoded
+
+
+def test_region_hemisphere_lookup():
+    from dplpy.readers import _region_hemisphere
+    assert _region_hemisphere("Texas") == (1, -1)
+    assert _region_hemisphere("California") == (1, -1)
+    assert _region_hemisphere("Chile") == (None, -1)
+    assert _region_hemisphere("Norway") == (None, None)
+    assert _region_hemisphere("") == (None, None)

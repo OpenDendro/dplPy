@@ -49,6 +49,7 @@ __license__ = "GNU GPLv3"
 # On every valid measurement dplPy matches dplR exactly.
 
 import os
+import re
 import warnings
 import urllib.request
 from collections import Counter
@@ -177,10 +178,13 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         raise ValueError(errorMsg)
     salvage_report = series_data.attrs.get("dplpy_salvage", [])
     hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
+    meta = series_data.attrs.get("dplpy_metadata", None)
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
     if hdr_skipped is not None:
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
+    if meta is not None:
+        series_data.attrs["dplpy_metadata"] = meta
 
     # Display message to show that reading was successful, noting how many header
     # lines auto-detection skipped (so a rare mis-detection is visible).
@@ -245,6 +249,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
         start = 0
     else:
         start = _first_data_line_index(clean_lines)
+    header_block = clean_lines[:start]      # the lines auto-skipped as header
     clean_lines = clean_lines[start:]
     if len(clean_lines) == 0:
         return None
@@ -262,9 +267,196 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
         return None
     df.attrs["dplpy_salvage"] = report
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
+    df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
     if on_error == "warn" and report:
         _warn_salvage_summary(source_name, report)
     return df
+
+
+# ---------------------------------------------------------------------------
+# Header metadata extraction (prototype). The classic ITRDB Tucson header is 3
+# lines, each prefixed by the site code + a line number (1/2/3):
+#   line 1: site name ............................................ SPCODE
+#   line 2: region   species-name   ELEVm   LAT LONG   __   firstYr lastYr
+#   line 3: investigator(s)
+# Fields are best-effort: anything not confidently found is left None, and the
+# raw header lines are always retained for provenance.
+# ---------------------------------------------------------------------------
+
+_METADATA_FIELDS = ("site_id", "site_name", "species_code", "species_name",
+                    "country_region", "elevation_m", "latitude", "longitude",
+                    "first_year", "last_year", "investigators")
+
+
+_NORTH_AMERICA = frozenset({
+    # US states
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+    "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+    "new mexico", "new york", "north carolina", "north dakota", "ohio",
+    "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+    "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+    "washington", "west virginia", "wisconsin", "wyoming",
+    "usa", "u.s.a.", "us", "united states",
+    # Canada + provinces/territories
+    "canada", "alberta", "british columbia", "manitoba", "new brunswick",
+    "newfoundland", "labrador", "nova scotia", "ontario", "quebec",
+    "saskatchewan", "prince edward island", "yukon", "northwest territories",
+    "nunavut",
+    # Mexico + Central America (all North + West)
+    "mexico", "guatemala", "belize", "honduras", "el salvador", "nicaragua",
+    "costa rica", "panama",
+})
+# South America: entirely West longitude, but latitude straddles the equator.
+_SOUTH_AMERICA = frozenset({
+    "colombia", "venezuela", "guyana", "suriname", "french guiana", "ecuador",
+    "peru", "brazil", "bolivia", "paraguay", "chile", "argentina", "uruguay",
+})
+
+
+def _region_hemisphere(region):
+    """Expected (latitude_sign, longitude_sign) for a *standardized ITRDB*
+    country/state name, or (None, None) if the name is not recognized. Only the
+    Americas are handled -- their longitude is unambiguously West -- because
+    Eastern-hemisphere longitude is not determinable from country alone (UK,
+    Portugal, Morocco are West while their neighbours are East)."""
+    r = (region or "").strip().lower()
+    if r in _NORTH_AMERICA:
+        return (1, -1)          # North, West
+    if r in _SOUTH_AMERICA:
+        return (None, -1)       # latitude ambiguous (equator), longitude West
+    return (None, None)
+
+
+def _dm_to_decimal(token):
+    """Decode a packed degrees-minutes coordinate (DDMM / DDDMM, optional leading
+    '-') to decimal degrees: '3627' -> 36.45, '-2053' -> -20.8833, '00406' -> 4.1."""
+    neg = token.startswith("-")
+    digits = token.lstrip("-")
+    if not digits.isdigit() or len(digits) < 3:
+        return None
+    minutes = int(digits[-2:])
+    degrees = int(digits[:-2])
+    if minutes >= 60:
+        return None                      # not a valid DDMM value
+    val = degrees + minutes / 60.0
+    return round(-val if neg else val, 4)
+
+
+def _split_header_prefix(line):
+    """Strip the leading 'SITEID  N ' prefix from a header line, returning
+    (site_id, remaining_content). The line number (1/2/3) is optional -- some
+    ITRDB files omit it -- so a header like 'SFP519AA ARIZONA ...' still splits
+    into ('SFP519AA', 'ARIZONA ...')."""
+    m = re.match(r"^\s*(\S+)\s+(?:\d\s)?(.*)$", line)
+    if m:
+        return m.group(1), m.group(2)
+    toks = line.split()
+    return (toks[0] if toks else None), line
+
+
+def _extract_header_metadata(header_lines):
+    """Parse ITRDB Tucson header lines into a metadata dict (best-effort)."""
+    md = {k: None for k in _METADATA_FIELDS}
+    md["n_header_lines"] = len(header_lines)
+    md["header_raw"] = list(header_lines)
+    if not header_lines:
+        return md
+
+    # ---- line 1: site id, site name, species code ----
+    sid, c1 = _split_header_prefix(header_lines[0])
+    md["site_id"] = sid
+    c1 = re.sub(r"[\s\-]+$", "", c1)          # strip trailing spaces / placeholder dashes
+    toks1 = c1.split()
+    if toks1 and re.fullmatch(r"[A-Z]{2,4}", toks1[-1]):
+        md["species_code"] = toks1[-1]
+        md["site_name"] = c1[:c1.rfind(toks1[-1])].strip() or None
+    elif c1.strip():
+        md["site_name"] = c1.strip()
+
+    # ---- line 2: region, species name, elevation, lat/long, year range ----
+    if len(header_lines) >= 2:
+        _, c2 = _split_header_prefix(header_lines[1])
+        c2 = re.sub(r"[\s\-]+$", "", c2)      # strip trailing junk (e.g. ' -')
+        # trailing year pair: space-separated OR bunched negatives ('-2220-1890')
+        ym = re.search(r"(-?\d{3,4})\s*(-?\d{3,4})$", c2)
+        if ym:
+            md["first_year"] = int(ym.group(1))
+            md["last_year"] = int(ym.group(2))
+            c2_geo = c2[:ym.start()]
+        else:
+            c2_geo = c2
+        em = re.search(r"(\d{2,5})\s*[Mm]\b", c2_geo)          # elevation
+        if em:
+            md["elevation_m"] = int(em.group(1))
+        gm = re.search(r"(-?\d{4})\s*(-?\d{4,5})", c2_geo)      # packed lat/long
+        if gm:
+            md["latitude"] = _dm_to_decimal(gm.group(1))
+            md["longitude"] = _dm_to_decimal(gm.group(2))
+        fields2 = [f for f in re.split(r"\s{2,}", c2.strip()) if f]
+        if fields2:
+            md["country_region"] = fields2[0]
+            if len(fields2) >= 2 and not re.match(r"^-?\d", fields2[1]):
+                md["species_name"] = fields2[1]
+
+    # ---- line 3: investigator(s) ----
+    if len(header_lines) >= 3:
+        _, c3 = _split_header_prefix(header_lines[2])
+        c3 = re.sub(r"[\s\-]+$", "", c3)
+        md["investigators"] = c3.strip() or None
+
+    # ---- hemisphere correction ----
+    # The packed lat/long carries an unreliable sign (ITRDB files variably omit
+    # the '-' on West longitudes or use '-' as a separator). Where the header's
+    # country/state is a recognized standardized ITRDB name, force the correct
+    # hemisphere. Otherwise leave the decoded sign and flag it unverified, so a
+    # caller (e.g. a user's own non-ITRDB file) knows the coordinate sign was not
+    # checked.
+    md["hemisphere_verified"] = False
+    lat_sign, lon_sign = _region_hemisphere(md["country_region"])
+    if lat_sign is not None or lon_sign is not None:
+        md["hemisphere_verified"] = True
+        if lon_sign is not None and md["longitude"] is not None:
+            md["longitude"] = lon_sign * abs(md["longitude"])
+        if lat_sign is not None and md["latitude"] is not None:
+            md["latitude"] = lat_sign * abs(md["latitude"])
+
+    return md
+
+
+def metadata(filename, header=None, skip_lines=0):
+    """Extract site/sample metadata from a Tucson (.rwl) file's header.
+
+    Returns a dict with best-effort fields (site_id, site_name, species_code,
+    species_name, country_region, elevation_m, latitude, longitude, first_year,
+    last_year, investigators) plus n_header_lines and the raw header lines.
+    Unreadable fields are None. Reads only the header, so it is cheap and
+    independent of loading the data; accepts a local path or an http(s) URL.
+    This is a prototype -- see df.attrs['dplpy_metadata'] for the same result
+    captured at read time.
+    """
+    is_url = filename.lower().startswith(("http://", "https://"))
+    if is_url:
+        raw = _fetch_url_lines(filename)
+    else:
+        with open(filename, "r") as fh:
+            raw = fh.read().split("\n")
+    clean = []
+    for line in raw:
+        line = line.rstrip("\r\n")
+        if len(line.strip()) == 0:
+            continue
+        if 0 <= line.find("#") <= 77:
+            continue
+        clean.append(line)
+    if skip_lines:
+        clean = clean[skip_lines:]
+    if not clean:
+        return _extract_header_metadata([])
+    start = 0 if header is False else _first_data_line_index(clean)
+    return _extract_header_metadata(clean[:start])
 
 
 def _fetch_url_lines(url):
