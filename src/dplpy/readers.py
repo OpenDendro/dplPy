@@ -56,7 +56,7 @@ import pandas as pd
 import numpy as np
 
 
-def readers(filename: str, skip_lines=0, header=None):
+def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
     """Imports a common ring width data file
 
     Extended Summary
@@ -76,6 +76,14 @@ def readers(filename: str, skip_lines=0, header=None):
     skip_lines : int, default 0
         indicates how many of the first few lines of the file to skip
         when reading it.
+    on_error : {"raise", "warn"}, default "raise"
+        "raise" (strict) refuses a file with an unrecoverable problem, as before.
+        "warn" (salvage) recovers as much as possible instead of raising: a series
+        with a self-overlap or a measurement-precision shift is dropped, a
+        duplicate series ID (two overlapping cores) has its later block(s)
+        renamed and kept, and a file with nothing usable returns ``None``. Every
+        such action is warned about and recorded on ``df.attrs["dplpy_salvage"]``
+        (a list of {series, issue, action, detail}).
 
     Returns
     -------
@@ -97,12 +105,14 @@ def readers(filename: str, skip_lines=0, header=None):
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
 
     # open the input file and read its data into a pandas dataframe
+    if on_error not in ("raise", "warn"):
+        raise ValueError("on_error must be 'raise' or 'warn'")
     if filename.upper().endswith(".CSV"):
         series_data = pd.read_csv(filename, skiprows=skip_lines)
     elif filename.upper().endswith(".RWL"):
-        series_data = process_rwl_pandas(filename, skip_lines, header)
+        series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
     elif filename.upper().endswith(".RAW"):
-        series_data = process_rwl_pandas(filename, skip_lines, header)
+        series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
     else:
         errorMsg = """
 
@@ -119,12 +129,22 @@ Example usages:
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
+        if on_error == "warn":
+            # Salvage mode: nothing usable, but don't derail a batch -- warn and
+            # return None so the caller can simply skip this file.
+            warnings.warn(
+                "No usable data could be read from " + os.path.basename(filename)
+                + "; returning None (on_error='warn')."
+            )
+            return None
         errorMsg = """
         Error reading file. Check that file exists and that file formatting is consistent with {format} format.
         If your file contains headers, run dpl.headers(file_path, header=True)
         """.format(format=FORMAT)
         raise ValueError(errorMsg)
+    salvage_report = series_data.attrs.get("dplpy_salvage", [])
     series_data.set_index('Year', inplace=True, drop=True)
+    series_data.attrs["dplpy_salvage"] = salvage_report  # re-attach (survives set_index)
 
     # Display message to show that reading was successful
     print("\nSUCCESS!\nFile read as:", FORMAT, "file\n")
@@ -139,19 +159,27 @@ Example usages:
 # .rwl (Tucson) reading
 # ---------------------------------------------------------------------------
 
-def process_rwl_pandas(filename, skip_lines, header):
+def process_rwl_pandas(filename, skip_lines, header, on_error="raise"):
     """Read a Tucson (.rwl/.raw) file into a Year-indexed dataframe.
 
     Returns a dataframe with a ``Year`` column (the public ``readers`` wrapper
-    sets it as the index), or ``None`` if nothing usable could be parsed.
+    sets it as the index), or ``None`` if nothing usable could be parsed. In
+    salvage mode (on_error="warn") the returned frame carries a report of what
+    was dropped/renamed on ``df.attrs["dplpy_salvage"]``.
     """
     with open(filename, "r") as rwl_file:
         raw_lines = rwl_file.readlines()
+    return _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
+                               os.path.basename(filename))
 
-    # 1. Drop blank lines (warning about them, as earlier dplPy did) and
-    #    comment lines (a '#' anywhere in the first 78 columns), the same
-    #    pre-clean dplR performs.  Line numbers in the warning are 1-indexed
-    #    against the ORIGINAL file so they stay meaningful to the user.
+
+def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
+    """Shared pipeline for the file and URL readers: clean lines, resolve the
+    header, parse, and assemble the Year-column dataframe (with salvage report on
+    ``df.attrs['dplpy_salvage']``). Returns None if nothing usable is present."""
+    # 1. Drop blank lines (warning about them, as earlier dplPy did) and comment
+    #    lines (a '#' anywhere in the first 78 columns). Line numbers in the
+    #    warning are 1-indexed against the original input.
     clean_lines = []
     for lineno, line in enumerate(raw_lines, start=1):
         line = line.rstrip("\r\n")
@@ -166,50 +194,73 @@ def process_rwl_pandas(filename, skip_lines, header):
     # 2. Honour an explicit skip_lines against the cleaned stream.
     if skip_lines:
         clean_lines = clean_lines[skip_lines:]
-
     if len(clean_lines) == 0:
         return None
 
     # 3. Resolve the header. Rather than assume a fixed 3-line header, skip any
     #    number of leading header/metadata lines up to the first line that looks
-    #    like data. Many real ITRDB files have 1-, 2- or other-length headers, and
-    #    blindly skipping three would silently drop data rows (or, with fewer than
-    #    three lines, lose the first measurements). header=False disables this;
-    #    header=True and header=None both skip leading header lines robustly.
+    #    like data (robust to 1-, 2- or other-length headers). header=False
+    #    disables this; header=True and header=None both skip robustly.
     if header is False:
         start = 0
     else:
         start = _first_data_line_index(clean_lines)
     clean_lines = clean_lines[start:]
-
     if len(clean_lines) == 0:
         return None
 
-    parsed = read_rwl(clean_lines)
+    parsed = read_rwl(clean_lines, on_error=on_error)
     if parsed is None:
         return None
-    rwl_data, precision, order = parsed
+    rwl_data, precision, order, report = parsed
 
-    # 4. Assemble the dataframe.  The index spans the first to last year for
-    #    which ANY series has data; years with no row remain NaN (a deliberate
-    #    departure from dplR, which zero-fills such gaps).
+    # 4. Assemble the dataframe. The index spans the first to last year with
+    #    data; years with no row stay NaN (a deliberate departure from dplR,
+    #    which zero-fills such gaps).
+    df = _assemble_dataframe(rwl_data, precision, order)
+    if df is None:
+        return None
+    df.attrs["dplpy_salvage"] = report
+    if on_error == "warn" and report:
+        _warn_salvage_summary(source_name, report)
+    return df
+
+
+def _assemble_dataframe(rwl_data, precision, order):
+    """Build a Year-column DataFrame from parsed rwl data. Shared by the file and
+    URL readers. Years with no value are NaN. Returns None if there is no data."""
     all_years = [yr for series in rwl_data.values() for yr in series]
     if len(all_years) == 0:
         return None
     first_date = min(all_years)
     last_date = max(all_years)
     index = list(range(first_date, last_date + 1))
-
     df = pd.DataFrame(data={"Year": index})
     series_columns = []
     for series in order:
         div = precision[series]
-        col = [rwl_data[series].get(yr, np.nan) for yr in index]
-        col = [v / div if v is not None and not (isinstance(v, float) and np.isnan(v)) else np.nan
-               for v in col]
+        data = rwl_data[series]
+        col = [data[yr] / div if yr in data else np.nan for yr in index]
         series_columns.append(pd.Series(data=col, name=series))
-    df = pd.concat([df] + series_columns, axis=1)
-    return df
+    return pd.concat([df] + series_columns, axis=1)
+
+
+def _warn_salvage_summary(basename, report):
+    """One concise per-file warning summarising salvage actions, so a large batch
+    stays legible. Full detail lives in df.attrs['dplpy_salvage']."""
+    dropped = [r for r in report if r["action"] == "dropped"]
+    renamed = [r for r in report if r["action"].startswith("renamed")]
+    parts = []
+    if dropped:
+        preview = "; ".join(r["series"] + ":" + r["issue"] for r in dropped[:5])
+        parts.append("dropped " + str(len(dropped)) + " series (" + preview
+                     + (" ..." if len(dropped) > 5 else "") + ")")
+    if renamed:
+        preview = "; ".join(r["action"] for r in renamed[:5])
+        parts.append("renamed " + str(len(renamed)) + " (" + preview
+                     + (" ..." if len(renamed) > 5 else "") + ")")
+    if parts:
+        warnings.warn("Salvaged " + basename + ": " + "; ".join(parts))
 
 
 def _detect_header(first_line):
@@ -404,18 +455,117 @@ def _rows_valid(rows):
     return True
 
 
-def read_rwl(lines, long=False):
-    """Parse cleaned Tucson data lines into (rwl_data, precision, order).
+def _block_year_values(rows, row_indices):
+    """Map of {year: raw integer value} a block assigns -- used to tell a true
+    duplicate (two blocks giving DIFFERENT values for the same year) from an
+    identical copy-paste (same values, handled by dedup) or a disjoint segment.
+    Blank fields, trailing stop markers, and negatives (which become NaN) are
+    excluded so they do not create spurious conflicts."""
+    yv = {}
+    for i in row_indices:
+        sid, yr, vals, k = rows[i]
+        n = len(vals)
+        for j in range(n):
+            tok = vals[j].strip()
+            if tok == "":
+                continue
+            if j == n - 1 and tok in ("999", "-9999"):
+                continue
+            try:
+                v = int(tok)
+            except ValueError:
+                continue
+            if v < 0:
+                continue
+            yv[yr + j] = v
+    return yv
+
+
+def _rename_overlapping_duplicates(rows):
+    """Salvage helper. When a series ID appears in more than one contiguous block
+    and those blocks actually share years (two cores sharing a code), rename the
+    second and later blocks (ID2, ID3, ...) so both are kept as distinct series.
+    A single ID split into disjoint segments (a gap, e.g. dplR's BT006 case) is
+    left untouched so it still merges. Mutates and returns `rows`, plus a list of
+    {series, issue, action, detail} records for the report."""
+    # Contiguous blocks, in file order, as lists of row indices.
+    blocks = []
+    cur = None
+    for i, r in enumerate(rows):
+        if r is None:
+            continue
+        sid = r[0]
+        if cur is not None and cur["sid"] == sid:
+            cur["rows"].append(i)
+        else:
+            if cur is not None:
+                blocks.append(cur)
+            cur = {"sid": sid, "rows": [i]}
+    if cur is not None:
+        blocks.append(cur)
+
+    by_sid = {}
+    for b in blocks:
+        by_sid.setdefault(b["sid"], []).append(b)
+
+    existing = set(by_sid.keys())
+    records = []
+    for sid, bl in by_sid.items():
+        if len(bl) < 2:
+            continue
+        # A block is a true duplicate only if it gives a DIFFERENT value for a
+        # year an earlier block already covered. Sharing years with identical
+        # values is a copy-paste (dedup handles it); disjoint years is a
+        # legitimately segmented series (merge). Only genuine conflicts rename.
+        accum = {}
+        rename_flags = []
+        for b in bl:
+            yv = _block_year_values(rows, b["rows"])
+            conflict = any(y in accum and accum[y] != v for y, v in yv.items())
+            rename_flags.append(conflict)
+            if not conflict:
+                for y, v in yv.items():
+                    accum.setdefault(y, v)
+        if not any(rename_flags):
+            continue
+        suffix = 2
+        for b, needs_rename in zip(bl, rename_flags):
+            if not needs_rename:
+                continue  # keep the first (and any disjoint) block under the ID
+            newid = sid + str(suffix)
+            while newid in existing:
+                suffix += 1
+                newid = sid + str(suffix)
+            existing.add(newid)
+            for ri in b["rows"]:
+                s, y, v, k = rows[ri]
+                rows[ri] = (newid, y, v, k)
+            records.append({"series": sid, "issue": "duplicate_id",
+                            "action": "renamed to " + newid,
+                            "detail": "overlapping duplicate block kept as " + newid})
+            suffix += 1
+    return rows, records
+
+
+def read_rwl(lines, long=False, on_error="raise"):
+    """Parse cleaned Tucson data lines into (rwl_data, precision, order, report).
 
     rwl_data  : {series_id: {year: raw_integer_value}}
     precision : {series_id: 100 or 1000}   (divisor to convert to mm)
     order     : [series_id, ...]           (first-appearance order)
+    report    : [{series, issue, action, detail}, ...]  (salvage actions taken)
 
     Uses a fixed-width parse first (the Tucson "standard"), falling back to a
     whitespace-delimited parse when the fixed one fails validation -- exactly
     the strategy dplR uses to cope with long IDs, negative years, etc. Returns
     ``None`` if nothing usable could be parsed.
+
+    on_error="warn" enables salvage mode: instead of raising on an unrecoverable
+    per-series problem, a self-overlap or precision-shift series is dropped and a
+    duplicate-ID's later block(s) are renamed and kept, each recorded in report.
     """
+    salvage = (on_error == "warn")
+    report = []
     fixed_rows = _parse_all(lines, "fixed", long)
     if _rows_valid(fixed_rows):
         rows = fixed_rows
@@ -438,6 +588,15 @@ def read_rwl(lines, long=False):
     n_bad = sum(1 for r in rows if r is None)
     if n_bad:
         warnings.warn(str(n_bad) + " line(s) could not be parsed and were skipped")
+
+    # Salvage: rename the later block(s) of any duplicate series ID whose blocks
+    # overlap in time (two cores sharing a code) so both are kept as distinct
+    # series. A single ID split into disjoint segments is left to merge, as in
+    # strict mode. Done before block/precision analysis so renamed blocks are
+    # treated as independent series downstream.
+    if salvage:
+        rows, rename_recs = _rename_overlapping_duplicates(rows)
+        report.extend(rename_recs)
 
     # Count contiguous blocks per series, so we can later tell a genuine
     # duplicate ID (the same code used by two separate blocks -- two cores)
@@ -480,6 +639,7 @@ def read_rwl(lines, long=False):
     overlaps = []       # (sid, year, first_row_start, second_row_start)
     overlap_seen = set()
     prec_shift = []     # (sid, year) where a 0.01 mm series carries a stray -9999
+    drop_series = set() # series to drop in salvage mode
 
     for r in rows:
         if r is None:
@@ -533,7 +693,16 @@ def read_rwl(lines, long=False):
     # Fail loudly on overlapping data. Silently merging or overwriting would
     # corrupt the series, so -- like dplR -- we refuse the file; unlike dplR we
     # say *which* kind of problem it is and point at the offending row.
-    if overlaps:
+    if overlaps and salvage:
+        # In salvage mode the duplicate-ID overlaps were already resolved by the
+        # rename pre-pass, so anything left is a series overlapping itself (a
+        # malformed row). Drop those series and record it.
+        for sid, y, first_start, second_start in overlaps:
+            drop_series.add(sid)
+            report.append({"series": sid, "issue": "self_overlap",
+                           "action": "dropped",
+                           "detail": "overlaps itself at year " + str(y)})
+    elif overlaps:
         problems = []
         for sid, y, first_start, second_start in overlaps:
             if block_count.get(sid, 1) > 1:
@@ -576,20 +745,28 @@ def read_rwl(lines, long=False):
         for sid, y in prec_shift:
             if sid not in affected:
                 affected.append(sid)
-        where = "; ".join(
-            str(sid) + " (stray -9999 near year "
-            + str(min(y for s, y in prec_shift if s == sid)) + ")"
-            for sid in affected
-        )
-        raise ValueError(
-            "Cannot read file -- measurement-precision shift detected. These series "
-            "end with a 0.01 mm stop marker (999) but also contain a -9999 (the "
-            "0.001 mm stop marker) mid-series, so the series was measured at two "
-            "different precisions: " + where + ".\ndplPy will not guess the boundary, "
-            "because reading such a series at a single precision makes part of it 10x "
-            "wrong. Please split the series by precision (or correct the markers) and "
-            "read it again."
-        )
+        if salvage:
+            for sid in affected:
+                drop_series.add(sid)
+                yy = min(y for s, y in prec_shift if s == sid)
+                report.append({"series": sid, "issue": "precision_shift",
+                               "action": "dropped",
+                               "detail": "stray -9999 near year " + str(yy)})
+        else:
+            where = "; ".join(
+                str(sid) + " (stray -9999 near year "
+                + str(min(y for s, y in prec_shift if s == sid)) + ")"
+                for sid in affected
+            )
+            raise ValueError(
+                "Cannot read file -- measurement-precision shift detected. These series "
+                "end with a 0.01 mm stop marker (999) but also contain a -9999 (the "
+                "0.001 mm stop marker) mid-series, so the series was measured at two "
+                "different precisions: " + where + ".\ndplPy will not guess the boundary, "
+                "because reading such a series at a single precision makes part of it 10x "
+                "wrong. Please split the series by precision (or correct the markers) and "
+                "read it again."
+            )
 
     # Resolve precision for any series that never showed a stop marker: adopt
     # the file's dominant precision (or 0.001 mm if the file has none at all),
@@ -625,10 +802,13 @@ def read_rwl(lines, long=False):
             "marker) were set to NaN [" + preview + more + "]"
         )
 
-    # Drop any series that ended up with no usable data at all.
-    order = [sid for sid in order if len(rwl_data[sid]) > 0]
+    # Drop salvage-flagged series (self-overlap / precision-shift), then any
+    # series that ended up with no usable data at all.
+    if drop_series:
+        order = [sid for sid in order if sid not in drop_series]
+    order = [sid for sid in order if len(rwl_data.get(sid, {})) > 0]
     rwl_data = {sid: rwl_data[sid] for sid in order}
     if len(order) == 0:
         return None
 
-    return rwl_data, precision, order
+    return rwl_data, precision, order, report

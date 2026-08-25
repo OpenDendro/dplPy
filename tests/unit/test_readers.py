@@ -383,3 +383,89 @@ def test_rwl_bunched_negative_year_uses_long_format(tmp_path):
     assert d.index.min() == -1270              # negative year parsed correctly
     assert d.loc[-1270, "MNP262M"] == pytest.approx(0.375)
     assert d.loc[-1261, "MNP262M"] == pytest.approx(0.355)
+
+
+# ---------------------------------------------------------------------------
+# Salvage mode (on_error="warn"): recover as much as possible instead of raising.
+# ---------------------------------------------------------------------------
+
+def test_salvage_self_overlap_drops_series_keeps_rest(tmp_path):
+    p = tmp_path / "so.rwl"
+    p.write_text(
+        "AAA01   1205   206   144   216   316   308   420\n"   # 6 vals -> overruns to 1210
+        "AAA01   1210   732   500   642 -9999\n"
+        "BBB01   1900   100   200   300 -9999\n"               # clean series
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), on_error="warn")
+    assert "AAA01" not in d.columns        # bad series dropped
+    assert "BBB01" in d.columns            # clean series kept
+    rep = d.attrs["dplpy_salvage"]
+    assert any(r["series"] == "AAA01" and r["issue"] == "self_overlap"
+               and r["action"] == "dropped" for r in rep)
+
+
+def test_salvage_precision_shift_drops_series_keeps_rest(tmp_path):
+    p = tmp_path / "ps.rwl"
+    p.write_text(
+        "AAA01   1900   910  1180 -9999\n"   # 0.001 segment...
+        "AAA01   1910    24    20   999\n"    # ...then 0.01 -> precision shift
+        "BBB01   1900   100   200   300 -9999\n"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), on_error="warn")
+    assert "AAA01" not in d.columns
+    assert "BBB01" in d.columns
+    assert any(r["issue"] == "precision_shift" for r in d.attrs["dplpy_salvage"])
+
+
+def test_salvage_duplicate_id_renames_and_keeps_both():
+    # viet001 has BDF02A used by two overlapping cores. Salvage keeps both,
+    # renaming the second block; strict still refuses.
+    with pytest.raises(ValueError):
+        dpl.readers(RWL + "viet001.rwl")                       # strict
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(RWL + "viet001.rwl", on_error="warn")  # salvage
+    assert "BDF02A" in d.columns and "BDF02A2" in d.columns
+    assert any(r["issue"] == "duplicate_id" and r["action"].startswith("renamed")
+               for r in d.attrs["dplpy_salvage"])
+
+
+def test_salvage_does_not_split_disjoint_segments(tmp_path):
+    # One ID entered as two disjoint segments (a gap) must MERGE, not be renamed.
+    p = tmp_path / "seg.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300 -9999\n"
+        "AAA01   2000   400   500   600 -9999\n"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), on_error="warn")
+    assert "AAA01" in d.columns and "AAA012" not in d.columns   # merged, not split
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+    assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
+    assert d.attrs["dplpy_salvage"] == []
+
+
+def test_salvage_identical_overlap_not_renamed(tmp_path):
+    # Same ID in two blocks covering the same years with IDENTICAL values (a
+    # copy-paste, the cana326 case) must dedup, not rename/split.
+    p = tmp_path / "iddup.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300 -9999\n"
+        "BBB01   1910   111   222 -9999\n"
+        "AAA01   1900   100   200   300 -9999\n"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), on_error="warn")
+    assert "AAA01" in d.columns and "AAA012" not in d.columns
+    assert not any(r["issue"] == "duplicate_id" for r in d.attrs["dplpy_salvage"])
+
+
+def test_salvage_invalid_on_error_value():
+    with pytest.raises(ValueError):
+        dpl.readers(RWL + "ca533.rwl", on_error="bogus")

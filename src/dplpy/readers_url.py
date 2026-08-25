@@ -1,51 +1,40 @@
+import os
 import urllib.request
-import pandas as pd
-import numpy as np
-from .readers import read_rwl, readers
 
-def readers_url(url, header=False, skip_lines=0):
+from .readers import _lines_to_dataframe
+
+
+def readers_url(url, header=None, skip_lines=0, on_error="raise"):
+    """Read a Tucson (.rwl) file directly from a URL into a Year-indexed dataframe.
+
+    Uses the same parsing pipeline as ``readers`` (header auto-detection, the
+    hardened Tucson parser, and -- with on_error="warn" -- salvage mode), so a
+    remote file behaves exactly like a local one.
+    """
+    if on_error not in ("raise", "warn"):
+        raise ValueError("on_error must be 'raise' or 'warn'")
+
     FORMAT = "." + url.split(".")[-1]
-    file_read = urllib.request.urlopen(url).read().decode('utf-8').split('\n')
+    raw_lines = urllib.request.urlopen(url).read().decode("utf-8").split("\n")
 
-    if header is True:
-        skip_lines += 3 # working with the assumption that headers are 3 lines long
-    file_lines = file_read[skip_lines:]
+    df = _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
+                             os.path.basename(url))
+    if df is None:
+        if on_error == "warn":
+            import warnings
+            warnings.warn("No usable data could be read from " + url
+                          + "; returning None (on_error='warn').")
+            return None
+        raise ValueError(
+            "Error reading file. Check that the URL is correct and that the file "
+            "formatting is consistent with " + FORMAT + " format."
+        )
 
-    rwl_data, first_date, last_date = read_rwl(file_lines, skip_lines)
-    if rwl_data is None:
-        errorMsg = """
-        Error reading file. Check that file exists and that file formatting is consistent with {format} format.
-        If your file contains headers, run dpl.headers(file_path, header=True)
-        """.format(format=FORMAT)
-        raise ValueError(errorMsg)
+    salvage_report = df.attrs.get("dplpy_salvage", [])
+    df.set_index("Year", inplace=True, drop=True)
+    df.attrs["dplpy_salvage"] = salvage_report
 
-    # create an array of indexes for the dataframe
-    indexes = []
-    for i in range(first_date, last_date):
-        indexes.append(i)
-    
-    df = pd.DataFrame(data={"Year":indexes})
-
-    # store raw data in pandas dataframe. Build each series' column in a list first and
-    # concat once at the end rather than repeatedly concatenating inside the loop -- the
-    # latter is O(n^2) and gets very slow for files with many series.
-    series_columns = []
-    for series in rwl_data:
-        series_data = []
-        for i in range(first_date, last_date):
-            if i in rwl_data[series]:
-                series_data.append(rwl_data[series][i]/rwl_data[series]["div"])
-            else:
-                series_data.append(np.nan)
-        series_columns.append(pd.Series(data=series_data, name=series))
-    df = pd.concat([df] + series_columns, axis=1)
-    
-    df.set_index('Year', inplace = True, drop = True)
-
-    # Display message to show that reading was successful
     print("\nSUCCESS!\nFile read as:", FORMAT, "file\n")
-
-    # Display names of all the series found
     print("Series names:")
     print(list(df.columns), "\n")
     return df
