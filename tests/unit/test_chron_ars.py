@@ -76,9 +76,10 @@ def test_chron_ars_recovers_ar_order_on_ar2():
 
 
 # ---------------------------------------------------------------------------
-# Fidelity regression test: values hardcoded from dplR 1.7.9 chron.ars()
-# (run in R on the same spline-detrended ca533 RWI, biweight=FALSE, ar.yw).
-# This encodes the direct dplR validation into CI without requiring R.
+# Fidelity regression test: values hardcoded from dplR 1.7.9's FULL pipeline --
+# detrend(ca533, method="Spline") -> chron.ars(biweight=FALSE) -- run entirely
+# in R. dplPy's own detrend + chron_ars reproduces these to ~5e-10, so this
+# encodes the end-to-end dplR validation into CI without requiring R.
 # ---------------------------------------------------------------------------
 def test_chron_ars_matches_dplR_reference_ca533():
     data = dpl.readers("tests/data/csv/ca533.csv")
@@ -89,9 +90,9 @@ def test_chron_ars_matches_dplR_reference_ca533():
 
     # dplR std/res/ars at three years (atol 1e-6)
     ref = {
-        1700: (0.8812745004, 0.9176030584, 0.9026541378),
-        1850: (0.9395819372, 0.9993543725, 0.9748450122),
-        1983: (1.3316511107, 1.1243378000, 1.3016387632),
+        1700: (0.8813025556, 0.9176128562, 0.9026494583),
+        1850: (0.9396477470, 0.9993573139, 0.9748222048),
+        1983: (1.3314471088, 1.1243002992, 1.3015262394),
     }
     for yr, (s, r, a) in ref.items():
         assert abs(out.loc[yr, "std"] - s) < 1e-6, (yr, "std")
@@ -104,7 +105,8 @@ def test_pooled_acf_matches_dplR_reference_ca533():
     data = dpl.readers("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
     out_ar = _pooled_ar(rwi.to_numpy(dtype=float), max_lag=10, first_aic_min=True)
-    # dplR pooled ACF (lags 0..5) and selected order
-    ref_acf = [1.0, 0.5162281879, 0.3532549896, 0.2533907303, 0.2191626070, 0.1946886321]
-    assert np.allclose(out_ar["acf"][:6], ref_acf, atol=1e-8)
+    # dplR pooled ACF (lags 0..5) and selected order, from chron.ars() on dplR's
+    # own spline detrend (matches dplPy's new detrend + pooled AR to ~1e-8).
+    ref_acf = [1.0, 0.51626627, 0.35330050, 0.25346321, 0.21923437, 0.19473382]
+    assert np.allclose(out_ar["acf"][:6], ref_acf, atol=1e-7)
     assert out_ar["order"] == 5

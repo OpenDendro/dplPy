@@ -28,6 +28,7 @@ __license__ = "GNU GPLv3"
 #              with spline(s) as the default, and then by calculating residuals or differences 
 #              compared to the original data (residuals by default).
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from .smoothingspline import spline
@@ -94,7 +95,14 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None):
     series_name = data.name
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
-    y = nullremoved_data.to_numpy()
+    y = nullremoved_data.to_numpy(dtype=float).copy()
+
+    # dplR's detrend.series recodes zero ring-widths to 0.001 before fitting the
+    # curve and dividing (see detrend.series.R: "y2[y2 == 0] <- 0.001"). A zero
+    # is a locally-absent ring -- a real, dated near-zero-growth year -- so this
+    # keeps it as a small positive index instead of collapsing it to an exact 0
+    # (0 / curve = 0), which also matches dplR's RWI to machine precision.
+    y[y == 0] = 0.001
 
     if fit == "spline":
         yi = spline(x, y, period)

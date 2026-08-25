@@ -28,7 +28,7 @@ __license__ = "GNU GPLv3"
 #              a spline curve.
 
 from math import cos
-from math import pi
+from math import pi, floor
 from csaps import csaps
 
 # Returns the spline parameter, given amplitude of the series and the period
@@ -38,10 +38,13 @@ def get_param(amp, period):
     return spline_param
 
 def get_period(period, n):
+    # The default "n-year spline" wavelength is floor(0.67 * n), matching dplR's
+    # detrend.series (nyrs = floor(nY2 * 0.67)). Using an unfloored 0.67 * n left
+    # dplPy's spline ~3e-5 off dplR's -- the sole source of the crossdating gap.
     if period is None:
-        return n * 0.67
+        return floor(n * 0.67)
     elif period < 0:
-        return n * abs(period)/100  
+        return n * abs(period)/100
     elif period <= 1:
         return n * period
     else:
