@@ -2,7 +2,7 @@
  <img src="https://github.com/OpenDendro/dplPy/blob/main/docs/assets/dplpy.png?raw=true" width="175"> 
 
 # dplPy -the Dendrochronology Program Library in Python
-The Dendrochronology Program Library (DPL) in Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html) created by the [legendary Richard Holmes](https://arizona.aws.openrepository.com/handle/10150/262569?show=full) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
+The Dendrochronology Program Library (DPL) in Python has its roots in both the [original FORTRAN program](https://www.ltrr.arizona.edu/software.html) created by the [legendary Richard Holmes](https://repository.arizona.edu/items/e7703eeb-adca-43c8-926e-daf18f86b654) and the subsequent R Project package by Andy Bunn, [dplR](https://github.com/OpenDendro/dplR).  Our aim is to provide researchers working with tree-ring data the necessary tools in open-source environments, promoting open science practices, enhancing rigor and transparency in dendrochronology, and eventually allowing reproducible research entirely in a single programming language.
 
  The development of dplPy is supported by a grant from the Paleoclimate program of the US National Science Foundation (AGS-2054516) to Andy Bunn, Kevin Anchukaitis, Ed Cook, and Tyson Swetnam.
 <br>
