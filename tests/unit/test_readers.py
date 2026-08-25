@@ -1,7 +1,9 @@
 import dplpy as dpl
 import pandas as pd
+import numpy as np
 import pytest
 import io
+import warnings
 from unittest.mock import patch, Mock
 
 '''
@@ -164,3 +166,92 @@ def test_rwl_with_blank_lines(mock_open: Mock):
         results = dpl.readers("valid_rwl_with_blanks.rwl")
         mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", "r")
         pd.testing.assert_frame_equal(results, expected_df)
+
+
+# ===========================================================================
+# Hardened Tucson (.rwl) reader (v0.2.x): header auto-detection, dplR fidelity,
+# deliberate NaN divergences (gaps / anomalous negatives), and duplicate-ID
+# rejection. Reference values are hardcoded from dplR 1.7.9 read.rwl() so the
+# validation runs in CI without requiring R.
+# ===========================================================================
+
+RWL = "tests/data/rwl/"
+
+
+def _read_quiet(path, **kw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return dpl.readers(path, **kw)
+
+
+def test_rwl_autodetect_matches_dplR_ca533():
+    # Read with NO header argument (auto-detection) and check exact dplR values.
+    data = _read_quiet(RWL + "ca533.rwl")
+    assert data.shape == (1358, 34)
+    # dplR read.rwl() reference cells for series CAM011:
+    assert data.loc[1530, "CAM011"] == pytest.approx(1.04)
+    assert data.loc[1800, "CAM011"] == pytest.approx(0.44)
+    assert data.loc[1900, "CAM011"] == pytest.approx(0.45)
+    assert data.loc[1983, "CAM011"] == pytest.approx(0.68)
+    # outside the series span -> NaN (dplR agrees)
+    assert np.isnan(data.loc[1500, "CAM011"])
+
+
+def test_rwl_header_autodetected_by_default():
+    # th001 has a 3-line header; before hardening this failed unless header=True
+    # was passed. Auto-detection must now read it with no header argument.
+    data = _read_quiet(RWL + "th001.rwl")
+    assert data.shape == (448, 77)
+    assert "PATUNG" in data.columns
+
+
+def test_rwl_duplicate_id_raises_and_names_series():
+    # viet001 contains the duplicated ID BDF02A (two cores sharing a code).
+    # dplPy must refuse rather than silently merge, and name the offender.
+    with pytest.raises(ValueError) as e:
+        _read_quiet(RWL + "viet001.rwl")
+    msg = str(e.value)
+    assert "Duplicate series ID" in msg
+    assert "BDF02A" in msg
+
+
+def test_rwl_anomalous_negative_becomes_nan_with_warning():
+    # th001's PATUNG decade-1920 row carries a spurious -2599; it must become
+    # NaN (not -2.599, not 0.0) and the user must be warned.
+    with pytest.warns(UserWarning, match="anomalous negative"):
+        data = dpl.readers(RWL + "th001.rwl")
+    assert np.isnan(data.loc[1928, "PATUNG"])       # the anomalous value -> NaN
+    assert data.loc[1927, "PATUNG"] == pytest.approx(0.983)  # neighbours intact
+    assert data.loc[1929, "PATUNG"] == pytest.approx(0.597)
+
+
+def test_rwl_internal_gap_stays_nan_not_zero():
+    # ca667's ST850A has a real ~250-year data gap. dplR fills it with 0.0
+    # (a zero-init artifact); dplPy deliberately keeps genuine gaps as NaN so
+    # they stay out of downstream means. Valid values still match dplR exactly.
+    data = _read_quiet(RWL + "ca667.rwl")
+    assert data.loc[-390, "ST850A"] == pytest.approx(0.35)   # matches dplR
+    assert data.loc[-389, "ST850A"] == pytest.approx(0.36)   # matches dplR
+    assert np.isnan(data.loc[-388, "ST850A"])                # stop-marker slot
+    assert np.isnan(data.loc[-385, "ST850A"])                # inside the gap
+
+
+def test_rwl_self_overlap_reported_not_as_duplicate(tmp_path):
+    # akfirmc-style hidden error: a single series whose opening partial-decade
+    # row carries one value too many (6 values from a 1205 start), so it runs
+    # into the next row that begins at 1210. This must be reported as the series
+    # overlapping ITSELF (pointing at the offending row), NOT as a duplicate ID
+    # -- there is only one block for this series.
+    p = tmp_path / "selfoverlap.rwl"
+    p.write_text(
+        "AAA01   1205   206   144   216   316   308   420\n"
+        "AAA01   1210   732   500   642   784   816   470   446   474   432   519\n"
+        "AAA01   1220   140   160 -9999\n"
+    )
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p))
+    msg = str(e.value)
+    assert "overlaps itself" in msg          # correctly diagnosed as self-overlap
+    assert "AAA01" in msg
+    assert "1210" in msg                     # names the overlapping year
+    assert "Duplicate series ID" not in msg  # NOT mislabelled as a duplicate

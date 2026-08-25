@@ -28,41 +28,66 @@ __license__ = "GNU GPLv3"
 # Project: OpenDendro- Readers
 # Description: Reads data from supported file types (*.CSV and *.RWL)
 #              and stores them in a dataframe
+#
+# The Tucson (.rwl) reader was substantially hardened in v0.2.x to handle
+# the "not-that-rare" formatting problems found in real ITRDB files while
+# preserving byte-for-byte backward compatibility on clean files. The design
+# mirrors dplR's read.tucson() robustness model (header auto-detection, a
+# fixed-width parse with a whitespace-delimited fallback, per-series precision
+# detection, and tolerant per-line error handling), with two DELIBERATE
+# departures from dplR agreed for dplPy:
+#
+#   * No-data internal gaps (years with no row at all) stay NaN instead of
+#     being filled with 0.0.  dplR's 0.0 there is an artifact of its
+#     zero-initialised assembly matrix; NaN keeps genuine gaps out of any
+#     downstream mean/detrend.
+#   * Anomalous negative values (anything < 0 that is not the -9999 stop
+#     marker, e.g. -7 or -2599) are set to NaN AND a warning is emitted,
+#     rather than being converted to 0.0 as dplR does.  Ring widths cannot be
+#     negative, so these are treated as missing and the user is told.
+#
+# On every valid measurement dplPy matches dplR exactly.
 
 import os
-import sys
+import warnings
+from collections import Counter
+
 import pandas as pd
 import numpy as np
-import warnings
 
-def readers(filename: str, skip_lines=0, header=False):
+
+def readers(filename: str, skip_lines=0, header=None):
     """Imports a common ring width data file
-    
+
     Extended Summary
     ----------------
-    This function reads data from common ring width data files (.csv, .rwls)
+    This function reads data from common ring width data files (.csv, .rwl)
     and stores them in pandas dataframes.
-    
+
     Parameters
     ----------
     filename : str
         a data file (.CSV, .RWL or .RAW)
-    header : boolean, default False
-        a flag indicating whether a 3-line header is at the top of the file.
+    header : bool or None, default None
+        Whether a 3-line site-metadata header sits at the top of the file.
+        ``None`` (the default) auto-detects the header the way dplR does, so
+        the great majority of real ITRDB files "just work" without the caller
+        having to know.  Pass ``True`` or ``False`` to force the behaviour.
     skip_lines : int, default 0
         indicates how many of the first few lines of the file to skip
         when reading it.
-    
+
     Returns
     -------
     data : pandas dataframe
-    
+
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> data = dpl.readers("../tests/data/csv/file.rwl", header=True)
-    
+    >>> data = dpl.readers("../tests/data/rwl/file.rwl")           # header auto-detected
+    >>> data = dpl.readers("../tests/data/rwl/file.rwl", header=True)
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#readers
@@ -70,7 +95,7 @@ def readers(filename: str, skip_lines=0, header=False):
     """
     FORMAT = "." + filename.split(".")[-1]
     print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
-    
+
     # open the input file and read its data into a pandas dataframe
     if filename.upper().endswith(".CSV"):
         series_data = pd.read_csv(filename, skiprows=skip_lines)
@@ -89,7 +114,7 @@ Example usages:
 >>> data = dpl.readers('../tests/data/csv/filename.csv')
 >>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
 """
-        
+
         raise ValueError(errorMsg)
 
     # If no data is returned, then an error was encountered when reading the file.
@@ -99,7 +124,7 @@ Example usages:
         If your file contains headers, run dpl.headers(file_path, header=True)
         """.format(format=FORMAT)
         raise ValueError(errorMsg)
-    series_data.set_index('Year', inplace = True, drop = True)
+    series_data.set_index('Year', inplace=True, drop=True)
 
     # Display message to show that reading was successful
     print("\nSUCCESS!\nFile read as:", FORMAT, "file\n")
@@ -109,89 +134,365 @@ Example usages:
     print(list(series_data.columns), "\n")
     return series_data
 
-# Process data from .rwl file and store data in a pandas dataframe.
-def process_rwl_pandas(filename, skip_lines, header):
-    if header is True:
-        skip_lines += 3 # working with the assumption that headers are 3 lines long
 
+# ---------------------------------------------------------------------------
+# .rwl (Tucson) reading
+# ---------------------------------------------------------------------------
+
+def process_rwl_pandas(filename, skip_lines, header):
+    """Read a Tucson (.rwl/.raw) file into a Year-indexed dataframe.
+
+    Returns a dataframe with a ``Year`` column (the public ``readers`` wrapper
+    sets it as the index), or ``None`` if nothing usable could be parsed.
+    """
     with open(filename, "r") as rwl_file:
-        file_lines = rwl_file.readlines()[skip_lines:]
-    
-    rwl_data, first_date, last_date = read_rwl(file_lines, skip_lines)
-    if rwl_data is None:
+        raw_lines = rwl_file.readlines()
+
+    # 1. Drop blank lines (warning about them, as earlier dplPy did) and
+    #    comment lines (a '#' anywhere in the first 78 columns), the same
+    #    pre-clean dplR performs.  Line numbers in the warning are 1-indexed
+    #    against the ORIGINAL file so they stay meaningful to the user.
+    clean_lines = []
+    for lineno, line in enumerate(raw_lines, start=1):
+        line = line.rstrip("\r\n")
+        if len(line.strip()) == 0:
+            warnings.warn("Empty line found at line " + str(lineno) + "\n")
+            continue
+        hashpos = line.find("#")
+        if 0 <= hashpos <= 77:
+            continue  # comment line
+        clean_lines.append(line)
+
+    # 2. Honour an explicit skip_lines against the cleaned stream.
+    if skip_lines:
+        clean_lines = clean_lines[skip_lines:]
+
+    if len(clean_lines) == 0:
         return None
 
-    # create an array of indexes for the dataframe
-    indexes = []
-    for i in range(first_date, last_date):
-        indexes.append(i)
-    
-    df = pd.DataFrame(data={"Year":indexes})
+    # 3. Resolve the header: auto-detect (header is None) or trust the caller.
+    if header is None:
+        is_head = _detect_header(clean_lines[0])
+    else:
+        is_head = bool(header)
+    if is_head:
+        clean_lines = clean_lines[3:]  # standard 3-line Tucson header
 
-    # store raw data in pandas dataframe. Build each series' column in a list first and
-    # concat once at the end rather than repeatedly concatenating inside the loop -- the
-    # latter is O(n^2) and gets very slow for files with many series.
+    if len(clean_lines) == 0:
+        return None
+
+    parsed = read_rwl(clean_lines)
+    if parsed is None:
+        return None
+    rwl_data, precision, order = parsed
+
+    # 4. Assemble the dataframe.  The index spans the first to last year for
+    #    which ANY series has data; years with no row remain NaN (a deliberate
+    #    departure from dplR, which zero-fills such gaps).
+    all_years = [yr for series in rwl_data.values() for yr in series]
+    if len(all_years) == 0:
+        return None
+    first_date = min(all_years)
+    last_date = max(all_years)
+    index = list(range(first_date, last_date + 1))
+
+    df = pd.DataFrame(data={"Year": index})
     series_columns = []
-    for series in rwl_data:
-        series_data = []
-        for i in range(first_date, last_date):
-            if i in rwl_data[series]:
-                series_data.append(rwl_data[series][i]/rwl_data[series]["div"])
-            else:
-                series_data.append(np.nan)
-        series_columns.append(pd.Series(data=series_data, name=series))
+    for series in order:
+        div = precision[series]
+        col = [rwl_data[series].get(yr, np.nan) for yr in index]
+        col = [v / div if v is not None and not (isinstance(v, float) and np.isnan(v)) else np.nan
+               for v in col]
+        series_columns.append(pd.Series(data=col, name=series))
     df = pd.concat([df] + series_columns, axis=1)
     return df
 
-# Extract raw data from lines of .rwl file and store in a nested dictionary
-def read_rwl(lines, skip_lines):
-    rwl_data = {}
-    first_date = sys.maxsize
-    last_date = -sys.maxsize
-    line_ct = skip_lines
-    for line in lines:
+
+def _detect_header(first_line):
+    """Return True if the first line looks like site metadata, not data.
+
+    Port of dplR read.tucson()'s header heuristic: a data line has an integer
+    year in cols 9-12 and integer measurements from col 13 on; anything else is
+    treated as a header, with a rescue for data lines that carry unusually long
+    IDs / spacing.
+    """
+    if len(first_line) < 12:
+        raise ValueError("first line in rwl file ends before column 12")
+
+    is_head = False
+
+    # Year must be an integer in [-1e4, 1e4] in columns 9-12 (0-indexed 8:12).
+    yr_field = first_line[8:12]
+    try:
+        yrcheck = float(yr_field)
+        if yrcheck < -1e4 or yrcheck > 1e4 or yrcheck != round(yrcheck):
+            is_head = True
+    except ValueError:
+        is_head = True
+
+    # Data fields (10 x 6 chars from col 13) must be blank or integer, no letters.
+    if not is_head:
+        fields = [first_line[i:i + 6].lstrip() for i in range(12, 12 + 6 * 10, 6)]
+        nonempty = [k for k, f in enumerate(fields) if f != ""]
+        if not nonempty:
+            is_head = True
+        else:
+            fields = fields[:nonempty[-1] + 1]
+            if any(any(c.isalpha() for c in f) for f in fields):
+                is_head = True
+            else:
+                for f in fields:
+                    if f == "":
+                        continue
+                    try:
+                        if float(f) != round(float(f)):
+                            is_head = True
+                            break
+                    except ValueError:
+                        is_head = True
+                        break
+
+    # Rescue: a data line with a long ID / odd spacing can trip the checks
+    # above. If splitting on whitespace yields an ID followed by all-integer
+    # tokens, it is really data after all.
+    if is_head:
+        parts = first_line.strip().split()
+        if 3 <= len(parts) <= 13:
+            rest = parts[1:]
+            if not any(any(c.isalpha() for c in p) for p in rest):
+                ok = True
+                for p in rest:
+                    try:
+                        if float(p) != round(float(p)):
+                            ok = False
+                            break
+                    except ValueError:
+                        ok = False
+                        break
+                if ok:
+                    is_head = False
+
+    return is_head
+
+
+def _parse_fixed(line, long=False):
+    """Parse one line by fixed Tucson columns: (id, year, [value strings])."""
+    idw, yrw = (7, 5) if long else (8, 4)
+    series_id = line[:idw].strip()
+    year = int(line[idw:idw + yrw])          # may raise ValueError
+    rest = line[idw + yrw:]
+    values = [rest[i:i + 6].strip() for i in range(0, len(rest), 6)]
+    values = [v for v in values if v != ""]
+    return series_id, year, values
+
+
+def _parse_ws(line):
+    """Parse one line by whitespace delimiting: (id, year, [value strings])."""
+    tokens = line.split()
+    if len(tokens) < 2:
+        raise ValueError("too few fields")
+    series_id = tokens[0]
+    year = int(tokens[1])                    # may raise ValueError
+    values = tokens[2:]
+    return series_id, year, values
+
+
+def _parse_all(lines, method, long=False):
+    """Parse every line with one method. Returns a list where each element is
+    (id, year, values, lineno) or None if that line could not be parsed."""
+    rows = []
+    for k, line in enumerate(lines):
+        if len(line.strip()) < 7:
+            rows.append(None)
+            continue
         try:
-            line = line.rstrip("\n")
-            if len(line.strip()) < 7:
-                line_ct += 1
-                warn_msg = "Empty line found at line " + str(line_ct) + "\n"
-                warnings.warn(warn_msg)
+            if method == "fixed":
+                sid, yr, vals = _parse_fixed(line, long)
+            else:
+                sid, yr, vals = _parse_ws(line)
+            rows.append((sid, yr, vals, k))
+        except (ValueError, IndexError):
+            rows.append(None)
+    return rows
+
+
+def _rows_valid(rows):
+    """dplR input.ok essence: reject a parse where any row carries more values
+    than its decade allows (the tell-tale of a mis-tokenised line). One extra
+    column is permitted for a trailing stop marker."""
+    good = [r for r in rows if r is not None]
+    if not good:
+        return False
+    for sid, yr, vals, k in good:
+        full_per_row = 10 - (yr % 10)
+        if len(vals) > full_per_row + 1:
+            return False
+    return True
+
+
+def read_rwl(lines, long=False):
+    """Parse cleaned Tucson data lines into (rwl_data, precision, order).
+
+    rwl_data  : {series_id: {year: raw_integer_value}}
+    precision : {series_id: 100 or 1000}   (divisor to convert to mm)
+    order     : [series_id, ...]           (first-appearance order)
+
+    Uses a fixed-width parse first (the Tucson "standard"), falling back to a
+    whitespace-delimited parse when the fixed one fails validation -- exactly
+    the strategy dplR uses to cope with long IDs, negative years, etc. Returns
+    ``None`` if nothing usable could be parsed.
+    """
+    fixed_rows = _parse_all(lines, "fixed", long)
+    if _rows_valid(fixed_rows):
+        rows = fixed_rows
+    else:
+        ws_rows = _parse_all(lines, "ws")
+        if _rows_valid(ws_rows):
+            warnings.warn("fixed-width parse failed; re-read with variable (whitespace) columns")
+            rows = ws_rows
+        else:
+            # Neither validated cleanly. Keep the parse that recovered the most
+            # rows so a single malformed file still yields as much data as
+            # possible, and tell the user the read may be incomplete.
+            n_fixed = sum(1 for r in fixed_rows if r is not None)
+            n_ws = sum(1 for r in ws_rows if r is not None)
+            if max(n_fixed, n_ws) == 0:
+                return None
+            warnings.warn("file has formatting problems; read may be incomplete")
+            rows = fixed_rows if n_fixed >= n_ws else ws_rows
+
+    n_bad = sum(1 for r in rows if r is None)
+    if n_bad:
+        warnings.warn(str(n_bad) + " line(s) could not be parsed and were skipped")
+
+    # Count contiguous blocks per series, so we can later tell a genuine
+    # duplicate ID (the same code used by two separate blocks -- two cores)
+    # from a single series that overlaps *itself* because a row is malformed.
+    block_count = {}
+    prev = None
+    for r in rows:
+        if r is None:
+            continue
+        sid = r[0]
+        if sid != prev:
+            block_count[sid] = block_count.get(sid, 0) + 1
+            prev = sid
+
+    rwl_data = {}
+    precision = {}
+    order = []
+    neg_hits = []       # (series, year) for anomalous negatives -> NaN
+    nonint_hits = 0
+    year_src = {}       # sid -> {year: start-year of the row that wrote it}
+    overlaps = []       # (sid, year, first_row_start, second_row_start)
+    overlap_seen = set()
+
+    for r in rows:
+        if r is None:
+            continue
+        sid, yr, vals, k = r
+        if sid not in rwl_data:
+            rwl_data[sid] = {}
+            year_src[sid] = {}
+            order.append(sid)
+        for j, tok in enumerate(vals):
+            s = tok.strip()
+            if s == "999":                       # 0.01 mm stop marker
+                precision[sid] = 100
                 continue
-            if line[7] != '-' and line[6] != '-':
-                series_id = line[:8].strip()
-                iyr = int(line[8:12])
-            elif line[7] == '-':
-                series_id = line[:7].strip()
-                iyr = int(line[7:12]) 
-            elif line[6] == '-':
-                series_id = line[:6].strip()
-                iyr = int(line[6:12])
+            if s == "-9999":                     # 0.001 mm stop marker
+                precision[sid] = 1000
+                continue
+            try:
+                v = int(s)
+            except ValueError:
+                nonint_hits += 1                 # non-integer token: skip -> NaN
+                continue
+            if v < 0:
+                # Anomalous negative (not a stop marker): treat as missing.
+                neg_hits.append((sid, yr + j))
+                continue
+            y = yr + j
+            if y in rwl_data[sid]:
+                # A value is already present for this (series, year): the data
+                # overlaps. Record it (keep the first value; we will refuse the
+                # file below rather than guess which is right).
+                if sid not in overlap_seen:
+                    overlaps.append((sid, y, year_src[sid].get(y), yr))
+                    overlap_seen.add(sid)
+                continue
+            rwl_data[sid][y] = v
+            year_src[sid][y] = yr
 
-            if series_id not in rwl_data:
-                rwl_data[series_id] = {}
+    # Fail loudly on overlapping data. Silently merging or overwriting would
+    # corrupt the series, so -- like dplR -- we refuse the file; unlike dplR we
+    # say *which* kind of problem it is and point at the offending row.
+    if overlaps:
+        problems = []
+        for sid, y, first_start, second_start in overlaps:
+            if block_count.get(sid, 1) > 1:
+                # Same ID in two separate blocks: a genuine duplicate series ID.
+                problems.append(
+                    "Duplicate series ID '" + str(sid) + "': this ID is used by more "
+                    "than one series in the file (they overlap at year " + str(y)
+                    + ") -- most often two cores mistakenly given the same code. "
+                    "Rename or remove the duplicate."
+                )
+            else:
+                # One contiguous block that runs into itself: a malformed row.
+                allowed = 10 - (first_start % 10) if first_start is not None else None
+                next_dec = first_start - (first_start % 10) + 10 if first_start is not None else None
+                detail = (
+                    "Series '" + str(sid) + "' overlaps itself at year " + str(y) + ": the "
+                    "row beginning " + str(first_start) + " supplies a value for " + str(y)
+                    + ", but another row begins at " + str(second_start) + "."
+                )
+                if allowed is not None:
+                    detail += (
+                        " A row beginning at " + str(first_start) + " can hold only "
+                        + str(allowed) + " value(s) before the next decade (" + str(next_dec)
+                        + "), so that row appears to have one value too many, a misplaced "
+                        "value, or a mistyped start year. Please check that row."
+                    )
+                problems.append(detail)
+        raise ValueError(
+            "Cannot read file -- overlapping data detected; dplPy will not guess how "
+            "to resolve it.\n  " + "\n  ".join(problems)
+            + "\nPlease correct the file and read it again."
+        )
 
-            dataline = [line[i:i+6] for i in range(12, len(line), 6) if line[i:i+6].strip()]
-            
-            # keep track of the first and last date in the dataset
-            line_start = int(iyr)
-            first_date = min(first_date, line_start)
-            last_date = max(last_date, (line_start+len(dataline)-1))
+    # Resolve precision for any series that never showed a stop marker: adopt
+    # the file's dominant precision (or 0.001 mm if the file has none at all),
+    # and warn so the assumption is visible.
+    known = list(precision.values())
+    if known:
+        dominant = Counter(known).most_common(1)[0][0]
+    else:
+        dominant = 1000
+        warnings.warn("no stop markers found in file; assuming 0.001 mm precision")
+    for sid in order:
+        if sid not in precision:
+            precision[sid] = dominant
+            warnings.warn(
+                "series '" + str(sid) + "' has no stop marker; assuming "
+                + ("0.01" if dominant == 100 else "0.001") + " mm precision"
+            )
 
-            # will implement some standardization here so that all data read is consistent, and all data written in rwl
-            # can be written to one of the two popular precisions.
-            for i in range(0, len(dataline)):
-                if dataline[i].strip() == "999":
-                    rwl_data[series_id]["div"] = 100
-                    continue
-                elif dataline[i].strip() == "-9999":
-                    rwl_data[series_id]["div"] = 1000
-                    continue
-                data = float(int(dataline[i]))
-                rwl_data[series_id][line_start+i] = data
-            line_ct += 1
+    if nonint_hits:
+        warnings.warn(str(nonint_hits) + " non-integer value(s) could not be read and were set to NaN")
 
-        except (ValueError, IndexError) as err: # Stops reader, escalates to give the user an error when unexpected formatting is detected.
-            print("Error reading line", line_ct + 1, ":\n", line, "\n")
-            print(err)
-            return None, None, None
-    return rwl_data, first_date, last_date
+    if neg_hits:
+        preview = ", ".join(str(sid) + "@" + str(yr) for sid, yr in neg_hits[:5])
+        more = "" if len(neg_hits) <= 5 else " ..."
+        warnings.warn(
+            str(len(neg_hits)) + " anomalous negative value(s) (not the -9999 stop "
+            "marker) were set to NaN [" + preview + more + "]"
+        )
+
+    # Drop any series that ended up with no usable data at all.
+    order = [sid for sid in order if len(rwl_data[sid]) > 0]
+    rwl_data = {sid: rwl_data[sid] for sid in order}
+    if len(order) == 0:
+        return None
+
+    return rwl_data, precision, order
