@@ -1,6 +1,7 @@
 import dplpy as dpl
 import pandas as pd
 import os
+import warnings
 
 def test_read_and_write_csv(tmp_path):
     ca533 = dpl.readers("./tests/data/csv/ca533.csv")
@@ -32,13 +33,17 @@ def test_read_and_write_rwl_no_headers(tmp_path):
 
 
 def test_read_and_write_rwl_with_headers(tmp_path):
-    th001 = dpl.readers("./tests/data/rwl/th001.rwl", header=True)
+    # th001 has an anomalous negative (PATUNG@1928 -> NaN + warning), asserted in
+    # the unit tests; silence it here so the round-trip test output stays clean.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        th001 = dpl.readers("./tests/data/rwl/th001.rwl", header=True)
 
-    write_path = os.path.join(tmp_path, "test_write")
+        write_path = os.path.join(tmp_path, "test_write")
 
-    dpl.writers(th001, write_path, "rwl")
+        dpl.writers(th001, write_path, "rwl")
 
-    th001_alt = dpl.readers(write_path + ".rwl")
+        th001_alt = dpl.readers(write_path + ".rwl")
 
     pd.testing.assert_frame_equal(th001, th001_alt)
 
@@ -66,12 +71,16 @@ def test_read_and_write_weird_rwl(tmp_path):
     pd.testing.assert_frame_equal(wwr, wwr_alt)
 
 def test_read_and_write_rwl_with_blanks(tmp_path):
-    nm580 = dpl.readers("./tests/data/rwl/nm580l.rwl", header=True)
-    
-    write_path = os.path.join(tmp_path, "test_write")
+    # nm580l contains a blank line (-> "Empty line found" warning); silence it
+    # here -- the blank-line warning is asserted in the unit tests.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        nm580 = dpl.readers("./tests/data/rwl/nm580l.rwl", header=True)
 
-    dpl.writers(nm580, write_path, "rwl")
+        write_path = os.path.join(tmp_path, "test_write")
 
-    nm580_alt = dpl.readers(write_path + ".rwl")
+        dpl.writers(nm580, write_path, "rwl")
+
+        nm580_alt = dpl.readers(write_path + ".rwl")
 
     pd.testing.assert_frame_equal(nm580, nm580_alt)
