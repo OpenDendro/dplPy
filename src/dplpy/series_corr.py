@@ -21,204 +21,162 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 5/12/2023
-# Author: Ifeoluwa Ale
+# Date: 5/12/2023 (rewritten 2026)
+# Author: Ifeoluwa Ale (original), OpenDendro
 # Title: series_corr.py
-# Project: OpenDendro dplPy
-# Description: Crossdating function that focuses on the comparison of one series to the
-# master chronology.
+# Description: Crossdating focused on ONE series vs a leave-one-out master,
+#   mirroring dplR's corr.series.seg() (a moving correlation and per-segment
+#   correlations) together with ccf.series.rwl() (the per-segment lag / COFECHA
+#   table drawn as stem plots).
 #
-# example usage from Python Console: 
-# >>> import dplpy as dpl 
+# >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.series_corr(data, "series_name")
-# >>> dpl.series_corr(data, "series_name", prewhiten=False, corr="Pearson", bin_floor=10)
+# >>> dpl.series_corr(data, "CAM011")
 
-from .chron import chron
-from .xdate import correlate, compare_segment, get_crit, normalize_for_crossdating
+from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
+                    _corr_pval, get_bins, get_crit, _CORR_ALIASES)
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Analyzes the crossdating of one series compared to the master chronology
-def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True, corr="Spearman", seg_length=50, bin_floor=100, p_val=0.05):
-    """Crossdating correlation function
-    
-    Extended Summary
-    ----------------
-    Crossdating correlation function that focuses on the comparison of one series to the master chronology.
-    
+
+def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
+                corr="spearman", seg_length=50, bin_floor=100, p_val=0.05,
+                biweight=True, lag=5, make_plot=True):
+    """Crossdate one series against the master built from all the others.
+
+    Produces (and, by default, plots) a moving correlation of the series against
+    the leave-one-out master, the per-segment correlations, and a per-segment
+    lag table (COFECHA-style) showing how the correlation changes when the
+    segment is shifted +/- ``lag`` years -- large off-zero peaks suggest a
+    dating error in that segment.
+
     Parameters
     ----------
-    data : pandas dataframe
-        a dataframe imported from dpl.readers()
-    series : str    
-        a series name from the dataframe
-    prewhiten : boolean, default False
-        run pre-whitening on the time series, options: 'True' or 'False'.
-    corr : str, default 'Spearman'
-        select correlation type, can be 'Pearson' or 'Spearman'.
-    seg_length :  int, default 50
-        segment lengths (years).
-    bin_floor : int, default 100
-       select bin floor.
-    p_val : double, default 0.05
-        select a p-value, e.g., '0.05', '0.01', '0.001'.
-    
+    data : pandas.DataFrame
+        ring-width series (typically detrended RWI).
+    series_name : str
+        the series to examine.
+    prewhiten, corr, seg_length, bin_floor, p_val, biweight, lag
+        as in dpl.xdate() (seg_length is the segment length).
+    make_plot : bool, default True
+        draw the moving-correlation and lag-stem figures.
+
     Returns
     -------
-    None
-    
-    Examples
-    --------
-    >>> dpl.series_corr(ca533, "CAM191", prewhiten=False, corr="Pearson", bin_floor=10)    
-    
+    dict with keys ``moving_corr`` (Series), ``seg_corr`` (Series over bins),
+    ``overall`` ((rho, p_val)), ``lag_table`` (DataFrame lags x bins) and
+    ``bins``.
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#series_corr
-    
     """
-    # Check types of inputs
     if not isinstance(data, pd.DataFrame):
-        errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
-        raise TypeError(errorMsg)
-    
+        raise TypeError("Expected dataframe input, got " + str(type(data)) + " instead.")
     if not isinstance(series_name, str):
-        errorMsg = "Expected string input as series name, got " + str(type(series_name)) + " instead."
-        raise TypeError(errorMsg)
-
+        raise TypeError("Expected string input as series name, got " + str(type(series_name)) + " instead.")
     if series_name not in data.columns:
-        errorMsg = "Series named " + series_name + " not found in provided dataframe."
-        raise ValueError(errorMsg)
+        raise ValueError("Series named " + series_name + " not found in provided dataframe.")
+    method = _CORR_ALIASES.get(str(corr).strip().lower())
+    if method is None:
+        raise ValueError("corr must be 'spearman', 'pearson' or 'kendall'")
 
-    # Horizontal-detrend and (optionally) AR-prewhiten every series -- shared
-    # with interseries_cor(), which needs this same preparation step before
-    # building its own leave-one-out composite chronologies.
-    ready_series = normalize_for_crossdating(data, prewhiten)
+    ready = normalize_for_crossdating(data, prewhiten)
+    first_year = int(ready.first_valid_index())
+    last_year = int(ready.last_valid_index())
+    years = np.arange(first_year, last_year + 1)
+    ready = ready.reindex(years)
 
-    removed = ready_series.pop(series_name)
-    new_chron = chron(ready_series, plot=False)["Mean RWI"]
+    names = list(ready.columns)
+    idx = names.index(series_name)
+    M = ready.to_numpy(dtype=float)
+    good = np.array([np.sum(~np.isnan(M[:, i])) > 3 for i in range(M.shape[1])])
+    keep = good.copy()
+    keep[idx] = False
+    master = (_row_biweight if biweight else _row_mean)(M[:, keep])
+    series = M[:, idx]
 
-    inp = pd.concat([removed, new_chron], axis=1, join='inner')
-    correlate(inp, corr)
+    overall = _corr_pval(series, master, method)
 
-    data_first = data.first_valid_index()
-    data_last = data.last_valid_index()
-    ser_first = removed.first_valid_index()
-    ser_last = removed.last_valid_index()
+    bins, _ = get_bins(first_year, last_year, bin_floor, seg_length)
+    bin_bounds = [_bin_bounds(b) for b in bins]
 
-    start, end = get_rel_range(data_first, data_last, ser_first, ser_last, bin_floor, seg_length)
-    
-    plt.style.use('seaborn-v0_8-darkgrid')
-    wid = max((end - start)//30, 1)
-    hei = 10
-    base_corr = get_crit(p_val, n=seg_length)
-    
-    dimensions = (wid, hei)
-    plt.figure(num=1, figsize=(dimensions))
-    plt.grid(True)
-
-    years = []
-    corrs = []
-
-    second_plot = []
-    # Find correlations at segment whose year is at center. So segments should be from i-25 to i+25, where i starts from bin start
-    for i in range(start, end):
-        segment = removed.loc[i-(seg_length//2):i+(seg_length//2)-1]
-
-        if segment.size != seg_length:
+    # per-segment correlation and lag table
+    seg_corr = pd.Series(index=bins, dtype=float)
+    lag_vec = list(range(-lag, lag + 1))
+    lag_table = pd.DataFrame(index=["lag." + str(k) for k in lag_vec], columns=bins, dtype=float)
+    for (lo, hi), blabel in zip(bin_bounds, bins):
+        mask0 = (years >= lo) & (years <= hi)
+        if mask0.sum() != seg_length or np.isnan(series[mask0]).any() or np.isnan(master[mask0]).any():
             continue
-        seg_corr, flag, flag_data = compare_segment(segment, new_chron, seg_length, corr, p_val, slide=False)
+        seg_corr[blabel] = _corr_pval(series[mask0], master[mask0], method)[0]
+        for k in lag_vec:
+            m = (years >= lo + k) & (years <= hi + k)
+            if m.sum() != seg_length or np.isnan(series[m]).any() or np.isnan(master[mask0]).any():
+                continue
+            lag_table.loc["lag." + str(k), blabel] = _corr_pval(series[m], master[mask0], method)[0]
 
-        years.append(i)
-        corrs.append(seg_corr)
+    # moving correlation (window seg_length, step 1, stored at window centre)
+    seg_lag = seg_length // 2
+    mov_years, mov_corr = [], []
+    for t in range(0, len(years) - seg_length + 1):
+        s = series[t:t + seg_length]
+        m = master[t:t + seg_length]
+        if np.isnan(s).any() or np.isnan(m).any():
+            continue
+        mov_years.append(years[t] + seg_lag)
+        mov_corr.append(_corr_pval(s, m, method)[0])
+    moving_corr = pd.Series(data=mov_corr, index=mov_years, dtype=float)
 
-        if (((i-start-(seg_length//2)) % seg_length == 0)  or (((i-start-(seg_length//2)) % seg_length) == seg_length//2)):
-            seg_range = [i-seg_length//2, i+seg_length//2]
-            seg_corr_y = [seg_corr, seg_corr]
-            plt.plot(seg_range, seg_corr_y, color="k")
-            second_plot.append(analyze_segment(segment, new_chron, seg_length, corr))
+    if make_plot:
+        _plot_series_corr(series_name, moving_corr, seg_corr, bin_bounds,
+                          lag_table, lag_vec, seg_length, p_val)
 
-            
-    plt.plot(years, corrs, color="k")
-    plt.plot([years[0]-seg_length, years[-1]+seg_length], [base_corr, base_corr], linestyle="dashed", color="k")
-    plt.xlim([years[0]-seg_length, years[-1]+seg_length])
+    return {"moving_corr": moving_corr, "seg_corr": seg_corr, "overall": overall,
+            "lag_table": lag_table, "bins": bins}
+
+
+def _plot_series_corr(name, moving_corr, seg_corr, bin_bounds, lag_table,
+                      lag_vec, seg_length, p_val):
+    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)   # dplR's significance line
+
+    plt.style.use("seaborn-v0_8-darkgrid")
+    plt.figure(num=1, figsize=(max(len(moving_corr) // 30, 8), 5))
+    if len(moving_corr):
+        plt.plot(moving_corr.index.to_numpy(), moving_corr.to_numpy(), color="k", lw=1.2,
+                 label="moving correlation")
+    for (lo, hi), blabel in zip(bin_bounds, seg_corr.index):
+        v = seg_corr.get(blabel, np.nan)
+        if not np.isnan(v):
+            plt.plot([lo, hi], [v, v], color="k", lw=2.5)
+    plt.axhline(sig, ls="--", color="r", label="p=%.3g" % p_val)
+    plt.title("Crossdating of " + name)
     plt.xlabel("Year")
     plt.ylabel("Correlation")
+    plt.legend()
 
-    plt.figure(num=2)
-    plt.style.use('_mpl-gallery')
-    cols = 5
-    rows = (len(second_plot) // 5) + 1
-    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14,14))
-
-    j = 0
-    for lags in second_plot:
-        row = j // 5
-        col = j % 5
-        x_vals = np.arange(-5, 6, 1)
-        y_vals = lags
-
-        axes[row][col].stem(x_vals, y_vals)
-        axes[row][col].plot([-5, 5], [base_corr, base_corr], linestyle="dashed")
-        axes[row][col].plot([-5, 5], [-base_corr, -base_corr], linestyle="dashed")
-        axes[row][col].set_xlabel('Lag')
-        axes[row][col].set_ylabel('Correlation')
-        axes[row][col].set_title(str(start + ((seg_length//2)*j)) + '.' + str(start + ((seg_length//2)*j) + seg_length - 1))
-        axes[row][col].set_xlim([-6, 6])
-        axes[row][col].set_ylim([-0.5, 1])
-        j += 1
-    
-    while j < (rows*cols):
-        row = j // 5
-        col = j % 5
-        axes[row][col].set_axis_off()
-        j += 1
-
-    fig.tight_layout()
+    # lag stems, one panel per segment
+    segs = [b for b in seg_corr.index if not lag_table[b].isna().all()]
+    if segs:
+        cols = 5
+        rows = (len(segs) + cols - 1) // cols
+        fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14, 3 * rows), squeeze=False)
+        for j, blabel in enumerate(segs):
+            ax = axes[j // cols][j % cols]
+            ax.stem(lag_vec, lag_table[blabel].to_numpy())
+            ax.axhline(sig, ls="--", color="r")
+            ax.set_title(blabel, fontsize=8)
+            ax.set_xlabel("Lag")
+            ax.set_ylabel("r")
+            ax.set_ylim([-0.5, 1])
+        for j in range(len(segs), rows * cols):
+            axes[j // cols][j % cols].set_axis_off()
+        fig.tight_layout()
     plt.show()
 
-# Gets correlation data for segments lagged by 5 years forwards and backwards.
-def analyze_segment(segment, new_chron, slide_period, correlation_type):
-    if segment.size < slide_period:
-        return
-    series_name = segment.name
-    data = pd.concat([segment, new_chron], axis=1, join='inner')
-    
-    segment_data = []
 
-    for shift in range(-5, 6):
-        shifted = data[series_name].copy(deep=False)
-        shifted.index += shift
-        overlapping_df = pd.concat([shifted, new_chron], axis=1, join='inner').dropna()
-        if overlapping_df.size == slide_period * 2:
-            new_coeff = correlate(overlapping_df, correlation_type)
-            segment_data.append(new_coeff)
-        else:
-            segment_data.append(0)
-    return segment_data
-
-# Finds the effective first and last year of crossdating for the series depending on the
-# values of bin floor and segment length.
-def get_rel_range(data_first, data_last, series_first, series_last, bin_floor, seg_len):
-    overlap = seg_len/2
-
-    if bin_floor == 0 or data_first % bin_floor == 0:
-        start = data_first
-    else:
-        start = (int(data_first/bin_floor) * bin_floor) + bin_floor
-
-    rel_start = 9999
-    rel_stop = 0
-    i = start
-    while i+seg_len-1 < data_last:
-        if i >= series_first:
-            rel_start = min(rel_start, i)
-            if i <= series_last:
-                rel_stop = max(rel_stop, i+seg_len-1)
-            else:
-                break
-        i += overlap
-
-    return int(rel_start), int(rel_stop)
+def scipy_norm_ppf(q):
+    import scipy.stats
+    return scipy.stats.norm.ppf(q)

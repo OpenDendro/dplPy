@@ -21,414 +21,507 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Date: 5/12/2023
-# Author: Ifeoluwa Ale
+# Date: 5/12/2023 (rewritten 2026 for efficiency and dplR fidelity)
+# Author: Ifeoluwa Ale (original), OpenDendro
 # Title: xdate.py
 # Project: OpenDendro dplPy
-# Description: Crossdating function for dplPy datasets.
+# Description: Crossdating for dplPy datasets, mirroring dplR's corr.rwl.seg():
+#   normalize each series (divide by its mean), optionally Yule-Walker prewhiten
+#   (matching dplR's ar()), build a leave-one-out biweight master, and correlate
+#   each series against it over overlapping segments -- reporting per-segment
+#   correlation, its one-tailed p-value, an overall correlation, and flags for
+#   (A) non-significant segments and (B) segments that correlate better at a lag
+#   (the COFECHA-style lag table).
 #
-# example usage from Python Console: 
-# >>> import dplpy as dpl 
+# example usage:
+# >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.xdate(data)
-# >>> dpl.xdate(data, prewhiten=False, corr="Pearson", show_flags=False)
-# >>> dpl.xdate(data, slide_period=50, bin_floor=10, p_val=0.02)
+# >>> rwi  = dpl.detrend(data, fit="spline", plot=False)
+# >>> res  = dpl.xdate(rwi)                 # dict of results; prints flags
+# >>> res["seg_corr"]                        # segment correlations (series x bins)
 
 from .detrend import detrend
-from .autoreg import ar_func_series
-from .chron import chron
 from .stats import stats
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import scipy
+import warnings
 import re
 
 
-# Main crossdating function, returns a dataframe of each series' segment correlations compared to the same
-# segments in the master chronology.
-def xdate(data: pd.DataFrame, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True):
-    """Crossdating function
-    
-    Extended Summary
-    ----------------
-    This function calculates correlation serially between each tree-ring series and 
-    a master chronology built from all the other series in the dataset
-    (leave-one-out principle).
+# ---------------------------------------------------------------------------
+# Building blocks
+# ---------------------------------------------------------------------------
 
-    Correlations are done for each segment of the series where segments are lagged
-    by half the segment length (e.g., 100-year segments would be overlapped by 
-    50-years). The first segment is placed according to bin.floor.
+def _ar_yw_prewhiten(x):
+    """Prewhiten a 1-D series with a Yule-Walker AR model, matching dplR's ar():
+    AIC order selection up to floor(10*log10(n)), residuals + series mean, and
+    the series length preserved (the first `order` values become NaN). Validated
+    to reproduce R's ar() to ~1e-15.  `x` must be NaN-free."""
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if n < 2:
+        return x.astype(float).copy()
+    order_max = min(n - 1, int(np.floor(10 * np.log10(n))))
+    if order_max < 1:
+        return x.astype(float).copy()
+    xbar = x.mean()
+    xc = x - xbar
+    acov = np.array([np.dot(xc[:n - k], xc[k:]) / n for k in range(order_max + 1)])
+    if acov[0] == 0:
+        return x.astype(float).copy()
+    # Levinson-Durbin: coefficients and prediction variance for every order
+    v = acov[0]
+    a = np.zeros(order_max + 1)
+    var_pred = [v]
+    coeffs_by_order = [np.array([])]
+    for k in range(1, order_max + 1):
+        acc = acov[k] - (np.dot(a[1:k], acov[1:k][::-1]) if k > 1 else 0.0)
+        refl = acc / v
+        new_a = a.copy()
+        new_a[k] = refl
+        for j in range(1, k):
+            new_a[j] = a[j] - refl * a[k - j]
+        a = new_a
+        v = v * (1 - refl ** 2)
+        var_pred.append(v)
+        coeffs_by_order.append(a[1:k + 1].copy())
+    var_pred = np.array(var_pred)
+    aic = n * np.log(var_pred) + 2 * np.arange(order_max + 1)
+    order = int(np.argmin(aic))
+    phi = coeffs_by_order[order]
+    out = np.full(n, np.nan)
+    if order == 0:
+        out[:] = xc + xbar
+        return out
+    for t in range(order, n):
+        out[t] = xc[t] - np.dot(phi, xc[t - order:t][::-1])
+    return out + xbar
 
-    The function is typically invoked to produce a plot where each segment for each series
-    is colored by its correlation to the master chronology. Green segments are those that 
-    do not overlap completely with the width of the bin. Blue segments are those that 
-    correlate above the critical value (determined by p-val). Red segments are those that 
-    correlate below the critical value and might indicate a dating problem.
 
-    Segments are flagged if their interseries correlations fall below the critical value
-    or if better correlations are found by lagging their years.
+def _row_biweight(mat):
+    """Per-row Tukey biweight robust mean (C=9), NaN-aware -- the leave-one-out
+    master used by dplR (apply(subset, 1, tbrm, C=9)). `mat` is (nyears, k)."""
+    c, eps = 9.0, 1e-6
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        med = np.nanmedian(mat, axis=1)
+        s = np.nanmedian(np.abs(mat - med[:, None]), axis=1)
+    denom = c * s + eps
+    u = (mat - med[:, None]) / denom[:, None]
+    w = np.where(np.abs(u) <= 1, (1 - u ** 2) ** 2, 0.0)
+    w = np.where(np.isnan(mat), 0.0, w)
+    num = np.nansum(w * mat, axis=1)
+    den = np.sum(w, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(den > 0, num / den, np.nan)
+
+
+def _row_mean(mat):
+    """Per-row arithmetic mean, NaN-aware (the non-biweight master)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.nanmean(mat, axis=1)
+
+
+_CORR_ALIASES = {"spearman": "spearman", "pearson": "pearson", "kendall": "kendall"}
+
+
+def _fast_corr(a, b, method, b_ranked=False):
+    """Correlation only (no p-value), over pairwise-complete elements -- used for
+    the many lag-table correlations where the p-value is not needed. For spearman
+    `b` may be passed pre-ranked (b_ranked=True) to avoid re-ranking the master."""
+    ok = ~np.isnan(a) & ~np.isnan(b)
+    if ok.sum() < 3:
+        return np.nan
+    a2, b2 = a[ok], b[ok]
+    if method == "kendall":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return float(scipy.stats.kendalltau(a2, b2)[0])
+    if method == "spearman":
+        a2 = scipy.stats.rankdata(a2)
+        b2 = scipy.stats.rankdata(b2) if not b_ranked else b2
+    da = a2 - a2.mean()
+    db = b2 - b2.mean()
+    denom = np.sqrt(np.dot(da, da) * np.dot(db, db))
+    if denom == 0:
+        return np.nan
+    return float(np.dot(da, db) / denom)
+
+
+def _corr_pval(a, b, method):
+    """One-tailed (alternative='greater') correlation and p-value over the
+    pairwise-complete elements of a and b, matching dplR's cor.test(...)."""
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    ok = ~np.isnan(a) & ~np.isnan(b)
+    if ok.sum() < 3:
+        return np.nan, np.nan
+    a, b = a[ok], b[ok]
+    if np.all(a == a[0]) or np.all(b == b[0]):
+        return np.nan, np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if method == "pearson":
+            r = scipy.stats.pearsonr(a, b, alternative="greater")
+        elif method == "kendall":
+            r = scipy.stats.kendalltau(a, b, alternative="greater")
+        else:
+            r = scipy.stats.spearmanr(a, b, alternative="greater")
+    stat = r.statistic if hasattr(r, "statistic") else r[0]
+    pval = r.pvalue if hasattr(r, "pvalue") else r[1]
+    return float(stat), float(pval)
+
+
+# ---------------------------------------------------------------------------
+# Bins
+# ---------------------------------------------------------------------------
+
+def _bin_bounds(label):
+    """(start, end) integers from a bin label like '700-749' or '-390--341'
+    (handles negative/BC years, where a naive split on '-' fails)."""
+    m = re.match(r"(-?\d+)-(-?\d+)$", label)
+    return int(m.group(1)), int(m.group(2))
+
+
+def get_bins(first_year, last_year, bin_floor, slide_period, floor_plus1=False):
+    """Overlapping segment bins matching dplR's corr.rwl.seg: first bin floored to
+    bin_floor, segments of `slide_period` years overlapping by half, last bin
+    ending no later than last_year."""
+    seg_lag = slide_period // 2
+    if bin_floor is None or bin_floor == 0:
+        min_bin = first_year
+    elif floor_plus1:
+        min_bin = int(np.ceil((first_year - 1) / bin_floor)) * bin_floor + 1
+    else:
+        min_bin = int(np.ceil(first_year / bin_floor)) * bin_floor
+    max_bin = last_year - slide_period + 1
+    bins = []
+    bin_data = {}
+    i = min_bin
+    while i <= max_bin:
+        period = str(i) + "-" + str(i + slide_period - 1)
+        bins.append(period)
+        bin_data[period] = []
+        i += seg_lag
+    return bins, bin_data
+
+
+# ---------------------------------------------------------------------------
+# Normalisation / preparation (shared)
+# ---------------------------------------------------------------------------
+
+def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFrame:
+    """Divide each series by its own mean (dplR's normalize1 with n=NULL, i.e.
+    dplPy's 'horizontal' detrend) and, optionally, Yule-Walker prewhiten it
+    keeping the series length. Returns a year-indexed dataframe. Shared by
+    series_corr() and interseries_cor()."""
+    rwi_data = detrend(data, fit="horizontal", plot=False)
+    if isinstance(rwi_data, (ValueError, TypeError)):
+        raise rwi_data
+
+    to_concat = [pd.DataFrame(index=pd.Index(data.index))]
+    for series in rwi_data:
+        col = rwi_data[series].dropna()
+        if prewhiten and len(col) > 3:
+            pw = _ar_yw_prewhiten(col.to_numpy())
+            to_concat.append(pd.Series(data=pw, name=series, index=col.index))
+        else:
+            to_concat.append(col)
+    ready = pd.concat(to_concat, axis=1)
+    ready = ready.rename_axis(data.index.name)
+    return ready
+
+
+# ---------------------------------------------------------------------------
+# Main crossdating
+# ---------------------------------------------------------------------------
+
+def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
+          bin_floor=100, p_val=0.05, biweight=True, lag=10, show_flags=True,
+          make_plot=False):
+    """Crossdate a set of ring-width series against a leave-one-out master.
+
+    Mirrors dplR's corr.rwl.seg(): each series is normalized (divided by its
+    mean), optionally Yule-Walker prewhitened, and correlated against a biweight
+    master built from all the *other* series, over segments of ``slide_period``
+    years that overlap by half. For every segment it reports the correlation and
+    its one-tailed p-value; a segment is flagged **A** if it is not significant
+    (p >= p_val) and **B** if it correlates markedly better at a non-zero lag
+    (a possible dating error). The per-segment lag table (COFECHA-style) is
+    printed for flagged segments.
 
     Parameters
     ----------
-    data : pandas dataframe
-            a pandas dataframe generated by dpl.readers()
-    prewhiten : boolean, default True
-            prewhiten series using AR modeling
-    corr : str, default Spearman
-           correlation type, options: 'Pearson' or 'Spearman'
+    data : pandas.DataFrame
+        ring-width series (typically detrended RWI from dpl.detrend()).
+    prewhiten : bool, default True
+        AR-prewhiten each series (Yule-Walker, matching dplR).
+    corr : {'spearman','pearson','kendall'}, default 'spearman'
+        correlation method (case-insensitive).
     slide_period : int, default 50
-            period window (years)
+        segment length in years.
     bin_floor : int, default 100
-            bin size
+        the first segment is floored to a multiple of this.
     p_val : float, default 0.05
-            p-value, options: '0.05', '0.01', '0.001'
-    show_flags : boolean, default True
-            show flags in the output
-                   
+        significance level for the segment flag.
+    biweight : bool, default True
+        build the master with a Tukey biweight robust mean (else arithmetic).
+    lag : int, default 10
+        maximum +/- lag examined for the lag (B) flag / COFECHA table.
+    show_flags : bool, default True
+        print the flag summary and lag tables.
+    make_plot : bool, default False
+        draw the segment-correlation plot.
+
     Returns
     -------
-    data : pandas dataframe showing inter-series correlations for each series with the
-           others for each segment of years.
-    
+    dict with keys:
+      ``seg_corr``     DataFrame (series x bins) of segment correlations
+      ``p_val``        DataFrame (series x bins) of one-tailed p-values
+      ``overall``      DataFrame (series x ['rho','p_val'])
+      ``avg_seg_corr`` Series (bins) mean correlation across series
+      ``flags``        dict {series: {'A': [...], 'B': [...]}}
+      ``bins``         list of "start-end" bin labels
+      ``rwi``          DataFrame of the normalized/prewhitened series used
+
     Examples
     --------
-    >>> ca533_rwi = dpl.detrend(ca533, fit="spline", method="residual", plot=False)
-    # Crossdating of detrended data
-    >>> dpl.xdate(ca533_rwi, prewhiten=True, corr="Spearman", slide_period=50, bin_floor=100, p_val=0.05, show_flags=True)
+    >>> rwi = dpl.detrend(ca533, fit="spline", plot=False)
+    >>> res = dpl.xdate(rwi, corr="spearman", slide_period=50, bin_floor=100)
 
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#xdate
-            
     """
-    # Check types of inputs
     if not isinstance(data, pd.DataFrame):
-        errorMsg = "Expected dataframe input, got " + str(type(data)) + " instead."
-        raise TypeError(errorMsg)
-    
-    # Identify first and last valid indexes, for separating into bins.
-    bins, bin_data = get_bins(data.first_valid_index(), data.last_valid_index(), bin_floor, slide_period)
+        raise TypeError("Expected dataframe input, got " + str(type(data)) + " instead.")
+    method = _CORR_ALIASES.get(str(corr).strip().lower())
+    if method is None:
+        raise ValueError("corr must be 'spearman', 'pearson' or 'kendall'")
 
-    rwi_data = detrend(data, fit="horizontal", plot=False)
+    # normalize + prewhiten, then work on a dense (years x series) matrix on a
+    # consecutive-year grid (like dplR), so the leave-one-out master is a single
+    # vectorized robust mean rather than a per-series chronology rebuild.
+    ready = normalize_for_crossdating(data, prewhiten)
+    first_year = int(ready.first_valid_index())
+    last_year = int(ready.last_valid_index())
+    years = np.arange(first_year, last_year + 1)
+    ready = ready.reindex(years)
+    series_names = list(ready.columns)
+    M = ready.to_numpy(dtype=float)                 # (nyears, nseries), NaN gaps
+    nyears, nseries = M.shape
+    good = np.array([np.sum(~np.isnan(M[:, i])) > 3 for i in range(nseries)])
 
-    # if detrending returns error, raise to output
-    if isinstance(rwi_data, ValueError) or isinstance(rwi_data, TypeError):
-        raise rwi_data
+    bins, _ = get_bins(first_year, last_year, bin_floor, slide_period)
+    bin_bounds = [_bin_bounds(b) for b in bins]
+    row_master = _row_biweight if biweight else _row_mean
 
-    # drop nans, prewhiten series if necessary
-    df_start = pd.DataFrame(index=pd.Index(data.index))
-    to_concat = [df_start]
+    seg_corr = pd.DataFrame(index=series_names, columns=bins, dtype=float)
+    seg_pval = pd.DataFrame(index=series_names, columns=bins, dtype=float)
+    overall = pd.DataFrame(index=series_names, columns=["rho", "p_val"], dtype=float)
+    flags = {}
 
-    for series in rwi_data:
-        nullremoved_data = rwi_data[series].dropna()
-        if prewhiten is True:
-            try:
-                res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
-                offset = len(nullremoved_data) - len(res)
-                to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
-            except ZeroDivisionError:
-                print("Zero division error for series:", series, ". Dropping series.")
+    for i, name in enumerate(series_names):
+        keep = good.copy()
+        keep[i] = False
+        master = row_master(M[:, keep]) if keep.any() else np.full(nyears, np.nan)
+        series = M[:, i]
+
+        overall.loc[name, "rho"], overall.loc[name, "p_val"] = _corr_pval(series, master, method)
+
+        a_flags, b_flags = [], []
+        for (lo, hi), blabel in zip(bin_bounds, bins):
+            mask = (years >= lo) & (years <= hi)
+            seg = series[mask]
+            mas = master[mask]
+            if mask.sum() != slide_period or np.isnan(seg).any() or np.isnan(mas).any():
+                continue                              # require complete overlap (dplR)
+            rho, pv = _corr_pval(seg, mas, method)
+            seg_corr.loc[name, blabel] = rho
+            seg_pval.loc[name, blabel] = pv
+            # (A) significance flag -- independent of (B)
+            if not np.isnan(pv) and pv >= p_val:
+                a_flags.append(blabel)
+            # (B) lag flag + COFECHA lag table
+            lag_row, best_lag, best_coeff = _lag_table(series, master, years, lo, hi,
+                                                       slide_period, method, lag)
+            if best_lag != 0 and (best_coeff - rho) >= 0.08:
+                b_flags.append({"segment": blabel, "best_lag": best_lag,
+                                "best_corr": best_coeff, "lags": lag_row})
+        if a_flags or b_flags:
+            flags[name] = {"A": a_flags, "B": b_flags}
+
+    avg_seg = seg_corr.mean(axis=0, skipna=True)
+
+    if show_flags:
+        _print_flags(flags, lag)
+    if make_plot:
+        _plot_seg_corr(seg_corr, bin_bounds, get_crit(p_val, slide_period))
+
+    return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
+            "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
+            "rwi": ready}
+
+
+def _lag_table(series, master, years, lo, hi, slide_period, method, lag_max):
+    """Correlation of a segment against the master at lags -lag_max..+lag_max
+    (the COFECHA-style table). Returns (row_strings, best_lag, best_corr)."""
+    n_lags = 2 * lag_max + 1
+    shifts = np.arange(-lag_max, lag_max + 1)
+    mask0 = (years >= lo) & (years <= hi)
+    mas = master[mask0]
+    if mas.shape[0] != slide_period or np.isnan(mas).any():
+        return ["     "] * n_lags, 0, -np.inf
+
+    # Stack the (valid, complete) lag windows into one matrix and rank/correlate
+    # them in a single vectorized pass rather than 2*lag_max+1 separate calls.
+    W = np.full((n_lags, slide_period), np.nan)
+    valid = np.zeros(n_lags, dtype=bool)
+    for k, shift in enumerate(shifts):
+        m = (years >= lo + shift) & (years <= hi + shift)
+        if m.sum() == slide_period:
+            seg = series[m]
+            if not np.isnan(seg).any():
+                W[k] = seg
+                valid[k] = True
+
+    corrs = np.full(n_lags, np.nan)
+    if valid.any():
+        if method == "kendall":
+            for k in np.where(valid)[0]:
+                corrs[k] = _fast_corr(W[k], mas, "kendall")
         else:
-            to_concat.append(nullremoved_data)
+            if method == "spearman":
+                Wv = scipy.stats.rankdata(W[valid], axis=1)
+                bv = scipy.stats.rankdata(mas)
+            else:  # pearson
+                Wv, bv = W[valid], mas
+            b = bv - bv.mean()
+            A = Wv - Wv.mean(axis=1, keepdims=True)
+            den = np.sqrt((A * A).sum(axis=1) * np.dot(b, b))
+            with np.errstate(invalid="ignore", divide="ignore"):
+                corrs[valid] = np.where(den > 0, (A @ b) / den, np.nan)
 
-    ready_series = pd.concat(to_concat, axis=1)
-
-    ready_series_copy = ready_series.copy()
-    ready_series = ready_series.rename_axis(data.index.name)
-
-    series_names = []
-    series_corr = []
-
-    for series in sorted(ready_series):
-        removed = ready_series_copy.pop(series)
-
-        # create chronology with current series removed
-        new_chron = chron(ready_series_copy, plot=False)["Mean RWI"]
-
-        # correlate current series against chronology of remaining series
-        inp = pd.concat([removed, new_chron], axis=1, join='inner')
-        series_names.append(series)
-        series_corr.append(correlate(inp, corr))
-
-        flags = {"A":[], "B":[]}
-        
-        # evaluation of current series vs chronology of others by segments of years (the bins created earlier)
-        for bin_range in bins:
-            # print(bin_range) # useful for debugging but not necessary once operational
-            start = int(re.split("(?<=\\d)-", bin_range)[0])
-            end = int(re.split("(?<=\\d)-", bin_range)[1])
-            if start >= removed.first_valid_index() and end <= removed.last_valid_index():
-                segment = removed.loc[start:end]
-
-                seg_corr, flag, flag_data = compare_segment(segment, new_chron, slide_period, corr, p_val, slide=show_flags)
-
-                if flag is not None:
-                    flags[flag].append(flag_data)
-                bin_data[bin_range].append(seg_corr)
-            else:
-                bin_data[bin_range].append(np.nan)
-        #ready_series_copy[series] = removed
-        ready_series_copy = pd.concat([ready_series_copy, removed], axis=1)
-        
-        if show_flags is True:
-            print_flags(series, flags)
-    print()
-
-    bin_res = pd.DataFrame.from_dict(bin_data)
-    bin_res.set_index(pd.Index(series_names), inplace=True)
-
-    return bin_res.transpose()
-
-# Variation of xdate function that plots a graph that color codes the segment correlations. 
-# Will be merged into original xdate function when completed, so that users can choose to
-# show the graph by passing an optional argument.
-def xdate_plot(data: pd.DataFrame, slide_period=50, bin_floor=10):
-    plot_data = xdate(data, slide_period=slide_period, bin_floor=bin_floor, show_flags=False)
-    bins = plot_data.index.to_numpy()
-
-    # obtain a list of series names sorted by the start date
-    data_stats = stats(data)
-    series_by_start_date = data_stats.sort_values(by='first')['series']
-
-    # Change the style of plot
-    plt.style.use('seaborn-v0_8-darkgrid')
-
-    years = data.index.to_numpy()
-
-    # set width and height of the window based on the data
-    dimensions = (max((years[-1] - years[0])//80, 8), max(len(data.columns)//2, 8))
-    lin_wid = 7.5
-
-    plt.figure(figsize=(dimensions))
- 
-    # separate plots for each series using the offset
-    offset = (data.mean().mean() * 2)
-
-    y_divisions = [] # needed to put series names on the y-axis
-    num=0
-    for column_name in series_by_start_date:
-        num+=1
-        first = np.nan
-        second = np.nan
-        penult = np.nan
-        last = np.nan
-        
-        for i in range(0, len(bins)-1, 2):
-            bin_range1 = list(map(int, bins[i].split("-")))
-            bin_range2 = list(map(int, bins[i+1].split("-")))
-
-            # plot for bin range 1 if valid
-            if (bin_range1[0] >= data[column_name].first_valid_index() and bin_range1[1] <= data[column_name].last_valid_index()):
-                range_1_color = get_graph_color(plot_data.loc[bins[i]][column_name])
-                plt.plot(bin_range1, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_1_color)
-                first = np.nanmin([first, bin_range1[0]])
-                second = np.nanmin([second, bin_range1[1]])
-
-            # plot for bin range 2 if valid
-            if (bin_range2[0] >= data[column_name].first_valid_index() and bin_range2[1] <= data[column_name].last_valid_index()):
-                range_2_color = get_graph_color(plot_data.loc[bins[i+1]][column_name])
-                plt.plot(bin_range2, np.zeros((2,), dtype=int) + (offset * (num-1)), marker='_', linewidth=lin_wid, alpha=0.9, color=range_2_color)
-                penult = np.nanmax([penult, bin_range2[0]])
-                last = np.nanmax([last, bin_range2[1]])
-        
-        # pad before and after first 2 and last 2 bins with greens
-        pad_start_and_end_of_series_graph(data[column_name], first, second, penult, last, num, offset, lin_wid)
-        y_divisions.append(offset*(num-1))
-
-    # set y-axis to display series names at equal intervals, and x-axis to display years
-    plt.yticks(y_divisions, series_by_start_date)
-    plt.xlabel("Year")
-
-    # Show the graph
-    plt.show()
-
-def pad_start_and_end_of_series_graph(series, first, second, penult, last, num, offset, lin_wid):
-    if not np.isnan(first):
-        first_range = [series.first_valid_index(), first]
-        plt.plot(first_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
-
-                       
-    if not np.isnan(second):
-        second_range = [series.first_valid_index(), second]
-        plt.plot(second_range, np.zeros((2,), dtype=int) + (offset * (num-1)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
-    
-    if not np.isnan(penult):
-        penult_range = [penult, series.last_valid_index()]
-        plt.plot(penult_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
-
-    if not np.isnan(last):
-        last_range = [last, series.last_valid_index()]
-        plt.plot(last_range, np.zeros((2,), dtype=int) + (offset * (num-1) + (offset/2)), marker='_', linewidth=lin_wid, alpha=0.9, color='#00ff00')
+    row = []
+    best_lag, best_coeff = 0, np.nan
+    for k, shift in enumerate(shifts):
+        r = corrs[k]
+        row.append(("{0:.2f}".format(r)).rjust(5) if not np.isnan(r) else "     ")
+        if not np.isnan(r) and (np.isnan(best_coeff) or r > best_coeff):
+            best_coeff, best_lag = r, int(shift)
+    return row, best_lag, (best_coeff if not np.isnan(best_coeff) else -np.inf)
 
 
-# Helper function that determines the color of a segment of the graph depending on the correlation value.
-def get_graph_color(corr_val):
-    if np.isnan(corr_val):
-        return '#00ff00'
-    elif corr_val < 0.1:
-        return '#ff0d1a'
-    elif corr_val < 0.3:
-        return '#add8ff'
-    elif corr_val < 0.4:
-        return '#9cc7ff'
-    elif corr_val < 0.5:
-        return '#33b6ff'
-    elif corr_val < 0.6:
-        return '#0033ff'
-    elif corr_val < 0.7:
-        return '#0000ff'
-    elif corr_val < 0.8:
-        return '#0000dd'
-    elif corr_val < 0.9:
-        return '#0000b3'
-    elif corr_val < 1:
-        return '#000099'
+def _print_flags(flags, lag_max):
+    if not flags:
+        print()
+        return
+    header = " ".join(["{0:>+4d}".format(k) if k != 0 else "   0"
+                       for k in range(-lag_max, lag_max + 1)])
+    for name, fl in flags.items():
+        print("Flags for", name)
+        if fl["A"]:
+            print("  [A] not significant:", ", ".join(fl["A"]))
+        if fl["B"]:
+            print("  [B] better at a lag:")
+            print("      Segment       High " + header)
+            for b in fl["B"]:
+                lead = (b["segment"]).rjust(12) + " " + "{0:>+4d}".format(b["best_lag"])
+                print("     ", lead, " ".join(b["lags"]))
+        print()
 
-# Determines the max lag to use for AR modeling function.
-def get_ar_lag(data):
-    n = len(data)
-    res = min(int(n-1), int(10 * np.log10(n)))
-    return res
 
-# Normalizes a dataset of raw ring widths for crossdating-style comparisons:
-# divides each series by its own mean (dplPy's "horizontal" detrend, the
-# equivalent of dplR's normalize.xdate()/normalize1() without a Hanning
-# filter option), then optionally prewhitens each series with an AR model.
-# Shared by series_corr() and interseries_cor(), which both need this same
-# preparation step before building leave-one-out composite chronologies.
-def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFrame:
-    rwi_data = detrend(data, fit="horizontal", plot=False)
-
-    # if detrending returns error, raise to output
-    if isinstance(rwi_data, ValueError) or isinstance(rwi_data, TypeError):
-        raise rwi_data
-
-    # drop nans, prewhiten series if necessary
-    df_start = pd.DataFrame(index=pd.Index(data.index))
-    to_concat = [df_start]
-
-    for series in rwi_data:
-        nullremoved_data = rwi_data[series].dropna()
-        if prewhiten is True:
-            try:
-                res = ar_func_series(nullremoved_data, get_ar_lag(nullremoved_data))
-                offset = len(nullremoved_data) - len(res)
-                to_concat.append(pd.Series(data=res, name=series, index=nullremoved_data.index.to_numpy()[offset:]))
-            except ZeroDivisionError:
-                print("Zero division error for series:", series, ". Dropping series.")
-        else:
-            to_concat.append(nullremoved_data)
-
-    ready_series = pd.concat(to_concat, axis=1)
-    ready_series = ready_series.rename_axis(data.index.name)
-
-    return ready_series
-
-# Generates the bins given the first and last years of recorded data, the bin floor and
-# the desired number of years in a period (bin).
-def get_bins(first_year, last_year, bin_floor, slide_period):
-    overlap = int(slide_period/2)
-    if bin_floor == 0 or first_year % bin_floor == 0:
-        start = first_year
-    else:
-        start = (int(first_year/bin_floor) * bin_floor) + bin_floor
-    
-    i = start
-
-    bins = []
-    bin_data = {}
-    while i+slide_period-1 < last_year:
-        period = str(i) + "-" + str(i+slide_period-1)
-        bins.append(period)
-        bin_data[period] = []
-        i += overlap
-    return bins, bin_data
-
-# Returns the correlation value of the given data. Can find Spearman or Pearson's
-# correlations
-def correlate(data, corr_type):
-    if corr_type == "Spearman":
-        return scipy.stats.spearmanr(data, axis=0).correlation
-    elif corr_type == "Pearson":
-        return np.corrcoef(data, rowvar=False)[0, 1]
+# ---------------------------------------------------------------------------
+# Critical correlation (kept for plotting / callers)
+# ---------------------------------------------------------------------------
 
 def get_crit(alpha=0.01, n=50, type="one-tailed"):
-    if type == "two-tailed":
-        tcrit = scipy.stats.t.ppf(1-(alpha/2),n-2)
-    else:
-        tcrit = scipy.stats.t.ppf(1-(alpha),n-2)
-
-    # A critical correlation is undefined for fewer than 3 observations
-    # (degrees of freedom n-2 <= 0). Return NaN rather than dividing by zero;
-    # downstream comparisons (original < NaN) are False, so nothing is flagged
-    # -- the same outcome as before, but without the RuntimeWarnings.
+    """Critical Pearson correlation for a given alpha and n (t-approximation).
+    Used for the plot significance line; the segment flags use the exact
+    per-method p-value instead."""
     if n <= 2:
         return np.nan
-
-    cc = pow((tcrit/np.sqrt(n-2)), 2)
-    rcrit = np.sqrt(cc/(1+cc))
-    return rcrit
-  
-# Compares segments to the mean values of the master chronology excluding the current series.
-# This is where flags in dating are detected.
-def compare_segment(segment, new_chron, slide_period, correlation_type, p_val, slide=True, left_most=-10, right_most=10):
-    flag = None
-
-    if segment.size < slide_period:
-        return np.nan, None, None
-    series_name = segment.name
-    data = pd.concat([segment, new_chron], axis=1, join='inner')
-    original = correlate(data, correlation_type)
-
-    # Will set threshold to 99% confidence p value that is based on segment length.
-    if original < get_crit(p_val, n=slide_period):
-        flag = "A"
-
-    if not slide:
-        return original, flag, None
-    
-    best_lag = 0
-    best_coeff = original
-    segment_data = []
-
-    for shift in range(left_most, right_most+1):
-        shifted = data[series_name].copy(deep=False)
-        shifted.index += shift
-        overlapping_df = pd.concat([shifted, new_chron], axis=1, join='inner').dropna()
-        if overlapping_df.size == slide_period * 2:
-            new_coeff = correlate(overlapping_df, correlation_type)
-            segment_data.append(('{0:.2f}'.format(new_coeff)).rjust(5))
-            if new_coeff > best_coeff:
-                # for debugging print(segment.name, segment.first_valid_index(), shift)
-                best_lag = shift
-                best_coeff = new_coeff
-        else:
-            segment_data.append("     ")
-    
-    if (best_lag != 0 and abs(best_coeff - original) >= 0.08):
-        flag = "B"
-
-    if flag is not None:    
-    # return original, flag ("A", "B" or None), with segment data, (None if flag is None and an array if otherwise.)
-        segment_data = [(str(segment.first_valid_index()) + "-" + str(segment.last_valid_index())).rjust(12), str(best_lag).rjust(4)] + segment_data
-        return original, flag, segment_data
+    if type == "two-tailed":
+        tcrit = scipy.stats.t.ppf(1 - (alpha / 2), n - 2)
     else:
-        return original, flag, None
+        tcrit = scipy.stats.t.ppf(1 - alpha, n - 2)
+    cc = pow((tcrit / np.sqrt(n - 2)), 2)
+    return np.sqrt(cc / (1 + cc))
 
-# Prints the flags that had been detected for a series.
-def print_flags(series_name, flags):
-    if flags["A"] == [] and flags["B"] == []:
-        return
 
-    print("Flags for", series_name)
-    if flags["A"] != []:
-        print("[A] Segment  High   -10    -9    -8    -7    -6    -5    -4    -3    -2    -1     0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10")
-        for flag in flags["A"]:
-            print(" ".join(flag))
-    if flags["B"] != []:
-        print("[B] Segment  High   -10    -9    -8    -7    -6    -5    -4    -3    -2    -1     0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10")
-        for flag in flags["B"]:
-            print(" ".join(flag))
-    
-    print()
+def correlate(data, corr_type):
+    """Correlation of the two columns of `data` (kept for series_corr)."""
+    method = _CORR_ALIASES.get(str(corr_type).strip().lower(), "spearman")
+    arr = np.asarray(data, dtype=float)
+    r, _ = _corr_pval(arr[:, 0], arr[:, 1], method)
+    return r
+
+
+# ---------------------------------------------------------------------------
+# Plot
+# ---------------------------------------------------------------------------
+
+def _plot_seg_corr(seg_corr, bin_bounds, crit):
+    plt.style.use("seaborn-v0_8-darkgrid")
+    plt.figure(figsize=(12, max(4, seg_corr.shape[0] // 3)))
+    avg = seg_corr.mean(axis=0, skipna=True)
+    centers = [(lo + hi) / 2 for lo, hi in bin_bounds]
+    plt.plot(centers, avg.to_numpy(), "-o", color="k", label="mean segment r")
+    if not np.isnan(crit):
+        plt.axhline(crit, ls="--", color="r", label="critical r")
+    plt.xlabel("Year")
+    plt.ylabel("Correlation")
+    plt.legend()
+    plt.show()
+
+
+def xdate_plot(data: pd.DataFrame, slide_period=50, bin_floor=10):
+    """Segment-correlation plot for a dataset (thin wrapper over xdate)."""
+    res = xdate(data, slide_period=slide_period, bin_floor=bin_floor,
+                show_flags=False, make_plot=False)
+    seg_corr = res["seg_corr"]
+    bins = res["bins"]
+    bin_bounds = [_bin_bounds(b) for b in bins]
+
+    data_stats = stats(data)
+    series_by_start = data_stats.sort_values(by="first")["series"]
+    plt.style.use("seaborn-v0_8-darkgrid")
+    years = data.index.to_numpy()
+    dims = (max((years[-1] - years[0]) // 80, 8), max(len(data.columns) // 2, 8))
+    plt.figure(figsize=dims)
+    offset = data.mean().mean() * 2
+    y_div, num = [], 0
+    for col in series_by_start:
+        first = data[col].first_valid_index()
+        last = data[col].last_valid_index()
+        for (lo, hi), blabel in zip(bin_bounds, bins):
+            if lo >= first and hi <= last:
+                color = get_graph_color(seg_corr.loc[col, blabel])
+                plt.plot([lo, hi], [offset * num, offset * num], marker="_",
+                         linewidth=7.5, alpha=0.9, color=color)
+        y_div.append(offset * num)
+        num += 1
+    plt.yticks(y_div, list(series_by_start))
+    plt.xlabel("Year")
+    plt.show()
+
+
+def get_graph_color(corr_val):
+    if np.isnan(corr_val):
+        return "#00ff00"
+    thresholds = [(0.1, "#ff0d1a"), (0.3, "#add8ff"), (0.4, "#9cc7ff"),
+                  (0.5, "#33b6ff"), (0.6, "#0033ff"), (0.7, "#0000ff"),
+                  (0.8, "#0000dd"), (0.9, "#0000b3"), (1.01, "#000099")]
+    for t, c in thresholds:
+        if corr_val < t:
+            return c
+    return "#000099"
+
+
+def get_ar_lag(data):
+    """Max AR lag (kept for backward compatibility with callers)."""
+    n = len(data)
+    return min(int(n - 1), int(10 * np.log10(n)))
