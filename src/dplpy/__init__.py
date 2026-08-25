@@ -60,6 +60,7 @@ from .interseries_cor import interseries_cor
 from .read_ids import read_ids
 from .rwi_stats import rwi_stats, rwi_stats_running
 from .common_interval import common_interval
+from .powt import powt
 from .sss import sss
 from .writers import writers
 from .cli import help, readme
@@ -84,6 +85,7 @@ __all__ = [
     "rwi_stats",
     "rwi_stats_running",
     "common_interval",
+    "powt",
     "sss",
     "writers",
     "help",
