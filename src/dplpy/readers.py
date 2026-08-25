@@ -57,7 +57,7 @@ import pandas as pd
 import numpy as np
 
 
-def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
+def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=None):
     """Imports a common ring width data file
 
     Extended Summary
@@ -79,6 +79,13 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
     skip_lines : int, default 0
         indicates how many of the first few lines of the file to skip
         when reading it.
+    format : {None, "tucson", "csv"}, default None
+        Force the file format regardless of suffix. ``None`` infers it: a .csv
+        suffix is read as CSV; .rwl/.raw as Tucson; and any other suffix (e.g.
+        .txt, or none at all) is decided by sniffing the content, so a valid
+        Tucson file with a nonstandard extension still reads. Pass "tucson" or
+        "csv" to override entirely. ("rwl"/"raw" are accepted as aliases for
+        "tucson".)
     on_error : {"raise", "warn"}, default "raise"
         "raise" (strict) refuses a file with an unrecoverable problem, as before.
         "warn" (salvage) recovers as much as possible instead of raising: a series
@@ -112,31 +119,46 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise"):
     # `filename` may be a local path or an http(s) URL -- read either the same way.
     is_url = filename.lower().startswith(("http://", "https://"))
     FORMAT = "." + filename.split(".")[-1]
-    print("\nAttempting to read input file: " + os.path.basename(filename) + " as " + FORMAT + " format\n")
+
+    # Resolve the format: explicit `format` wins; otherwise infer from a known
+    # suffix; otherwise sniff the content so a Tucson file with a nonstandard
+    # extension (e.g. .txt) still reads.
+    if format is not None:
+        f = str(format).strip().lower()
+        if f in ("tucson", "rwl", "raw"):
+            fmt = "tucson"
+        elif f == "csv":
+            fmt = "csv"
+        else:
+            raise ValueError("format must be None, 'tucson', or 'csv'")
+    elif filename.upper().endswith(".CSV"):
+        fmt = "csv"
+    elif filename.upper().endswith((".RWL", ".RAW")):
+        fmt = "tucson"
+    else:
+        fmt = _sniff_format(filename, is_url)
+        if fmt is None:
+            raise ValueError(
+                "Could not determine the file format from its suffix or its content. "
+                "If this is a ring-width file, pass format='tucson' (or 'csv'). "
+                "Recognized suffixes are .csv, .rwl and .raw."
+            )
+        warnings.warn("File suffix '" + FORMAT + "' not recognized; inferred "
+                      + fmt + " format from the file contents.")
+
+    print("\nAttempting to read input file: " + os.path.basename(filename)
+          + " as " + fmt + " format\n")
 
     # open the input file and read its data into a pandas dataframe
-    if filename.upper().endswith(".CSV"):
+    if fmt == "csv":
         series_data = pd.read_csv(filename, skiprows=skip_lines)  # pandas reads paths and URLs
-    elif filename.upper().endswith((".RWL", ".RAW")):
+    else:  # tucson
         if is_url:
             raw_lines = _fetch_url_lines(filename)
             series_data = _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
                                               os.path.basename(filename))
         else:
             series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
-    else:
-        errorMsg = """
-
-Unable to read file, please check that you're using a supported type
-Accepted file types are .csv and .rwl
-
-Example usages:
->>> import dplpy as dpl
->>> data = dpl.readers('../tests/data/csv/filename.csv')
->>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
-"""
-
-        raise ValueError(errorMsg)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
@@ -154,11 +176,18 @@ Example usages:
         """.format(format=FORMAT)
         raise ValueError(errorMsg)
     salvage_report = series_data.attrs.get("dplpy_salvage", [])
+    hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
     series_data.set_index('Year', inplace=True, drop=True)
-    series_data.attrs["dplpy_salvage"] = salvage_report  # re-attach (survives set_index)
+    series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
+    if hdr_skipped is not None:
+        series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
 
-    # Display message to show that reading was successful
-    print("\nSUCCESS!\nFile read as:", FORMAT, "file\n")
+    # Display message to show that reading was successful, noting how many header
+    # lines auto-detection skipped (so a rare mis-detection is visible).
+    print("\nSUCCESS!\nFile read as:", fmt, "file")
+    if hdr_skipped:
+        print("(auto-detected and skipped " + str(hdr_skipped) + " header line(s))")
+    print("")
 
     # Display names of all the series found
     print("Series names:")
@@ -232,6 +261,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if df is None:
         return None
     df.attrs["dplpy_salvage"] = report
+    df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     if on_error == "warn" and report:
         _warn_salvage_summary(source_name, report)
     return df
@@ -243,6 +273,40 @@ def _fetch_url_lines(url):
     with urllib.request.urlopen(url) as resp:
         text = resp.read().decode("utf-8", errors="replace")
     return text.split("\n")
+
+
+def _sniff_format(filename, is_url):
+    """Decide 'tucson' vs 'csv' from a file's content when the suffix is not one
+    of the recognized ones. Returns 'tucson', 'csv', or None if undetermined.
+    A Tucson file has a line that parses as ID + integer year + numeric values;
+    a CSV does not (its comma-joined fields fail that parse) but contains commas.
+    File-open / network errors are left to propagate (so a missing file raises
+    FileNotFoundError rather than a vague 'unknown format')."""
+    if is_url:
+        lines = _fetch_url_lines(filename)
+    else:
+        with open(filename, "r") as fh:
+            lines = fh.read().split("\n")
+    sample = []
+    for ln in lines:
+        ln = ln.rstrip("\r\n")
+        if len(ln.strip()) == 0:
+            continue
+        hashpos = ln.find("#")
+        if 0 <= hashpos <= 77:
+            continue
+        sample.append(ln)
+        if len(sample) >= 50:
+            break
+    if not sample:
+        return None
+    start = _first_data_line_index(sample)
+    for ln in sample[start:]:
+        if _looks_like_data(ln):
+            return "tucson"
+    if any("," in ln for ln in sample):
+        return "csv"
+    return None
 
 
 def _assemble_dataframe(rwl_data, precision, order):

@@ -7,24 +7,21 @@ import warnings
 from unittest.mock import patch, Mock
 
 '''
-    Test that when given an incorrect file extension, program raises 
-    an error with expected message.
+    An unrecognized suffix is no longer rejected outright -- the content is
+    sniffed. A file whose format can't be inferred from suffix OR content raises
+    a clear error telling the user to pass format=.
 '''
-def test_wrong_file_extension():
-    with pytest.raises(ValueError) as errorMsg:
-        dpl.readers("filename.txt")
+def test_unknown_format_raises_helpful_error(tmp_path):
+    p = tmp_path / "mystery.dat"
+    p.write_text("this is not ring-width data\njust some prose here\n")
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p))
+    assert "format" in str(e.value).lower()
 
-    wrong_ext_msg = """
 
-Unable to read file, please check that you're using a supported type
-Accepted file types are .csv and .rwl
-
-Example usages:
->>> import dplpy as dpl
->>> data = dpl.readers('../tests/data/csv/filename.csv')
->>> data = dpl.readers('../tests/data/rwl/filename.rwl'), header=True
-"""
-    assert wrong_ext_msg == str(errorMsg.value)
+def test_bad_format_argument_raises():
+    with pytest.raises(ValueError):
+        dpl.readers("tests/data/rwl/ca533.rwl", format="bogus")
 
 
 '''
@@ -497,3 +494,42 @@ def test_readers_reads_rwl_from_url():
             "northamerica/usa/ca533.rwl"
         )
     pd.testing.assert_frame_equal(local, via_url)
+
+
+def test_reads_tucson_from_nonstandard_suffix(tmp_path):
+    # A valid Tucson file with a .txt suffix is recognized by content sniffing.
+    import shutil
+    local = _read_quiet(RWL + "ca533.rwl")
+    p = tmp_path / "ca533.txt"
+    shutil.copy(RWL + "ca533.rwl", str(p))
+    got = _read_quiet(str(p))
+    pd.testing.assert_frame_equal(local, got)
+
+
+def test_format_override_forces_tucson(tmp_path):
+    # No suffix at all, but format='tucson' forces the Tucson reader.
+    import shutil
+    local = _read_quiet(RWL + "ca533.rwl")
+    p = tmp_path / "ca533_nosuffix"
+    shutil.copy(RWL + "ca533.rwl", str(p))
+    got = _read_quiet(str(p), format="tucson")
+    pd.testing.assert_frame_equal(local, got)
+
+
+def test_reads_csv_from_nonstandard_suffix(tmp_path):
+    # A CSV with a .txt suffix is sniffed as CSV, not Tucson.
+    import shutil
+    local = _read_quiet("tests/data/csv/ca533.csv")
+    p = tmp_path / "ca533csv.txt"
+    shutil.copy("tests/data/csv/ca533.csv", str(p))
+    got = _read_quiet(str(p))
+    pd.testing.assert_frame_equal(local, got)
+
+
+def test_header_lines_skipped_reported():
+    # Auto-detection records how many header lines it skipped (transparency).
+    data = _read_quiet(RWL + "th001.rwl")           # 3-line header
+    assert data.attrs["dplpy_header_lines_skipped"] == 3
+    # a header-less file reports 0
+    ca = _read_quiet(RWL + "ca533.rwl")
+    assert ca.attrs["dplpy_header_lines_skipped"] == 0
