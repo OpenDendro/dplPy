@@ -36,14 +36,54 @@ __license__ = "GNU GPLv3"
 from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
                     _corr_pval, get_bins, get_crit, _CORR_ALIASES)
 
+from math import ceil
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+# RColorBrewer-ish stem colours dplR's ccf plot uses: positive vs negative r.
+_CCF_POS = ("darkred", "lightsalmon")     # (stem/edge, dot fill)
+_CCF_NEG = ("darkblue", "lightblue")
+
+
+def _dplR_ccf(x, y, lag_max):
+    """R's ``ccf(x, y)``: standardised cross-covariance, fixed means, /n.
+
+    Returns the correlation at lags -lag_max..+lag_max, where the value at lag
+    k estimates cor(x[t+k], y[t]). Reproduces stats::ccf to ~1e-10.
+    """
+    x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
+    x = x - x.mean(); y = y - y.mean()
+    n = len(x)
+    denom = np.sqrt(np.mean(x ** 2) * np.mean(y ** 2))
+    out = []
+    for k in range(-lag_max, lag_max + 1):
+        c = (np.sum(x[k:] * y[:n - k]) if k >= 0 else np.sum(x[:n + k] * y[-k:])) / n
+        out.append(c / denom)
+    return np.array(out)
+
+
+def _ccf_bins(series_years, bin_floor, seg_length, floor_plus1=False):
+    """dplR ccf.series.rwl bin layout: min.bin from the series' own first year,
+    last bin ends at the series' last year (mirrors its min.bin/`to` formula)."""
+    seg_lag = seg_length // 2
+    smin = int(np.min(series_years)); smax = int(np.max(series_years))
+    if not bin_floor:
+        min_bin = smin
+    elif floor_plus1:
+        min_bin = ceil((smin - 1) / bin_floor) * bin_floor + 1
+    else:
+        min_bin = ceil(smin / bin_floor) * bin_floor
+    to = smax - seg_length - seg_lag + 1
+    if min_bin > to:
+        return []
+    return [(s, s + seg_length - 1) for s in range(min_bin, to + seg_lag + 1, seg_lag)]
+
 
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
                 corr="spearman", seg_length=50, bin_floor=100, p_val=0.05,
-                biweight=True, lag=5, make_plot=True):
+                biweight=True, lag=5, make_plot=True, series_x=True,
+                which="both"):
     """Crossdate one series against the master built from all the others.
 
     Produces (and, by default, plots) a moving correlation of the series against
@@ -61,13 +101,23 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     prewhiten, corr, seg_length, bin_floor, p_val, biweight, lag
         as in dpl.xdate() (seg_length is the segment length).
     make_plot : bool, default True
-        draw the moving-correlation and lag-stem figures.
+        master switch for drawing any figure.
+    which : {'both', 'moving', 'ccf'}, default 'both'
+        when ``make_plot`` is True, which figure(s) to draw: both, only the
+        moving-correlation plot (``corr.series.seg``), or only the per-segment
+        ccf panels (``ccf.series.rwl``).
+    series_x : bool, default True
+        lag convention for the dplR-style ``ccf``. True calls
+        ``ccf(x=series, y=master)`` so a *positive* lag marks a missing ring in
+        the series (Bunn's intuitive convention); False matches dplR's stock
+        ``series.x=FALSE`` (negative lag = missing ring).
 
     Returns
     -------
     dict with keys ``moving_corr`` (Series), ``seg_corr`` (Series over bins),
-    ``overall`` ((rho, p_val)), ``lag_table`` (DataFrame lags x bins) and
-    ``bins``.
+    ``overall`` ((rho, p_val)), ``lag_table`` (Spearman rank correlations at
+    shifted windows, lags x bins), ``ccf`` (dplR-style Pearson cross-correlation
+    per segment, lags x bins), ``ccf_bins`` and ``bins``.
 
     References
     ----------
@@ -130,51 +180,148 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
         mov_corr.append(_corr_pval(s, m, method)[0])
     moving_corr = pd.Series(data=mov_corr, index=mov_years, dtype=float)
 
+    # dplR-style cross-correlation table (ccf.series.rwl): Pearson ccf per
+    # segment. ``series_x`` picks the lag convention -- True (default) calls
+    # ccf(x=series, y=master) so a *positive* lag marks a missing ring in the
+    # series (the intuitive convention Bunn adopts); False matches dplR's stock
+    # series.x=FALSE default (negative lag = missing ring).
+    valid = ~np.isnan(series) & ~np.isnan(master)
+    ccf_table = pd.DataFrame(index=["lag." + str(k) for k in lag_vec], dtype=float)
+    ccf_bin_labels = []
+    if valid.any():
+        for lo, hi in _ccf_bins(years[valid], bin_floor, seg_length):
+            blabel = str(lo) + "-" + str(hi)
+            ccf_bin_labels.append(blabel)
+            m = (years >= lo) & (years <= hi)
+            if m.sum() != seg_length or np.isnan(series[m]).any() or np.isnan(master[m]).any():
+                ccf_table[blabel] = np.nan
+                continue
+            xx, yy = (series[m], master[m]) if series_x else (master[m], series[m])
+            ccf_table[blabel] = _dplR_ccf(xx, yy, lag)
+    note = ("NB: with series_x=True, positive lags indicate missing rings in the series"
+            if series_x else
+            "NB: with series_x=False, negative lags indicate missing rings in the series")
+
     if make_plot:
-        _plot_series_corr(series_name, moving_corr, seg_corr, bin_bounds,
-                          lag_table, lag_vec, seg_length, p_val)
+        if which not in ("both", "moving", "ccf"):
+            raise ValueError("which must be 'both', 'moving' or 'ccf'")
+        if which in ("both", "moving"):
+            _plot_moving(series_name, moving_corr, seg_corr, bin_bounds, seg_length, p_val)
+        if which in ("both", "ccf"):
+            print(note)                       # the lag convention applies to the ccf plot
+            _plot_ccf(series_name, ccf_table, lag_vec, ccf_bin_labels, seg_length, p_val, note)
+        plt.show()
 
     return {"moving_corr": moving_corr, "seg_corr": seg_corr, "overall": overall,
-            "lag_table": lag_table, "bins": bins}
+            "lag_table": lag_table, "ccf": ccf_table, "ccf_bins": ccf_bin_labels,
+            "bins": bins}
 
 
-def _plot_series_corr(name, moving_corr, seg_corr, bin_bounds, lag_table,
-                      lag_vec, seg_length, p_val):
-    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)   # dplR's significance line
+def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
+    """Section 5 -- moving correlation + per-segment bars (dplR corr.series.seg).
 
-    plt.style.use("seaborn-v0_8-darkgrid")
-    plt.figure(num=1, figsize=(max(len(moving_corr) // 30, 8), 5))
+    Base-R look: black moving line, black per-segment bars, a dashed
+    significance line, and offset bottom/top year axes at the bin boundaries.
+    """
+    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)
+    # Restrict to the segments the series actually spans (dplR limits the plot
+    # to the series' own range rather than the whole collection).
+    active = [(lo, hi) for (lo, hi), b in zip(bin_bounds, seg_corr.index)
+              if not np.isnan(seg_corr.get(b, np.nan))]
+    if active:
+        xlo, xhi = active[0][0], active[-1][1] + 1
+    elif len(moving_corr):
+        xlo, xhi = float(moving_corr.index.min()), float(moving_corr.index.max())
+    else:
+        xlo, xhi = 0, 1
+
+    def _thin(vals, target=11):
+        return vals if len(vals) <= target else vals[:: int(np.ceil(len(vals) / target))]
+
+    bot_ticks = _thin([lo for lo, hi in active[0::2]] +
+                      ([active[-1][1] + 1] if active else []))
+    top_ticks = _thin([lo for lo, hi in active[1::2]])
+
+    fig, ax = plt.subplots(figsize=(max((xhi - xlo) / 45, 9), 5))
+    ax.set_facecolor("white")
+    for lo, hi in active:
+        ax.axvline(lo, color="grey", lw=0.4, ls=":", zorder=1)
     if len(moving_corr):
-        plt.plot(moving_corr.index.to_numpy(), moving_corr.to_numpy(), color="k", lw=1.2,
-                 label="moving correlation")
+        ax.plot(moving_corr.index.to_numpy(), moving_corr.to_numpy(),
+                color="black", lw=1.5, zorder=3)
     for (lo, hi), blabel in zip(bin_bounds, seg_corr.index):
         v = seg_corr.get(blabel, np.nan)
         if not np.isnan(v):
-            plt.plot([lo, hi], [v, v], color="k", lw=2.5)
-    plt.axhline(sig, ls="--", color="r", label="p=%.3g" % p_val)
-    plt.title("Crossdating of " + name)
-    plt.xlabel("Year")
-    plt.ylabel("Correlation")
-    plt.legend()
+            ax.plot([lo, hi], [v, v], color="black", lw=3, zorder=4)
+    ax.axhline(sig, ls="--", color="black", lw=1.2, zorder=2)
 
-    # lag stems, one panel per segment
-    segs = [b for b in seg_corr.index if not lag_table[b].isna().all()]
-    if segs:
-        cols = 5
-        rows = (len(segs) + cols - 1) // cols
-        fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(14, 3 * rows), squeeze=False)
-        for j, blabel in enumerate(segs):
-            ax = axes[j // cols][j % cols]
-            ax.stem(lag_vec, lag_table[blabel].to_numpy())
-            ax.axhline(sig, ls="--", color="r")
-            ax.set_title(blabel, fontsize=8)
-            ax.set_xlabel("Lag")
-            ax.set_ylabel("r")
-            ax.set_ylim([-0.5, 1])
-        for j in range(len(segs), rows * cols):
-            axes[j // cols][j % cols].set_axis_off()
-        fig.tight_layout()
-    plt.show()
+    ax.set_xlim(xlo - (xhi - xlo) * 0.02, xhi + (xhi - xlo) * 0.02)
+    ax.set_xticks(bot_ticks)
+    ax.tick_params(axis="both", labelsize=13, length=4, color="black")
+    axt = ax.secondary_xaxis("top")
+    axt.set_xticks(top_ticks)
+    axt.tick_params(axis="x", labelsize=13, length=4, color="black")
+    ax.set_xlabel("Year", fontsize=15)
+    ax.set_ylabel("Correlation", fontsize=15)
+    ax.set_title(name, fontsize=15)
+    fig.text(0.5, 0.005, "Segments: length=%d, lag=%d" % (seg_length, seg_length // 2),
+             ha="center", fontsize=12)
+    for spine in ax.spines.values():
+        spine.set_color("black")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
+
+
+def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
+    """Section 6 -- per-segment cross-correlation stems (dplR ccf.series.rwl).
+
+    One panel per segment; stems and dots coloured dark red (positive r) or
+    dark blue (negative r); grey gridlines, bold zero axes, and both +/- sig
+    lines, mirroring dplR's lattice ccf plot.
+    """
+    segs = [b for b in bin_labels if not ccf_table[b].isna().all()]
+    if not segs:
+        return
+    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)
+    lo = min(-0.5, float(np.nanmin(ccf_table[segs].to_numpy())) * 1.1, -sig * 1.1)
+    hi = max(1.0, float(np.nanmax(ccf_table[segs].to_numpy())) * 1.1, sig * 1.1)
+
+    cols = 5
+    rows = (len(segs) + cols - 1) // cols
+    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(15, 2.7 * rows),
+                             squeeze=False)
+    for j, blabel in enumerate(segs):
+        ax = axes[j // cols][j % cols]
+        ax.set_facecolor("white")
+        vals = ccf_table[blabel].to_numpy()
+        for gy in np.arange(-1, 1.0001, 0.1):
+            ax.axhline(gy, color="lightgrey", lw=0.5, zorder=0)
+        for lg in lag_vec:
+            ax.axvline(lg, color="lightgrey", lw=0.5, zorder=0)
+        ax.axhline(0, color="black", lw=1.3, zorder=2)
+        ax.axvline(0, color="black", lw=1.3, zorder=2)
+        ax.axhline(sig, ls="--", color="black", lw=1.1, zorder=2)
+        ax.axhline(-sig, ls="--", color="black", lw=1.1, zorder=2)
+        for lg, v in zip(lag_vec, vals):
+            if np.isnan(v):
+                continue
+            stem_c, dot_c = _CCF_POS if v > 0 else _CCF_NEG
+            ax.plot([lg, lg], [0, v], color=stem_c, lw=2, zorder=3)
+            ax.plot([lg], [v], marker="o", ms=6, markerfacecolor=dot_c,
+                    markeredgecolor=stem_c, zorder=4)
+        ax.set_title(blabel, fontsize=11)
+        ax.set_xlim(min(lag_vec) - 0.5, max(lag_vec) + 0.5)
+        ax.set_ylim(lo, hi)
+        ax.set_xticks(lag_vec[::2])
+        ax.tick_params(labelsize=10)
+        if j % cols == 0:
+            ax.set_ylabel("Correlation", fontsize=12)
+        if j // cols == rows - 1:
+            ax.set_xlabel("Lag", fontsize=12)
+    for j in range(len(segs), rows * cols):
+        axes[j // cols][j % cols].set_axis_off()
+    fig.suptitle(name, fontsize=15, y=1.0)
+    fig.text(0.5, 0.002, note, ha="center", fontsize=11)
+    fig.tight_layout(rect=(0, 0.02, 1, 0.99))
 
 
 def scipy_norm_ppf(q):

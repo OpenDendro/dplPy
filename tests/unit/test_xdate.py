@@ -98,3 +98,39 @@ def test_xdate_no_prewhiten_runs():
     rwi = dpl.detrend(data, fit="spline", plot=False)
     res = _xdate_quiet(rwi, prewhiten=False, corr="pearson", slide_period=50, bin_floor=100)
     assert res["seg_corr"].shape[0] == 34
+
+
+def test_xdate_plot_matches_dplR_semantics_ca533():
+    # The corr.rwl.seg-style overview: one row per series, three colours with
+    # dplR's meaning (green extent, blue dated, red flagged). The red bars must
+    # fall on exactly the five A-flagged series, and nowhere else.
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.colors as mcolors
+    from matplotlib.patches import Rectangle
+    from dplpy.xdate import xdate_plot, _CRS_FLAG
+    import io, contextlib
+
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="spline", plot=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ax = xdate_plot(rwi, slide_period=50, bin_floor=100, p_val=0.05)
+
+    # Series labels alternate between the left axis and a secondary right axis,
+    # so collect both to map an integer row -> series name.
+    row_name = {}
+    for a in [ax] + list(ax.child_axes):
+        for pos, t in zip(a.get_yticks(), a.get_yticklabels()):
+            if t.get_text():
+                row_name[int(round(pos))] = t.get_text()
+    assert len([v for v in row_name.values() if v.startswith("CAM")]) == 34
+    red = mcolors.to_hex(_CRS_FLAG).lower()
+    # series whose row (integer y-centre) carries a red rectangle
+    flagged_rows = set()
+    for p in ax.patches:
+        if isinstance(p, Rectangle) and mcolors.to_hex(p.get_facecolor()).lower() == red:
+            flagged_rows.add(row_name.get(int(round(p.get_y() + p.get_height() / 2))))
+    assert flagged_rows == {"CAM011", "CAM051", "CAM131", "CAM181", "CAM201"}

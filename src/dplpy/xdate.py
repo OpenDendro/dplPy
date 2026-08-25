@@ -41,8 +41,8 @@ __license__ = "GNU GPLv3"
 # >>> res["seg_corr"]                        # segment correlations (series x bins)
 
 from .detrend import detrend
-from .stats import stats
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import pandas as pd
 import numpy as np
 import scipy
@@ -359,7 +359,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     if show_flags:
         _print_flags(flags, lag)
     if make_plot:
-        _plot_seg_corr(seg_corr, bin_bounds, get_crit(p_val, slide_period))
+        _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds, p_val,
+                  slide_period, slide_period // 2)
 
     return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
             "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
@@ -464,61 +465,150 @@ def correlate(data, corr_type):
 # Plot
 # ---------------------------------------------------------------------------
 
-def _plot_seg_corr(seg_corr, bin_bounds, crit):
-    plt.style.use("seaborn-v0_8-darkgrid")
-    plt.figure(figsize=(12, max(4, seg_corr.shape[0] // 3)))
-    avg = seg_corr.mean(axis=0, skipna=True)
-    centers = [(lo + hi) / 2 for lo, hi in bin_bounds]
-    plt.plot(centers, avg.to_numpy(), "-o", color="k", label="mean segment r")
-    if not np.isnan(crit):
-        plt.axhline(crit, ls="--", color="r", label="critical r")
-    plt.xlabel("Year")
-    plt.ylabel("Correlation")
-    plt.legend()
+# RColorBrewer "Set1" -- the same three colors dplR's plot.crs uses.
+_CRS_EXTENT = "#4DAF4A"   # green: the series exists but no full segment was analyzed
+_CRS_DATED  = "#377EB8"   # blue:  segment analyzed and significantly correlated
+_CRS_FLAG   = "#E41A1C"   # red:   segment flagged (p >= pcrit) -- possible dating error
+
+
+def _plot_crs(seg_corr, seg_pval, rwi, bins, bin_bounds, pcrit,
+              seg_length, seg_lag):
+    """dplR-style crossdating overview (mirrors corr.rwl.seg / plot.crs).
+
+    One row per series, sorted by first year (earliest at the bottom). The
+    50%-overlapping segments are split into two offset half-rows -- even-indexed
+    segments on the bottom half, odd-indexed on the top half, so consecutive
+    (overlapping) segments never paint over each other. In each half a green bar
+    marks the series extent, blue marks segments that date well, and red marks
+    flagged segments (segment p-value >= ``pcrit``). Because neighbouring
+    segments alternate halves, you can read off exactly which segment start
+    first drops to non-significant. Left-side labels only.
+    """
+    names = list(seg_corr.index)
+    # Extent per series from the analyzed rwi (matches dplR's use of x$rwi),
+    # i.e. the prewhitened series' first/last finite year.
+    first, last = {}, {}
+    for name in names:
+        col = rwi[name]
+        vi, vl = col.first_valid_index(), col.last_valid_index()
+        first[name] = np.nan if vi is None else float(vi)
+        last[name] = np.nan if vl is None else float(vl)
+    order = sorted(names, key=lambda n: (np.isnan(first[n]), first[n]))
+
+    valid_first = [first[n] for n in names if not np.isnan(first[n])]
+    valid_last = [last[n] for n in names if not np.isnan(last[n])]
+    if not valid_first:
+        raise ValueError("no datable series to plot")
+    minyr, maxyr = min(valid_first), max(valid_last)
+    span = max(maxyr - minyr, 1)
+    n = len(order)
+    nbins = len(bins)
+
+    fig, ax = plt.subplots(figsize=(max(span / 90, 8), max(n * 0.34, 5)))
+    ax.set_facecolor("white")
+    qh = 0.30   # half-height of each offset sub-row
+
+    # faint grey stripes on alternating rows (dplR's grey90)
+    for k in range(0, n, 2):
+        ax.add_patch(Rectangle((minyr - span, k + 0.5), 3 * span, 1.0,
+                               facecolor="#eeeeee", edgecolor="none", zorder=0))
+    # dotted grey guides at each bin boundary
+    for b in sorted({lo for lo, hi in bin_bounds} | {hi + 1 for lo, hi in bin_bounds}):
+        ax.axvline(b, color="grey", lw=0.4, ls=":", zorder=1)
+
+    # even-indexed segments -> bottom half, odd-indexed -> top half (dplR stagger)
+    halves = ((range(0, nbins, 2), -qh, 0.0), (range(1, nbins, 2), 0.0, qh))
+    for k, name in enumerate(order):
+        y = k + 1
+        if np.isnan(first[name]):
+            continue
+        ext_w = last[name] + 1 - first[name]
+        for idxs, dyb, dyt in halves:
+            yb, yt = y + dyb, y + dyt
+            # green extent (base layer for this half)
+            ax.add_patch(Rectangle((first[name], yb), ext_w, yt - yb,
+                                   facecolor=_CRS_EXTENT, edgecolor="none",
+                                   zorder=2))
+            # blue for analyzed segments, red (on top) for flagged ones
+            for j in idxs:
+                lo, hi = bin_bounds[j]
+                pv = seg_pval.loc[name, bins[j]]
+                if pd.isna(pv):
+                    continue
+                flagged = pv >= pcrit
+                ax.add_patch(Rectangle((lo, yb), hi + 1 - lo, yt - yb,
+                                       facecolor=_CRS_FLAG if flagged else _CRS_DATED,
+                                       edgecolor="none", zorder=4 if flagged else 3))
+        # white centre line separating the two offset halves (like dplR)
+        ax.hlines(y, first[name], last[name] + 1, color="white", lw=0.6, zorder=5)
+
+    ax.set_xlim(minyr - span * 0.02, maxyr + span * 0.02)
+    ax.set_ylim(0.3, n + 0.7)
+
+    # Series labels alternate left / right (dplR's axis 2 / axis 4) so each has
+    # room to breathe -- rows 1,3,5.. on the left, rows 2,4,6.. on the right.
+    positions = list(range(1, n + 1))
+    ax.set_yticks(positions[0::2])
+    ax.set_yticklabels(order[0::2], fontsize=13)
+    axr = ax.secondary_yaxis("right")
+    axr.set_yticks(positions[1::2])
+    axr.set_yticklabels(order[1::2], fontsize=13)
+    axr.tick_params(length=3, color="black")
+
+    # Offset segment-boundary years: the bottom axis carries the lower half-row
+    # (even-indexed) segment boundaries, the top axis the upper half-row
+    # (odd-indexed) ones -- offset by seg_lag, exactly like dplR's axis 1 / 3.
+    def _seg_bounds(idxs):
+        if not idxs:
+            return []
+        return [bin_bounds[j][0] for j in idxs] + [bin_bounds[idxs[-1]][1] + 1]
+
+    def _thin(vals, target=10):
+        if len(vals) <= target:
+            return vals
+        return vals[:: int(np.ceil(len(vals) / target))]
+
+    bot_ticks = _thin(_seg_bounds(list(range(0, nbins, 2))))
+    top_ticks = _thin(_seg_bounds(list(range(1, nbins, 2))))
+    ax.set_xticks(bot_ticks)
+    ax.tick_params(axis="x", labelsize=15, length=4, color="black")
+    ax.tick_params(axis="y", length=3, color="black")
+    axt = ax.secondary_xaxis("top")
+    axt.set_xticks(top_ticks)
+    axt.tick_params(axis="x", labelsize=15, length=4, color="black")
+
+    ax.set_xlabel("Year", fontsize=16)
+    fig.text(0.5, 0.005,
+             "Segments: length=%d, lag=%d" % (seg_length, seg_lag),
+             ha="center", fontsize=13)
+    for spine in ax.spines.values():
+        spine.set_color("black")
+
+    handles = [Rectangle((0, 0), 1, 1, facecolor=c) for c in
+               (_CRS_EXTENT, _CRS_DATED, _CRS_FLAG)]
+    labels = ["series extent", "dated (p<%g)" % pcrit, "flagged (p≥%g)" % pcrit]
+    ax.legend(handles, labels, loc="upper left", fontsize=11,
+              framealpha=0.95, edgecolor="black")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
     plt.show()
+    return ax
 
 
-def xdate_plot(data: pd.DataFrame, slide_period=50, bin_floor=10):
-    """Segment-correlation plot for a dataset (thin wrapper over xdate)."""
-    res = xdate(data, slide_period=slide_period, bin_floor=bin_floor,
+def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
+               slide_period=50, bin_floor=100, p_val=0.05, biweight=True):
+    """dplR-style crossdating overview for a set of series (see corr.rwl.seg).
+
+    A thin wrapper: crossdates ``data`` with :func:`xdate` (same parameters) and
+    draws the green/blue/red segment plot -- green = series extent, blue = a
+    segment that correlates significantly with the master, red = a flagged
+    segment (p >= ``p_val``). Returns the matplotlib Axes.
+    """
+    res = xdate(data, prewhiten=prewhiten, corr=corr, slide_period=slide_period,
+                bin_floor=bin_floor, p_val=p_val, biweight=biweight,
                 show_flags=False, make_plot=False)
-    seg_corr = res["seg_corr"]
-    bins = res["bins"]
-    bin_bounds = [_bin_bounds(b) for b in bins]
-
-    data_stats = stats(data)
-    series_by_start = data_stats.sort_values(by="first")["series"]
-    plt.style.use("seaborn-v0_8-darkgrid")
-    years = data.index.to_numpy()
-    dims = (max((years[-1] - years[0]) // 80, 8), max(len(data.columns) // 2, 8))
-    plt.figure(figsize=dims)
-    offset = data.mean().mean() * 2
-    y_div, num = [], 0
-    for col in series_by_start:
-        first = data[col].first_valid_index()
-        last = data[col].last_valid_index()
-        for (lo, hi), blabel in zip(bin_bounds, bins):
-            if lo >= first and hi <= last:
-                color = get_graph_color(seg_corr.loc[col, blabel])
-                plt.plot([lo, hi], [offset * num, offset * num], marker="_",
-                         linewidth=7.5, alpha=0.9, color=color)
-        y_div.append(offset * num)
-        num += 1
-    plt.yticks(y_div, list(series_by_start))
-    plt.xlabel("Year")
-    plt.show()
-
-
-def get_graph_color(corr_val):
-    if np.isnan(corr_val):
-        return "#00ff00"
-    thresholds = [(0.1, "#ff0d1a"), (0.3, "#add8ff"), (0.4, "#9cc7ff"),
-                  (0.5, "#33b6ff"), (0.6, "#0033ff"), (0.7, "#0000ff"),
-                  (0.8, "#0000dd"), (0.9, "#0000b3"), (1.01, "#000099")]
-    for t, c in thresholds:
-        if corr_val < t:
-            return c
-    return "#000099"
+    bin_bounds = [_bin_bounds(b) for b in res["bins"]]
+    return _plot_crs(res["seg_corr"], res["p_val"], res["rwi"], res["bins"],
+                     bin_bounds, p_val, slide_period, slide_period // 2)
 
 
 def get_ar_lag(data):
