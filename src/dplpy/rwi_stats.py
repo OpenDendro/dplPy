@@ -55,11 +55,12 @@ import numpy as np
 import pandas as pd
 
 from .autoreg import ar_func
+from .common_interval import apply_common_interval
 
 
 def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
               prewhiten=False, min_corr_overlap=None, zero_is_missing=True,
-              round_decimals=3):
+              round_decimals=3, common_interval=None):
     """Whole-record chronology signal statistics (rbar, EPS, SNR).
 
     Extended Summary
@@ -113,14 +114,15 @@ def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
                              prewhiten=prewhiten, running_window=False,
                              min_corr_overlap=min_corr_overlap,
                              zero_is_missing=zero_is_missing,
-                             round_decimals=round_decimals)
+                             round_decimals=round_decimals,
+                             common_interval=common_interval)
 
 
 def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
                       corr="Spearman", prewhiten=False, running_window=True,
                       window_length=None, window_overlap=None,
                       min_corr_overlap=None, zero_is_missing=True,
-                      round_decimals=3):
+                      round_decimals=3, common_interval=None):
     """Running (moving-window) chronology signal statistics (rbar, EPS, SNR).
 
     Extended Summary
@@ -196,6 +198,14 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     round_decimals : int or None, default 3
         decimal places to round the real-valued statistic columns to; None
         leaves them unrounded.
+    common_interval : str, (int, int), or None, default None
+        restrict the data to a common interval before computing statistics.
+        'series', 'years' or 'both' selects a complete overlap-only rectangle
+        via dpl.common_interval() (maximising cores, years, or cells); a
+        (start_year, end_year) pair restricts to that inclusive span of your
+        choosing. None (default) uses the full record. This is the recommended
+        way to get chronology statistics on unevenly-distributed data, where
+        period='common' on the full record can be empty.
 
     Returns
     -------
@@ -219,6 +229,11 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     """
     if not isinstance(rwi_data, pd.DataFrame):
         raise TypeError("Expected dataframe input, got " + str(type(rwi_data)) + " instead.")
+
+    # Optionally restrict to a common interval before computing statistics: a
+    # 'series'/'years'/'both' strategy or a (start_year, end_year) pair. The
+    # result is a complete, overlap-only block.
+    rwi_data = apply_common_interval(rwi_data, common_interval)
 
     corr_method = corr.lower()
     if corr_method not in ("spearman", "pearson"):

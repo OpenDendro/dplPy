@@ -33,37 +33,12 @@ import pandas as pd
 from .detrend import detrend
 from .chron import chron
 
-# common_interval finds a range of years in the provided dataframe where there is maximum overlap between series over the longest period of years.
-def common_interval(data):
-    year = data.index.to_numpy() # this is the year vector
-    crn = data.iloc[:,:] # these are the chronologies
+# NOTE: the earlier rectangle-maximising common_interval() that lived here has
+# been superseded by dplpy.common_interval (see common_interval.py), a faithful
+# port of dplR's common.interval() offering the 'series', 'years' and 'both'
+# selection strategies and validated exactly against dplR.
 
-    num_years = crn.shape[0]
 
-    
-    # across-column sum of non-NaN values to get the sample size = sample size
-    sample_depth = np.sum(~np.isnan(crn), axis=1)
-    # allocate
-    N = np.full((num_years, num_years), np.nan) # square matrix with dimensions the length of the series (which reflects both starting year and possible block length)
-
-    # loop over - this is a straight port from my MATLAB, possibly inefficient
-    for i in range(num_years):  # effectively, looping over from 1 to the maximum length of the series in the data as potential lengths of a common interval block
-        # define a block size, using smaller and smaller blocks as you get toward the last year of the series ... this loop therefore gets shorter as block size i gets larger ...
-        for j in range(num_years - i):
-            # for a starting year j and block length i, the smallest number of chronologies in that particular block
-            N[j, i] = np.min(sample_depth[j:j+i+1])
-
-    # pointwise multiplication of two square matrices - this essentially convolves sample size and block length to get number of pairwise comparisons possible
-    N0 = N * np.tile(np.arange(num_years) + 1, (num_years, 1))
-
-    # row (startyear) and column (block length) position of maximum value - is this an OK way to do this? tried other things that didn't work
-
-    start_year, window_width = np.where(N0 == np.nanmax(N0))
-    # In case of a tie for the maximum, arbitrarily take the first one found.
-    # this gives the same answer as MATLAB - 1828 to 1982 common interval
-    return year[int(start_year[0])], year[int(start_year[0] + window_width[0] - 1)]
-
-  
 # rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
 # Can use osborn, frank and 67spline methods to generate rbar values.
 # Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.

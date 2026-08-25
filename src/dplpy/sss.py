@@ -48,9 +48,11 @@ import numpy as np
 import pandas as pd
 
 from .rwi_stats import rwi_stats, _resolve_tree_mapping
+from .common_interval import apply_common_interval
 
 
-def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True):
+def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
+        common_interval=None):
     """Subsample signal strength (SSS) as a per-year series.
 
     Extended Summary
@@ -92,11 +94,18 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True)
     zero_is_missing : boolean, default True
         treat exact zeros as missing (applied consistently to the rbar
         calculation and the per-year sample-depth count).
+    common_interval : str, (int, int), or None, default None
+        restrict to a common interval before computing SSS: 'series', 'years'
+        or 'both' selects one via dpl.common_interval(), and a
+        (start_year, end_year) pair restricts to that span. rbar, N, n(t) and
+        the returned years are then all taken from that trimmed block --
+        equivalent to dplR's sss(common.interval(rwi)). None (default)
+        reproduces dplR's plain sss() over the full record.
 
     Returns
     -------
     result : pandas Series named "sss", indexed by year, with the per-year
-        subsample signal strength.
+        subsample signal strength (over the common interval if one was chosen).
 
     Examples
     --------
@@ -113,6 +122,13 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True)
     """
     if not isinstance(rwi_data, pd.DataFrame):
         raise TypeError("Expected dataframe input, got " + str(type(rwi_data)) + " instead.")
+
+    # Optionally restrict to a common interval first. This matches dplR's own
+    # recipe for a common-interval SSS -- sss(common.interval(rwi)) -- where the
+    # correlation, the reference sample size N, the per-year depth n(t), and the
+    # returned years all come from the same trimmed block (so SSS stays <= 1).
+    # None (default) reproduces dplR's plain sss() on the full record.
+    rwi_data = apply_common_interval(rwi_data, common_interval)
 
     # Whole-record rbar and N, from the same engine (and same defaults) as dplR.
     stats = rwi_stats(rwi_data, ids=ids, corr=corr,
