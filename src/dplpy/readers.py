@@ -170,13 +170,17 @@ def process_rwl_pandas(filename, skip_lines, header):
     if len(clean_lines) == 0:
         return None
 
-    # 3. Resolve the header: auto-detect (header is None) or trust the caller.
-    if header is None:
-        is_head = _detect_header(clean_lines[0])
+    # 3. Resolve the header. Rather than assume a fixed 3-line header, skip any
+    #    number of leading header/metadata lines up to the first line that looks
+    #    like data. Many real ITRDB files have 1-, 2- or other-length headers, and
+    #    blindly skipping three would silently drop data rows (or, with fewer than
+    #    three lines, lose the first measurements). header=False disables this;
+    #    header=True and header=None both skip leading header lines robustly.
+    if header is False:
+        start = 0
     else:
-        is_head = bool(header)
-    if is_head:
-        clean_lines = clean_lines[3:]  # standard 3-line Tucson header
+        start = _first_data_line_index(clean_lines)
+    clean_lines = clean_lines[start:]
 
     if len(clean_lines) == 0:
         return None
@@ -275,14 +279,84 @@ def _detect_header(first_line):
     return is_head
 
 
+def _looks_like_data(line):
+    """True if the line parses as a Tucson data row: an ID, an integer year, and
+    a numeric first measurement. Header/metadata lines fail because their first
+    field after the year is text (a site name, species, investigator, region).
+    Trailing notes on a data line are tolerated -- they are trimmed before the
+    first value is inspected -- which is why this is used (instead of the stricter
+    header heuristic) to find where the data begins."""
+    if len(line) < 12:
+        return False
+    for parser in (_parse_fixed, _parse_ws):
+        try:
+            _sid, _yr, vals = parser(line)
+        except (ValueError, IndexError):
+            continue
+        for v in vals:
+            vs = v.strip()
+            if vs == "":
+                continue                 # skip leading blank (missing) fields
+            try:
+                int(vs)
+                return True              # first real measurement is numeric -> data
+            except ValueError:
+                return False             # first real field is text -> header/metadata
+    return False
+
+
+def _first_data_line_index(lines):
+    """Index of the first line that looks like Tucson data rather than a header
+    or metadata line -- used to skip a header of *any* length (1, 2, 3 or more
+    lines) instead of assuming exactly three. Returns 0 if none looks like data
+    (leave the lines untouched and let parsing report the problem)."""
+    for i, ln in enumerate(lines):
+        if _looks_like_data(ln):
+            return i
+    return 0
+
+
+def _trim_trailing_junk(values):
+    """Drop trailing tokens that are not measurements -- appended notes/comments
+    and trailing blanks -- by keeping everything up to and including the last
+    token that parses as an integer (a real value or a 999 / -9999 stop marker).
+    Interior blank fields (missing rings written as blanks) are preserved as ""
+    so they hold their year position; only *trailing* junk/blanks are removed."""
+    last = -1
+    for i, v in enumerate(values):
+        vs = v.strip()
+        if vs == "":
+            continue
+        try:
+            int(vs)
+            last = i
+        except ValueError:
+            continue
+    return values[:last + 1]
+
+
 def _parse_fixed(line, long=False):
-    """Parse one line by fixed Tucson columns: (id, year, [value strings])."""
-    idw, yrw = (7, 5) if long else (8, 4)
+    """Parse one line by fixed Tucson columns: (id, year, [value strings]).
+
+    Interior blank 6-char fields are kept as "" so a missing ring written as
+    blanks holds its year position (dropping it would shift the rest of the
+    decade); trailing blanks/notes are trimmed by _trim_trailing_junk.
+
+    A bunched 5-char negative year (a BC year < -999 written with no space
+    between ID and year, e.g. 'MNP262M-1262' = year -1262) is detected per line
+    -- a '-' in column 8 with column 12 filled -- and read as a 7-char ID + a
+    5-char year, the same heuristic dplR's `long` mode and read.tucson2 use.
+    Without this the '-' lands in the ID field and the year reads as +1262,
+    which then trips the self-overlap check."""
+    if not long and len(line) >= 12 and line[7] == '-' and line[11] != ' ':
+        idw, yrw = 7, 5
+    else:
+        idw, yrw = (7, 5) if long else (8, 4)
     series_id = line[:idw].strip()
     year = int(line[idw:idw + yrw])          # may raise ValueError
     rest = line[idw + yrw:]
     values = [rest[i:i + 6].strip() for i in range(0, len(rest), 6)]
-    values = [v for v in values if v != ""]
+    values = _trim_trailing_junk(values)
     return series_id, year, values
 
 
@@ -293,7 +367,7 @@ def _parse_ws(line):
         raise ValueError("too few fields")
     series_id = tokens[0]
     year = int(tokens[1])                    # may raise ValueError
-    values = tokens[2:]
+    values = _trim_trailing_junk(tokens[2:])
     return series_id, year, values
 
 
@@ -401,6 +475,7 @@ def read_rwl(lines, long=False):
     order = []
     neg_hits = []       # (series, year) for anomalous negatives -> NaN
     nonint_hits = 0
+    identical_dups = 0  # cells duplicated with an identical value (copy-paste)
     year_src = {}       # sid -> {year: start-year of the row that wrote it}
     overlaps = []       # (sid, year, first_row_start, second_row_start)
     overlap_seen = set()
@@ -418,6 +493,8 @@ def read_rwl(lines, long=False):
         for j, tok in enumerate(vals):
             s = tok.strip()
             y = yr + j
+            if s == "":
+                continue             # interior blank field = missing ring (holds its year)
             if s == "-9999":
                 # -9999 is only ever the 0.001 mm stop marker. In a 0.001 mm
                 # series it is a marker -> drop. In a series terminated at
@@ -440,10 +517,13 @@ def read_rwl(lines, long=False):
                 neg_hits.append((sid, y))
                 continue
             if y in rwl_data[sid]:
-                # A value is already present for this (series, year): the data
-                # overlaps. Record it (keep the first value; we will refuse the
-                # file below rather than guess which is right).
-                if sid not in overlap_seen:
+                # A value is already present for this (series, year). If it is
+                # identical it's a harmless duplicate -- a copy-paste of a row or
+                # of the whole file -- so ignore it. If it differs, the data
+                # genuinely conflicts: record it and refuse the file below.
+                if v == rwl_data[sid][y]:
+                    identical_dups += 1
+                elif sid not in overlap_seen:
                     overlaps.append((sid, y, year_src[sid].get(y), yr))
                     overlap_seen.add(sid)
                 continue
@@ -527,6 +607,12 @@ def read_rwl(lines, long=False):
                 "series '" + str(sid) + "' has no stop marker; assuming "
                 + ("0.01" if dominant == 100 else "0.001") + " mm precision"
             )
+
+    if identical_dups:
+        warnings.warn(
+            str(identical_dups) + " identical duplicate value(s) were ignored "
+            "(a row or the file appears to have been duplicated, e.g. by copy-paste)"
+        )
 
     if nonint_hits:
         warnings.warn(str(nonint_hits) + " non-integer value(s) could not be read and were set to NaN")

@@ -290,3 +290,96 @@ def test_rwl_measurement_precision_shift_raises(tmp_path):
     msg = str(e.value)
     assert "precision" in msg.lower()
     assert "AAA01" in msg
+
+
+def test_rwl_recovers_first_data_row_with_hash_in_header():
+    # nm580's header line 1 contains 'UAFACC#=04-223'. The '#' made the older
+    # reader treat that header line as a comment, after which "skip exactly 3"
+    # ate the first real data row (BCS05B's 1370 decade). Skipping to the first
+    # *data* line instead recovers it. dplR 1.7.9 still drops this row; dplPy now
+    # reads it (matching OpenDendro's corrected read.tucson2). Raw row values ÷1000.
+    d = _read_quiet(RWL + "nm580.rwl")
+    assert d.loc[1370, "BCS05B"] == pytest.approx(1.373)
+    assert d.loc[1379, "BCS05B"] == pytest.approx(0.784)
+
+
+def test_rwl_single_line_header_keeps_all_rows(tmp_path):
+    # A 1-line header must not cost the first two data rows (the old skip-3 bug).
+    p = tmp_path / "h1.rwl"
+    p.write_text(
+        "ONE LINE OF HEADER TEXT SITE SPECIES INVESTIGATOR\n"
+        "AAA01   1900   100   200   300   400   500   600   700   800   900  1000\n"
+        "AAA01   1910   110 -9999\n"
+    )
+    d = dpl.readers(str(p))
+    assert 1900 in d.index and 1909 in d.index
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+
+
+def test_rwl_blank_interior_field_preserves_alignment(tmp_path):
+    # A blank 6-char field (a missing ring written as blanks) must leave the rest
+    # of the decade aligned, not shift every later value one year to the left.
+    p = tmp_path / "blank.rwl"
+    p.write_text(
+        "AAA01   1900   100   200         400   500   600   700   800   900  1000\n"
+        "AAA01   1910  1100 -9999\n"
+    )
+    d = dpl.readers(str(p))
+    assert d.loc[1901, "AAA01"] == pytest.approx(0.2)
+    assert np.isnan(d.loc[1902, "AAA01"])          # the blank -> missing
+    assert d.loc[1903, "AAA01"] == pytest.approx(0.4)   # NOT shifted into 1902
+    assert d.loc[1909, "AAA01"] == pytest.approx(1.0)   # last value not lost
+
+
+def test_rwl_trailing_notes_are_ignored(tmp_path):
+    # Notes appended after the data columns must not break the read.
+    p = tmp_path / "notes.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300   400   500 -9999   note: suspect core\n"
+        "AAA01B  1900   111   222 -9999\n"
+    )
+    d = dpl.readers(str(p))
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+    assert d.loc[1904, "AAA01"] == pytest.approx(0.5)
+
+
+def test_rwl_identical_duplicate_rows_deduped(tmp_path):
+    # A byte-identical duplicated row (copy-paste) is unambiguous: dedupe + warn,
+    # do NOT fail.
+    p = tmp_path / "dup.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300 -9999\n"
+        "AAA01   1900   100   200   300 -9999\n"
+    )
+    with pytest.warns(UserWarning, match="identical duplicate"):
+        d = dpl.readers(str(p))
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+
+
+def test_rwl_conflicting_duplicate_still_raises(tmp_path):
+    # Same core+year with a DIFFERENT value is a genuine conflict -> still fail.
+    p = tmp_path / "conf.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300 -9999\n"
+        "AAA01   1900   555   200   300 -9999\n"
+    )
+    with pytest.raises(ValueError):
+        dpl.readers(str(p))
+
+
+def test_rwl_bunched_negative_year_uses_long_format(tmp_path):
+    # A BC year < -999 written bunched to the ID with no space, e.g.
+    # 'MNP262M-1270' = year -1270 (the chin067 / long-negative-years case).
+    # Must be read as a 7-char ID + 5-char year, not as ID 'MNP262M-' + year
+    # +1270 (which would misorder the series and trip the self-overlap check).
+    p = tmp_path / "bc.rwl"
+    p.write_text(
+        "MNP262M-1270   375   250   300   280   310   295   330   340   360   355\n"
+        "MNP262M-1260   245   240   290   220   320   280   215   300   410   500\n"
+        "MNP262M-1250   170 -9999\n"
+    )
+    d = dpl.readers(str(p))
+    assert "MNP262M" in d.columns              # 7-char ID, not 'MNP262M-'
+    assert d.index.min() == -1270              # negative year parsed correctly
+    assert d.loc[-1270, "MNP262M"] == pytest.approx(0.375)
+    assert d.loc[-1261, "MNP262M"] == pytest.approx(0.355)
