@@ -61,6 +61,7 @@ from .read_ids import read_ids
 from .rwi_stats import rwi_stats, rwi_stats_running
 from .common_interval import common_interval
 from .agedepspline import ads
+from .pith import po_to_wc, wc_to_po
 from .powt import powt
 from .simplesignalfree import ssf
 from .sss import sss
@@ -88,6 +89,8 @@ __all__ = [
     "rwi_stats_running",
     "common_interval",
     "ads",
+    "po_to_wc",
+    "wc_to_po",
     "powt",
     "ssf",
     "sss",
