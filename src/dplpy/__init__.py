@@ -63,6 +63,7 @@ from .common_interval import common_interval
 from .agedepspline import ads
 from .pith import po_to_wc, wc_to_po
 from .powt import powt
+from .rcs import rcs
 from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
@@ -92,6 +93,7 @@ __all__ = [
     "po_to_wc",
     "wc_to_po",
     "powt",
+    "rcs",
     "ssf",
     "sss",
     "writers",
