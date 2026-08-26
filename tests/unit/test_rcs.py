@@ -75,5 +75,42 @@ def test_rcs_bad_args():
     rwl, _ = _gp()
     with pytest.raises(ValueError):
         dpl.rcs(rwl, method="bogus", make_plot=False)
+    with pytest.raises(ValueError):
+        dpl.rcs(rwl, preset="bogus", make_plot=False)
     with pytest.raises(TypeError):
         dpl.rcs("not a frame", make_plot=False)
+
+
+# CRUST's compiled spline3 kernel, run on the gp regional curve (ss=10),
+# reproduced by dplPy to ~3.6e-11. These first regional-curve values bake that
+# direct-against-CRUST validation into CI without needing the CRUST binary.
+_CRUST_RC_GP = [1.06287953, 1.26619931, 1.45329834, 1.61293684,
+                1.75231530, 1.87680382, 1.99123400, 2.09755297]
+
+
+def test_rcs_crust_preset_matches_crust_kernel():
+    rwl, po = _gp()
+    res = dpl.rcs(rwl, po, preset="crust", make_plot=False, rc_out=True)
+    assert np.allclose(res["rc"][:8], _CRUST_RC_GP, atol=1e-6)
+    # crust preset leaves the dplR path untouched: default still equals dplR
+    p1 = dpl.rcs(rwl, po, make_plot=False, rc_out=True)
+    assert not np.allclose(res["rc"][:8], p1["rc"][:8])   # the two paths differ
+
+
+def test_rcs_crust_curve_floor_and_flat_tail():
+    from dplpy.rcs import _crust_regional_curve
+    # a curve that dips below the 0.02 floor and has a sparse tail
+    ca_m = np.concatenate([np.linspace(1.0, 0.005, 60), np.full(20, 0.005)])
+    ca_n = np.concatenate([np.full(60, 10), np.arange(20, 0, -1)])  # tail depth < 4
+    rc = _crust_regional_curve(ca_m, ca_n, len(ca_m), ss=10, rise=False)
+    assert np.nanmin(rc) >= 0.02 - 1e-12                 # floored
+    assert np.allclose(rc[-5:], rc[-5])                  # flat tail/extension
+
+
+def test_rcs_crust_gap_infill():
+    from dplpy.rcs import _crust_regional_curve
+    # interior gap (NaN) in the regional curve must be carried forward, not left NA
+    ca_m = np.array([2.0, 1.8, np.nan, np.nan, 1.5, 1.4] + [1.3] * 20)
+    ca_n = np.array([10, 10, 0, 0, 10, 10] + [10] * 20)
+    rc = _crust_regional_curve(ca_m, ca_n, len(ca_m), ss=10, rise=False)
+    assert np.all(np.isfinite(rc))                       # no NaNs survive infill

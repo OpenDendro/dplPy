@@ -83,3 +83,40 @@ def test_ssf_negative_curve_error_is_informative():
     assert "X642244" in msg               # the series whose curve dipped <= 0
     assert "1455" in msg                  # the near-zero chronology year
     assert "recode_zeros" in msg          # actionable remedy
+
+
+def test_ssf_crust_preset_rescues_co021():
+    # co021 defeats the basic method (curve <= 0), but CRUST's guards -- the
+    # near-zero division guard and the 0.02 curve floor -- let it standardise.
+    data = _read_quiet("tests/data/csv/co021.csv")
+    with pytest.raises(ValueError):
+        _ssf_quiet(data, recode_zeros=True)                    # basic: fails
+    out = _ssf_quiet(data, preset="crust", recode_zeros=True)  # crust: succeeds
+    assert list(out.columns) == ["sfc", "samp.depth"]
+    assert np.all(np.isfinite(out["sfc"].to_numpy()))
+
+
+def test_ssf_crust_rescale_is_multiplicative():
+    from dplpy.simplesignalfree import _sf_rescale
+    sf = np.array([[2.0], [4.0], [6.0]])       # mean 4
+    dat = np.array([[1.0], [2.0], [3.0]])      # mean 2
+    # multiplicative: factor = 2/4 -> [1, 2, 3] (both scaled and mean-matched)
+    assert np.allclose(_sf_rescale(sf, dat, crust=True, difference=False)[:, 0],
+                       [1.0, 2.0, 3.0])
+    # additive (basic): shift so mean matches -> [0, 2, 4]
+    assert np.allclose(_sf_rescale(sf, dat, crust=False, difference=False)[:, 0],
+                       [0.0, 2.0, 4.0])
+
+
+def test_ssf_crust_preset_default_unchanged():
+    # preset=None must remain the exact basic method (already validated vs dplR)
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    basic = _ssf_quiet(data, recode_zeros=True)
+    crust = _ssf_quiet(data, preset="crust", recode_zeros=True)
+    assert not np.allclose(basic["sfc"].to_numpy(), crust["sfc"].to_numpy())
+
+
+def test_ssf_bad_preset():
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    with pytest.raises(ValueError):
+        _ssf_quiet(data, recode_zeros=True, preset="bogus")

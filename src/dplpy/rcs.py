@@ -37,9 +37,62 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from csaps import csaps
 
-from .agedepspline import ads
+from .agedepspline import ads, _ads_curve
 from .smoothingspline import get_param
 from .xdate import _row_biweight
+
+
+# --- CRUST-style regional-curve refinements (Melvin & Briffa 2014) ----------
+# Validated against CRUST's compiled spline3 / splinec kernels to ~1e-11.
+
+def _spline3(rws, cnt, ss=10, rise=False):
+    """CRUST's age-dependent RCS smoother (stand.f90 spline3).
+
+    Fits an age-dependent spline (per-point stiffness ``ss + cambial age``, i.e.
+    our ads with nyrs0 = ss+1) only over the well-replicated part of the curve
+    -- up to the last cambial age with sample depth >= 4 -- then holds the curve
+    flat beyond. Unless ``rise`` (kept only for very old trees / basal area), the
+    tail is flattened from the curve's minimum in its final third, preventing an
+    artefactual old-age upturn.
+    """
+    n = len(rws)
+    j = 0
+    for jj in range(n, 0, -1):
+        if cnt[jj - 1] >= 4:
+            j = jj
+            break
+    if j < 4:                                   # too little replication to smooth
+        j = n
+    stiff = ss + np.arange(1, j + 1)            # ss+1, ss+2, ... = age-dependent
+    rwp = np.full(n, np.nan)
+    fit = _ads_curve(rws[:j], stiff)
+    rwp[:j] = rws[:j] if fit is None else fit
+    if rise:
+        rwp[j:] = rwp[j - 1]                     # flat extend beyond the fit
+    else:
+        start = 2 * j // 3                       # final third (1-based start)
+        q = int(np.argmin(rwp[start - 1:j])) + start   # 1-based index of the min
+        rwp[q:] = rwp[q - 1]                     # flatten after it
+    return rwp
+
+
+def _crust_regional_curve(ca_m, ca_n, nrow, ss=10, rise=False, floor=0.02):
+    """Build the CRUST-style regional curve: infill gaps, smooth with spline3,
+    apply the minimum-value floor, and flat-extend to the full cambial-age grid."""
+    last = int(np.max(np.where(ca_n > 0)[0]))    # last cambial age with data
+    span = ca_m[:last + 1].copy()
+    cnt = ca_n[:last + 1]
+    # infill gaps: leading with the first value, interior by carry-forward
+    valid = np.where(~np.isnan(span))[0]
+    span[:valid[0]] = span[valid[0]]
+    for m in range(valid[0] + 1, len(span)):
+        if np.isnan(span[m]):
+            span[m] = span[m - 1]
+    rc_span = np.maximum(_spline3(span, cnt, ss=ss, rise=rise), floor)
+    rc = np.full(nrow, np.nan)
+    rc[:last + 1] = rc_span
+    rc[last + 1:] = rc_span[-1]                   # flat extension
+    return rc
 
 
 def _caps(y, nyrs, f):
@@ -53,7 +106,7 @@ def _caps(y, nyrs, f):
 
 def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         ratios=True, rc_out=False, make_plot=True, method="caps",
-        min_n=None, pos_slope=True):
+        min_n=None, pos_slope=True, preset=None):
     """Regional Curve Standardisation of a set of ring-width series.
 
     Extended Summary
@@ -96,6 +149,15 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         below this.
     pos_slope : bool, default True
         passed to ads when method='ads'.
+    preset : {None, "crust"}, default None
+        None reproduces dplR's rcs() exactly (the parameters above apply).
+        "crust" builds the regional curve the CRUST way (Melvin & Briffa 2014):
+        an age-dependent spline smoothed only where sample depth >= 4 with the
+        "no rise in the final third" tail rule, gaps in the curve infilled, a
+        0.02 mm minimum-value floor, and flat extension of the tail. Robust for
+        the heterogeneous / relict data RCS is typically applied to. When set,
+        ``nyrs`` (if given) overrides the age-spline offset (default 10) and
+        ``method``/``f``/``pos_slope`` are ignored.
 
     Returns
     -------
@@ -106,11 +168,19 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     References
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/rcs.html
+    .. [2] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
+       implementation of Regional Chronology Standardisation: Part 1,
+       Signal-Free RCS. Dendrochronologia, 32, 7-20.
+    .. [3] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
+       implementation of Regional Chronology Standardisation: Part 2, Further
+       RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     if not isinstance(rwl, pd.DataFrame):
         raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")
     if method not in ("caps", "ads"):
         raise ValueError("method must be 'caps' or 'ads', got '" + str(method) + "'.")
+    if preset not in (None, "crust"):
+        raise ValueError("preset must be None or 'crust', got '" + str(preset) + "'.")
 
     cols = list(rwl.columns)
     ncol = len(cols)
@@ -148,17 +218,24 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         last_valid = int(np.max(np.where(ca_n >= min_n)[0]))
         ca_m[np.arange(len(ca_m)) > last_valid] = np.nan
 
-    # smooth the regional curve over its non-NA extent
-    valid = ~np.isnan(ca_m)
-    ym = ca_m[valid]
-    if method == "caps":
-        nyrs2 = int(np.floor(len(ym) * 0.1)) if nyrs is None else int(nyrs)
-        smoothed = _caps(ym, nyrs2, f)
+    if preset == "crust":
+        # CRUST regional curve: infill, age-dependent spline smoothed only where
+        # depth >= 4 (no-rise-final-third tail), 0.02 floor, flat extension.
+        ss = 10 if nyrs is None else int(nyrs)
+        rise = rwca.shape[0] > 1500              # "except trees > 1500 years old"
+        rc = _crust_regional_curve(ca_m, ca_n, rwca.shape[0], ss=ss, rise=rise)
     else:
-        nyrs2 = 50 if nyrs is None else int(nyrs)
-        smoothed = ads(ym, nyrs0=nyrs2, pos_slope=pos_slope)
-    rc = np.full(rwca.shape[0], np.nan)
-    rc[valid] = smoothed
+        # dplR: smooth the regional curve over its non-NA extent
+        valid = ~np.isnan(ca_m)
+        ym = ca_m[valid]
+        if method == "caps":
+            nyrs2 = int(np.floor(len(ym) * 0.1)) if nyrs is None else int(nyrs)
+            smoothed = _caps(ym, nyrs2, f)
+        else:
+            nyrs2 = 50 if nyrs is None else int(nyrs)
+            smoothed = ads(ym, nyrs0=nyrs2, pos_slope=pos_slope)
+        rc = np.full(rwca.shape[0], np.nan)
+        rc[valid] = smoothed
 
     # detrend in cambial-age space, then map back to calendar years
     rwica = rwca / rc[:, None] if ratios else rwca - rc[:, None]

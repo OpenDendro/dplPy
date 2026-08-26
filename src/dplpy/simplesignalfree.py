@@ -68,6 +68,36 @@ def _neg_curve_message(curves, series_names, chron=None, years=None):
     return msg
 
 
+def _sf_measurements(dat_vals, chron, difference, crust):
+    """STEP 2: signal-free measurements = data / chronology (or minus, for
+    difference). With crust=True, keep the raw measurement in any year where the
+    chronology is near zero (< 0.01) -- CRUST's guard against the enormous
+    signal-free values a near-zero chronology otherwise produces (the co021
+    failure mode). dplR divides unconditionally."""
+    if difference:
+        return dat_vals - chron[:, None]
+    sf = dat_vals / chron[:, None]
+    if crust:
+        guard = chron < 0.01
+        sf[guard, :] = dat_vals[guard, :]
+    return sf
+
+
+def _sf_rescale(sf, dat_vals, crust, difference):
+    """STEP 3: put each signal-free series back on its original mean. The basic
+    (dplR) method shifts additively; CRUST rescales multiplicatively -- the
+    model-consistent "mean offset" of Melvin & Briffa (2008, 2014), where tree
+    growth is multiplicative and indices are fractional deviations."""
+    mean_dat = np.nanmean(dat_vals, axis=0)
+    with np.errstate(invalid="ignore"):
+        mean_sf = np.nanmean(sf, axis=0)
+    if crust and not difference:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            factor = np.where(mean_sf != 0, mean_dat / mean_sf, 1.0)
+        return sf * factor
+    return (sf - mean_sf) + mean_dat
+
+
 def ssf(rwl,
         method="Spline",
         nyrs=None,
@@ -76,7 +106,8 @@ def ssf(rwl,
         mad_threshold=5e-04,
         recode_zeros=False,
         return_info=False,
-        verbose=True):
+        verbose=True,
+        preset=None):
     """Simple signal-free chronology (dplR's ssf()).
 
     Extended Summary
@@ -114,6 +145,15 @@ def ssf(rwl,
         the final chronology.
     verbose : bool, default True
         print progress and the per-iteration convergence diagnostics.
+    preset : {None, "crust"}, default None
+        None reproduces the basic signal-free method (dplR's ssf; Melvin &
+        Briffa 2008). "crust" turns on the guards/refinements from CRUST (Melvin
+        & Briffa 2014): the signal-free measurements are rescaled multiplicatively
+        (the model-consistent "mean offset") rather than additively; the raw
+        measurement is kept in any year where the chronology is near zero
+        (< 0.01); and the fitted detrending curves are floored at 0.02 mm. These
+        make ssf robust to sensitive sites with many absent rings (e.g. co021),
+        which the basic method cannot standardise.
 
     Returns
     -------
@@ -127,11 +167,26 @@ def ssf(rwl,
     .. [1] https://rdrr.io/cran/dplR/man/ssf.html
     .. [2] Melvin, T. M. & Briffa, K. R. (2008) A "signal-free" approach to
        dendroclimatic standardisation. Dendrochronologia, 26(2), 71-86.
+    .. [3] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
+       implementation of Regional Chronology Standardisation: Part 1,
+       Signal-Free RCS. Dendrochronologia, 32, 7-20.
+    .. [4] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
+       implementation of Regional Chronology Standardisation: Part 2, Further
+       RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
+    if preset not in (None, "crust"):
+        raise ValueError("preset must be None or 'crust', got '" + str(preset) + "'.")
+    crust = preset == "crust"
+
     if max_iterations > 25:
         print("Warning: Having to set max_iterations > 25 may indicate non-ideal data for signal-free detrending.")
-    if  not(1e-04 < mad_threshold < 1e-03): 
+    if  not(1e-04 < mad_threshold < 1e-03):
         print("Warning: The stopping criteria should probably be between 1e-5 and 1e-4 unless you have a good reason to think otherwise.")
+
+    if crust:
+        # CRUST allows up to 40 signal-free iterations; difficult sites (e.g.
+        # co021) can need a few more than the basic default of 25 to converge.
+        max_iterations = max(max_iterations, 40)
     
 
     # error msgs for later
@@ -322,25 +377,19 @@ def ssf(rwl,
     # STEP 2 - Divide each series of measurements by the chronology
     # NB: This can produce some very very funky values when iter0Crn is near zero.
     # E.g., in co021 row 615 has a tbrm RWI of 0.0044 which makes for some huge SF
-    if difference:
-        sfRW_Array[:, :, 0] = dat - iter0Crn_col0[:, np.newaxis]
-    else:
-        sfRW_Array[:, :, 0] = dat / iter0Crn_col0[:, np.newaxis]
+    sfRW_Array[:, :, 0] = _sf_measurements(dat.values, iter0Crn_col0, difference, crust)
 
-    # STEP 3 - Rescale to the original mean
-    colMeansMatdatSF = np.nanmean(sfRW_Array[:, :, 0], axis=0)
-    colMeansMatdatSF = np.tile(colMeansMatdatSF, ((sfRW_Array.shape[0]), 1))
-    colMeansMatdat = np.nanmean(dat, axis=0)
-    colMeansMatdat = np.tile(colMeansMatdat, (dat.shape[0], 1))
-
-    sfRWRescaled_Array[:, :, 0] = (sfRW_Array[:, :, 0] - colMeansMatdatSF) + colMeansMatdat
+    # STEP 3 - Rescale to the original mean (additive; multiplicative for crust)
+    sfRWRescaled_Array[:, :, 0] = _sf_rescale(sfRW_Array[:, :, 0], dat.values, crust, difference)
 
     # STEP 4 - Replace signal-free measurements with original measurements when samp depth is 1
     sfRWRescaled_Array[datSampDepth == 1, :, 0] = dat.values[datSampDepth == 1, :] # can this break if there is no sampDepth==1?
-    
+
     # STEP 5 - Fit curves to signal free measurements
     sfRWRescaledCurves_Array[:, :, 0] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, 0], method=method2, nyrs=nyrs)
-    
+    if crust:                                  # CRUST: floor the curve at 1 ring (0.02 mm)
+        sfRWRescaledCurves_Array[:, :, 0] = np.maximum(sfRWRescaledCurves_Array[:, :, 0], 0.02)
+
     if np.any(sfRWRescaledCurves_Array[:, :, 0] <= 0):
         raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, 0],
                                             dat.columns, iter0Crn_col0, dat.index.to_numpy()))
@@ -375,31 +424,25 @@ def ssf(rwl,
         k = iterationNumber
 
         # STEP 2 - Divide each series of measurements by the last SF chronology
-        sfCrn_Col=sfCrn_Mat[:, k - 1]
-        sfCrn_Col=sfCrn_Col[:, np.newaxis]
-        if difference:
-            sfRW_Array[:, :, k] = dat - sfCrn_Col
-        else:
-            sfRW_Array[:, :, k] = dat / sfCrn_Col # this can produce problems Inf or nan
+        sfRW_Array[:, :, k] = _sf_measurements(dat.values, sfCrn_Mat[:, k - 1], difference, crust)
 
-        # STEP 3 - Rescale to the original mean
-        colMeansMatdatSF = np.nanmean(sfRW_Array[:, :, k], axis=0, keepdims=True)
-        colMeansMatdatSF = np.tile(colMeansMatdatSF, (dat.shape[0], 1)) 
+        # STEP 3 - Rescale to the original mean (additive; multiplicative for crust)
+        tmp = _sf_rescale(sfRW_Array[:, :, k], dat.values, crust, difference)
 
-        tmp = (sfRW_Array[:, :, k] - colMeansMatdatSF) + colMeansMatdat
-        
         # can get a nan if unlucky. set to? zero?
         tmp[np.isnan(tmp)] = 0
         sfRWRescaled_Array[:, :, k] = tmp
-        # STEP 4 - Replace signal-free measurements with original measurements when sample depth is one    
+        # STEP 4 - Replace signal-free measurements with original measurements when sample depth is one
         sfRWRescaled_Array[datSampDepth == 1, :, k] = dat.values[datSampDepth == 1, :]
-        
-        #add this line bc of python/R matrix difference 
+
+        #add this line bc of python/R matrix difference
         sfRWRescaled_Array[:, :, k] = np.where(sfRWRescaled_Array[:, :, k] == 0, np.nan, sfRWRescaled_Array[:, :, k])
-        
+
         # STEP 5 - fit curves to signal free measurements
         sfRWRescaledCurves_Array[:, :, k] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, k], method=method2, nyrs=nyrs)
-        
+        if crust:                              # CRUST: floor the curve at 1 ring (0.02 mm)
+            sfRWRescaledCurves_Array[:, :, k] = np.maximum(sfRWRescaledCurves_Array[:, :, k], 0.02)
+
         if np.any(sfRWRescaledCurves_Array[:, :, k] <= 0):
             raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, k],
                                                 dat.columns, sfCrn_Mat[:, k - 1],
