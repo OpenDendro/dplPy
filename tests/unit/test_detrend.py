@@ -503,6 +503,56 @@ def test_detrend_fit_list_with_return_info_raises():
         _detrend_quiet(data["CAM011"], fit=["Spline", "Mean"], return_info=True)
 
 
+# --- validation against dplR 1.7.9 (detrend.series on ca533$CAM011) -----------
+# Reference RWI (ratios, default) generated from dplR 1.7.9; the ModNegExp/Hugershoff
+# logic is identical in the 1.8.0 source. CAM011 fits every curve (no fallback).
+# Closed-form fits (Spline, Mean) match to machine precision. The nls fits
+# (ModNegExp, ModHugershoff) match to ~1e-3: R's nls only converges to tol~1e-5,
+# so iterative fits cannot agree more tightly than their own convergence.
+# NOTE: on the finicky 4-param Hugershoff, scipy is MORE robust than R's nls and
+# fits ~6 ca533 series (e.g. CAM151) where dplR falls back to a line/mean -- an
+# accepted, documented difference (dplPy matches dplR wherever R's nls converges).
+_DPLR_CAM011 = {
+    "Spline":        [1.1963223, 1.02753817, 1.19355965, 0.81416, 0.80551108],
+    "ModNegExp":     [1.07078863, 0.92366339, 1.0774591, 0.73805365, 0.73324942],
+    "ModHugershoff": [1.3462947, 1.09135316, 1.22727013, 0.81924458, 0.79799274],
+    "Mean":          [2.36586295, 2.02463271, 2.34311426, 1.59240775, 1.56965907],
+}
+
+
+@pytest.mark.parametrize("fit,atol", [
+    ("Spline", 1e-6), ("Mean", 1e-8),
+    ("ModNegExp", 1e-3), ("ModHugershoff", 1e-3),
+])
+def test_detrend_matches_dplR_ca533_cam011(fit, atol):
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    rwi = _detrend_quiet(data["CAM011"], fit=fit).dropna().to_numpy()[:5]
+    assert np.allclose(rwi, _DPLR_CAM011[fit], atol=atol)
+
+
+def test_modhugershoff_warns_on_ill_conditioned_fit():
+    # scipy is more robust than dplR's nls and will fit some series dplR rejects.
+    # When the Hugershoff fit is badly ill-conditioned we warn so the divergence
+    # is never silent; a clean fit (CAM011) does not warn. model_info carries cond.
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    # CAM021 is a severely ill-conditioned Hugershoff fit (cond ~1e23)
+    with pytest.warns(UserWarning, match="poorly constrained"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("always")
+            info = dpl.detrend(data["CAM021"], fit="ModHugershoff", plot=False,
+                               return_info=True)
+    assert info["model_info"]["cond"] > 1e12
+    # CAM011 is a clean, well-conditioned Hugershoff fit -> no warning
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        info2 = dpl.detrend(data["CAM011"], fit="ModHugershoff", plot=False,
+                            return_info=True)
+    assert not [x for x in w if "poorly constrained" in str(x.message)]
+    assert info2["model_info"]["cond"] < 1e12
+
+
 def test_detrend_method_given_curve_name_is_guarded():
     # D12: passing a curve name to method= must raise a helpful error pointing to fit=
     df = pd.DataFrame({"A": [0.1, 0.3, 0.5, 0.7]},

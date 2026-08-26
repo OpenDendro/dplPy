@@ -57,20 +57,37 @@ def hugershoff(x, y):
 def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
     def out(curve, meta):
         return (curve, meta) if info else curve
-    t = np.arange(1, len(y) + 1)
     nY = len(y)
-    tail = y[int(np.floor(nY * 0.9)) - 1:]          # dplR seeds a, d from last ~10%
+    t = np.arange(1, nY + 1)
+    # dplR default constrain.nls="never": unconstrained nls with start values
+    # a = d = mean of the last 10%, b = 1, g = 0.1 (so c = -g = -0.1). Reject on
+    # a<=0, b<=0, or a non-positive tail, as dplR's hug.func does.
+    tail = y[int(np.floor(nY * 0.9)) - 1:]
     a0 = float(np.mean(tail)) if len(tail) else float(np.mean(y))
     try:
-        pars, _ = curve_fit(hugershoff_function, t, y, p0=[a0, 1.0, -0.1, a0],
-                            bounds=([0, 0, -np.inf, 0], [np.inf, np.inf, 0, np.inf]),
-                            maxfev=10000)
+        pars, pcov = curve_fit(hugershoff_function, t, y, p0=[a0, 1.0, -0.1, a0],
+                               maxfev=200000)
         a, b, c, d = pars
         fit = hugershoff_function(t, a, b, c, d)
         if a > 0 and b > 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
+            # The 4-parameter Hugershoff is often poorly identifiable. scipy's
+            # solver is more robust than dplR's nls and will fit series where
+            # dplR gives up and falls back; when the fit's covariance is very
+            # ill-conditioned we warn, since another implementation (dplR) may
+            # reject this fit -- so a divergence is never silent.
+            cond = np.linalg.cond(pcov) if np.all(np.isfinite(pcov)) else np.inf
+            if cond > 1e12:
+                warnings.warn(
+                    "ModHugershoff fit for " + str(name) + " is poorly "
+                    "constrained (covariance condition number "
+                    + ("%.1e" % cond) + "); the 4-parameter Hugershoff can be "
+                    "unstable and other implementations (e.g. dplR) may reject it "
+                    "and fall back to a line/mean. Inspect the curve, or prefer "
+                    "fit='Spline' or fit='ModNegExp'.\n")
             return out(fit, {"method": "Hugershoff",
                              "coefs": {"a": float(a), "b": float(b),
-                                       "c": float(c), "d": float(d)}})
+                                       "c": float(c), "d": float(d)},
+                             "cond": float(cond)})
     except (RuntimeError, ValueError):
         pass
     # straight-line fallback
@@ -116,11 +133,17 @@ def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
     # "NegativeExponential" (the nls fit), "Line" (linear fallback), or "Mean".
     def out(curve, meta):
         return (curve, meta) if info else curve
-    t = np.arange(1, len(y) + 1)
-    # 1. constrained negative-exponential fit
+    nY = len(y)
+    t = np.arange(1, nY + 1)
+    # 1. unconstrained negative-exponential fit with dplR's start values
+    #    (dplR default constrain.nls="never"): a = mean of the first 10%,
+    #    b = -0.01, k = mean of the last 10%. Reject on a<=0, b>=0, or a
+    #    non-positive tail, exactly as dplR's nec.func does.
+    a0 = float(np.mean(y[:max(1, int(np.floor(nY * 0.1)))]))
+    k0 = float(np.mean(y[int(np.floor(nY * 0.9)) - 1:]))
     try:
-        pars, _ = curve_fit(negex_function, t, y,
-                             bounds=([0, -np.inf, 0], [np.inf, 0, np.inf]))
+        pars, _ = curve_fit(negex_function, t, y, p0=[a0, -0.01, k0],
+                            maxfev=100000)
         a, b, k = pars
         fit = negex_function(t, a, b, k)
         if a > 0 and b < 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
