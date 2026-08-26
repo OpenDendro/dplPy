@@ -181,20 +181,39 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_huger
 
 
 @patch.object(_m_detrend, 'spline')
-def test_detrend_residual(mock_spline: Mock):
+def test_detrend_ratio(mock_spline: Mock):
+    # method='ratio' (the default) divides the data by the fitted curve
     mock_spline.side_effect = mock_spline_method
 
     expected_df = pd.DataFrame(data={"SeriesA": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                                     "SeriesB": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    result_df = dpl.detrend(input_df, method='residual', plot=False)
+    result_df = dpl.detrend(input_df, method='ratio', plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
+    # 'division' is an accepted synonym, and 'ratio' is the default
+    div = dpl.detrend(input_df, method='division', plot=False)
+    default = dpl.detrend(input_df, plot=False)
+    pd.testing.assert_frame_equal(expected_df, div)
+    pd.testing.assert_frame_equal(expected_df, default)
+
+
+@patch.object(_m_detrend, 'spline')
+def test_detrend_residual_deprecated_alias(mock_spline: Mock):
+    # 'residual' is a deprecated alias for 'ratio' (division): same numbers, but
+    # it must warn, since in dplPy 'residual' now names only the AR chronology.
+    mock_spline.side_effect = mock_spline_method
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5]},
+                            index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], name="Year"))
+    with pytest.warns(FutureWarning):
+        aliased = dpl.detrend(input_df, method='residual', plot=False)
+    ratio = dpl.detrend(input_df, method='ratio', plot=False)
+    pd.testing.assert_frame_equal(ratio, aliased)
 
 
 @patch.object(_m_detrend, 'spline')
@@ -227,4 +246,8 @@ def test_detrend_invalid_fit():
 
 
 def test_detrend_invalid_method():
-    pass
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5]},
+                            index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], name="Year"))
+    with pytest.raises(ValueError) as errorMsg:
+        dpl.detrend(input_df, method="bogus", plot=False)
+    assert "unsupported detrending method" in str(errorMsg.value)

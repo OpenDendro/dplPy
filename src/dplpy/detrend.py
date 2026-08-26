@@ -24,9 +24,12 @@ __license__ = "GNU GPLv3"
 # Date: 11/1/2022
 # Author: Ifeoluwa Ale
 # Title: detrend.py
-# Description: Detrends a given series or data frame, first by fitting data to curve(s), 
-#              with spline(s) as the default, and then by calculating residuals or differences 
-#              compared to the original data (residuals by default).
+# Description: Detrends a given series or data frame, first by fitting data to curve(s),
+#              with spline(s) as the default, and then by forming the ring-width index
+#              as a ratio (division) or a difference (subtraction) of the data to the
+#              fitted curve (ratio by default). Note: "residual" is deliberately NOT used
+#              here for the division result -- in dplPy "residual" refers only to the
+#              residual (AR-prewhitened) chronology produced by chron()/chron_ars().
 
 import warnings
 
@@ -37,16 +40,17 @@ from .smoothingspline import spline
 from .agedepspline import ads
 from . import curvefit
 
-def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual",
+def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="ratio",
             plot=True, period=None, nyrs0=50, pos_slope=False):
     """Detrends a given series or dataframe
     
     Extended Summary
     ----------------
-    Detrends a given series or dataframe, first by fitting data to curve(s), 
-    with 'spline' as the default, and then by calculating residuals 
-    (default = 'residual') or differences ('difference') compared to the original data. 
-    Other supported curve fitting methods are 'ModNegex' (modified negative exponential), 
+    Detrends a given series or dataframe, first by fitting data to curve(s),
+    with 'spline' as the default, and then by forming the ring-width index as a
+    ratio ('ratio', i.e. division -- the default) or a difference ('difference',
+    i.e. subtraction) of the data to the fitted curve.
+    Other supported curve fitting methods are 'ModNegex' (modified negative exponential),
     'Hugershoff', 'linear', 'horizontal'.
                   
     Parameters
@@ -55,8 +59,15 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual",
         a data frame loaded using dpl.readers(), or a series extracted from such a datafame.
     fit: str, default spline
         fitting method of curve. can be 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), 'spline', and 'AgeDepSpline' (age-dependent spline).
-    method : str, default residual
-        detrending method, can be 'difference' or 'residual'.
+    method : str, default 'ratio'
+        how the ring-width index is formed from the data and the fitted curve.
+        'ratio' (equivalently 'division') divides the data by the curve;
+        'difference' subtracts the curve from the data. This mirrors dplR's
+        detrend(), where division is the default and 'difference=TRUE' subtracts.
+        The former spelling 'residual' for the division result is deprecated --
+        in dplPy 'residual' now refers only to the residual (AR-prewhitened)
+        chronology -- and is accepted for now as an alias of 'ratio' with a
+        warning.
     plot : boolean, default True
         flag indicating whether or not to plot the results.
     nyrs0 : int, default 50
@@ -75,13 +86,15 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual",
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> dpl.detrend(data) # Detrends all series in a dataframe
     >>> dpl.detrend(data["SeriesA"]) # Detrends only SeriesA
-    >>> dpl.detrend(data["SeriesA"], fit="ModNegex", method="residual", plot=True)    
+    >>> dpl.detrend(data["SeriesA"], fit="ModNegex", method="difference", plot=True)
     
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#detrend
          
     """
+    method = _normalize_method(method)
+
     if isinstance(data, pd.DataFrame):
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
@@ -104,6 +117,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual",
 def detrend_series(data: pd.Series, fit, method, plot, period=None,
                    nyrs0=50, pos_slope=False):
     series_name = data.name
+    method = _normalize_method(method)      # idempotent; canonical passes through
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy(dtype=float).copy()
@@ -137,13 +151,10 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
         # give error message for unsupported curve fit
         raise ValueError("unsupported keyword for curve-fit type. See documentation for more info.")
     
-    if method == "residual":
-        detrended_data = residual(y, yi)
-    elif method == "difference":
+    if method == "ratio":
+        detrended_data = ratio(y, yi)
+    else:  # method == "difference"
         detrended_data = difference(y, yi)
-    else:
-        # give error message for unsupported detrending method
-        raise ValueError("unsupported keyword for detrending method. See documentation for more info.")
     
     if plot:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(7,3))
@@ -167,11 +178,37 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
 def pick_first(a, b):
     return a
 
-# Detrends by finding ratio of original series data to curve data
-def residual(y, yi):
-    return y/yi
+
+# Canonical detrending-method names. Division = 'ratio' (aka 'division');
+# subtraction = 'difference'. 'residual' is a deprecated alias for 'ratio' -- in
+# dplPy 'residual' otherwise refers only to the residual (AR-prewhitened)
+# chronology, so it is being retired from the detrending vocabulary.
+def _normalize_method(method):
+    m = str(method).strip().lower()
+    if m in ("ratio", "division"):
+        return "ratio"
+    if m == "difference":
+        return "difference"
+    if m == "residual":
+        warnings.warn(
+            "detrend(method='residual') is deprecated and will be removed in a "
+            "future release. 'residual' previously meant detrending by DIVISION; "
+            "use method='ratio' (or 'division') for division, or "
+            "method='difference' for subtraction. In dplPy 'residual' now refers "
+            "only to the residual (AR-prewhitened) chronology. Treating "
+            "method='residual' as 'ratio' for now.",
+            FutureWarning, stacklevel=3)
+        return "ratio"
+    raise ValueError(
+        "unsupported detrending method '" + str(method) + "'. Use 'ratio' "
+        "(division, the default) or 'difference' (subtraction).")
 
 
-# Detrends by finding difference between original series data and curve fit data
+# Detrends by dividing the original series by the fitted curve (ratio / division).
+def ratio(y, yi):
+    return y / yi
+
+
+# Detrends by subtracting the fitted curve from the original series (difference).
 def difference(y, yi):
     return y - yi

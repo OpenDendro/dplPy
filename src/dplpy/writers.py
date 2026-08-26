@@ -163,7 +163,7 @@ def write_rwl(data, file):
 
 
 def write_crn(data, site_id, file, site_name="Unnamed object", species_code="UNKN", location="Unknown", species="Plantae", elevation="", lat_long="", investigator="", comp_date=""):
-    rwi_data = chron(detrend(data, fit="spline", method="residual", plot=False), prewhiten=True)
+    rwi_data = chron(detrend(data, fit="spline", method="ratio", plot=False), prewhiten=True)
     first = rwi_data.first_valid_index()
     last = rwi_data.last_valid_index()
 
@@ -194,7 +194,7 @@ def write_txt(data, file):
     header = ["year", "num".rjust(7), "seg".rjust(7), "age".rjust(7), "raw".rjust(7), "std".rjust(7), "res".rjust(7), "ars".rjust(7)]
     file.write("    ".join(header))
     file.write("\n")
-    rwi_data = detrend(data, fit="spline", method="residual", plot=False)
+    rwi_data = detrend(data, fit="spline", method="ratio", plot=False)
     rwi_chron = chron(rwi_data, prewhiten=False)
     mean_res = chron(rwi_data, biweight=False, prewhiten=False)
     ar_chron = chron(rwi_data, prewhiten=True)

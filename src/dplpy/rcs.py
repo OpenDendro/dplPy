@@ -114,7 +114,7 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     Detrends by a single "regional curve": every series is placed on a common
     cambial-age axis according to its pith offset, the average ring width at
     each cambial age is taken (the regional curve), that curve is smoothed, and
-    each ring is divided by (ratios) or has subtracted (residuals) the curve
+    each ring is divided by (ratios) or has subtracted (difference) the curve
     value at its cambial age. This preserves low-frequency growth signal that
     per-series detrending would remove. A port of dplR's rcs().
 
@@ -135,7 +135,7 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         build the regional curve with Tukey's biweight robust mean (C=9) rather
         than the arithmetic mean.
     ratios : bool, default True
-        detrend by division (ratios); if False, by subtraction (residuals).
+        detrend by division (ratios); if False, by subtraction (difference).
     rc_out : bool, default False
         if True, return a dict with both the detrended ``rwi`` and the regional
         curve ``rc``; otherwise return just ``rwi``.
