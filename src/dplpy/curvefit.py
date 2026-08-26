@@ -54,7 +54,9 @@ def hugershoff(x, y):
 # non-positive tail). On rejection, fall back to a straight line -- accepted only
 # when its slope is <= 0 (or pos_slope) AND all its values are positive -- and
 # finally to the series mean, exactly as ModNegExp does.
-def mod_hugershoff(x, y, pos_slope=False, name=""):
+def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
+    def out(curve, meta):
+        return (curve, meta) if info else curve
     t = np.arange(1, len(y) + 1)
     nY = len(y)
     tail = y[int(np.floor(nY * 0.9)) - 1:]          # dplR seeds a, d from last ~10%
@@ -66,7 +68,9 @@ def mod_hugershoff(x, y, pos_slope=False, name=""):
         a, b, c, d = pars
         fit = hugershoff_function(t, a, b, c, d)
         if a > 0 and b > 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
-            return fit
+            return out(fit, {"method": "Hugershoff",
+                             "coefs": {"a": float(a), "b": float(b),
+                                       "c": float(c), "d": float(d)}})
     except (RuntimeError, ValueError):
         pass
     # straight-line fallback
@@ -74,11 +78,15 @@ def mod_hugershoff(x, y, pos_slope=False, name=""):
     if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
         warnings.warn("ModHugershoff could not fit " + str(name)
                       + "; using a linear fit instead.\n")
-        return yl
+        slope = (yl[-1] - yl[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
+        return out(yl, {"method": "Line",
+                        "coefs": {"intercept": float(yl[0] - slope * x[0]),
+                                  "slope": float(slope)}})
     # final fallback: the series mean
     warnings.warn("ModHugershoff and the linear fallback are unsuitable for "
                   + str(name) + "; detrending by the series mean instead.\n")
-    return np.full_like(y, np.mean(y))
+    m = float(np.mean(y))
+    return out(np.full_like(y, m), {"method": "Mean", "mean": m})
 
 
 # Modified negative exponential function
@@ -102,7 +110,12 @@ def negex(x, y):
 # is <= 0 (or pos_slope is True) AND all its fitted values are positive; otherwise
 # fall back to the series mean (dplR's "dirty dog" case). This keeps a whole
 # collection from aborting on one series the neg-exp can't fit.
-def mod_neg_exp(x, y, pos_slope=False, name=""):
+def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
+    # With info=True return (curve, model_info); otherwise just the curve, so
+    # existing callers are unaffected. model_info mirrors dplR's method labels:
+    # "NegativeExponential" (the nls fit), "Line" (linear fallback), or "Mean".
+    def out(curve, meta):
+        return (curve, meta) if info else curve
     t = np.arange(1, len(y) + 1)
     # 1. constrained negative-exponential fit
     try:
@@ -111,20 +124,24 @@ def mod_neg_exp(x, y, pos_slope=False, name=""):
         a, b, k = pars
         fit = negex_function(t, a, b, k)
         if a > 0 and b < 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
-            return fit
+            return out(fit, {"method": "NegativeExponential",
+                             "coefs": {"a": float(a), "b": float(b), "k": float(k)}})
     except (RuntimeError, ValueError):
         pass
     # 2. straight-line fallback
     yl = linear(x, y)
-    slope_sign = yl[-1] - yl[0]            # x is increasing, so this signs the slope
-    if (slope_sign <= 0 or pos_slope) and np.all(yl > 0):
+    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
         warnings.warn("ModNegExp could not fit " + str(name)
                       + "; using a linear fit instead.\n")
-        return yl
+        slope = (yl[-1] - yl[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
+        return out(yl, {"method": "Line",
+                        "coefs": {"intercept": float(yl[0] - slope * x[0]),
+                                  "slope": float(slope)}})
     # 3. final fallback: the series mean
     warnings.warn("ModNegExp and the linear fallback are unsuitable for "
                   + str(name) + "; detrending by the series mean instead.\n")
-    return np.full_like(y, np.mean(y))
+    m = float(np.mean(y))
+    return out(np.full_like(y, m), {"method": "Mean", "mean": m})
 
 # Fit a horizontal line to the series
 def horizontal(x, y):

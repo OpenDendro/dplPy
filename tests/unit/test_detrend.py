@@ -420,6 +420,53 @@ def test_detrend_hugershoff_real_series_positive():
     assert np.all(np.isfinite(v)) and np.all(v > 0)
 
 
+def test_detrend_return_info_series_structure():
+    # D6: return_info gives a dict mirroring dplR's return.info, and rwi is
+    # identical to the plain detrend output.
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    info = _detrend_quiet(data["CAM011"], return_info=True)
+    assert set(info) == {"rwi", "curves", "model_info", "data_info", "dirty_dog"}
+    plain = _detrend_quiet(data["CAM011"])
+    assert np.allclose(info["rwi"].dropna(), plain.dropna())
+    assert info["model_info"]["method"] == "Spline"
+    assert info["model_info"]["nyrs"] > 0 and info["model_info"]["f"] == 0.5
+    # CAM011 has two zero rings (1753, 1782) reported from the raw input
+    assert info["data_info"]["n_zeros"] == 2
+    assert 1753 in info["data_info"]["zero_years"]
+    assert info["dirty_dog"] is False
+
+
+def test_detrend_return_info_modnegexp_coefs():
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    info = _detrend_quiet(data["CAM011"], fit="ModNegExp", return_info=True)
+    mi = info["model_info"]
+    assert mi["method"] == "NegativeExponential"
+    assert set(mi["coefs"]) == {"a", "b", "k"}
+
+
+def test_detrend_return_info_dataframe():
+    data = _quiet_read("tests/data/csv/ca533.csv")[["CAM011", "CAM021"]]
+    info = _detrend_quiet(data, return_info=True)
+    assert info["rwi"].shape == data.shape
+    assert info["curves"].shape == data.shape
+    assert set(info["model_info"]) == {"CAM011", "CAM021"}
+    assert set(info["data_info"]) == {"CAM011", "CAM021"}
+    assert isinstance(info["dirty_dog"], bool)
+
+
+def test_detrend_return_info_dirty_dog_on_mean_fallback():
+    # when a requested curve falls back to the series mean, dirty_dog is True
+    import numpy as np
+    df = pd.DataFrame({"A": [0.5, 0.6, 0.7, 0.8, 0.9]},
+                      index=pd.Index([1, 2, 3, 4, 5], name="Year"))
+    fell_to_mean = (np.full(5, 0.7), {"method": "Mean", "mean": 0.7})
+    with patch("dplpy.curvefit.mod_neg_exp", return_value=fell_to_mean):
+        info = _detrend_quiet(df, fit="ModNegExp", return_info=True)
+    assert info["model_info"]["A"]["method"] == "Mean"
+    assert info["dirty_dog"] is True
+
+
 def test_detrend_method_given_curve_name_is_guarded():
     # D12: passing a curve name to method= must raise a helpful error pointing to fit=
     df = pd.DataFrame({"A": [0.1, 0.3, 0.5, 0.7]},

@@ -42,7 +42,7 @@ from . import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
             plot=True, period=None, nyrs0=50, pos_slope=False, f=0.5,
-            verbose=False):
+            verbose=False, return_info=False):
     """Detrends a given series or dataframe
 
     Extended Summary
@@ -95,6 +95,18 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     verbose : boolean, default False
         print, per series, the curve fitted and the detrending arithmetic used.
         (Fallbacks in fit='ModNegExp' are also reported via warnings.)
+    return_info : boolean, default False
+        if True, return a dict (mirroring dplR's detrend return.info) instead of
+        just the detrended data::
+
+            {"rwi":        detrended series (same shape as the input),
+             "curves":     the fitted detrending curves,
+             "model_info": per-series fit description -- the method actually used
+                           (e.g. 'NegativeExponential', 'Line', 'Mean', 'Spline')
+                           and its parameters/coefficients,
+             "data_info":  per-series {n_zeros, zero_years} of the input,
+             "dirty_dog":  True if any series' curve went non-positive or fell
+                           back to the series mean (dplR's "dirty dog" flag)}
     
     Returns
     -------
@@ -117,6 +129,23 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     fit = _normalize_fit(fit)
 
     if isinstance(data, pd.DataFrame):
+        if return_info:
+            rwis, curves, model_info, data_info = [], [], {}, {}
+            dirty_dog = False
+            for column in data.columns:
+                r, c, mi, di, dd = detrend_series(
+                    data[column], fit, method, plot, period, nyrs0, pos_slope,
+                    f, verbose, return_info=True)
+                rwis.append(r)
+                curves.append(c)
+                model_info[column] = mi
+                data_info[column] = di
+                dirty_dog = dirty_dog or dd
+            base = pd.DataFrame(index=pd.Index(data.index))
+            rwi_df = pd.concat([base] + rwis, axis=1).rename_axis(data.index.name)
+            curve_df = pd.concat([base] + curves, axis=1).rename_axis(data.index.name)
+            return {"rwi": rwi_df, "curves": curve_df, "model_info": model_info,
+                    "data_info": data_info, "dirty_dog": dirty_dog}
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
         for column in data.columns:
@@ -126,6 +155,12 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         return output_df.rename_axis(data.index.name)
 
     elif isinstance(data, pd.Series):
+        if return_info:
+            r, c, mi, di, dd = detrend_series(
+                data, fit, method, plot, period, nyrs0, pos_slope, f, verbose,
+                return_info=True)
+            return {"rwi": r, "curves": c, "model_info": mi,
+                    "data_info": di, "dirty_dog": dd}
         return detrend_series(data, fit, method, plot, period, nyrs0, pos_slope,
                               f, verbose)
     else:
@@ -137,13 +172,20 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
 def detrend_series(data: pd.Series, fit, method, plot, period=None,
-                   nyrs0=50, pos_slope=False, f=0.5, verbose=False):
+                   nyrs0=50, pos_slope=False, f=0.5, verbose=False,
+                   return_info=False):
     series_name = data.name
     method = _normalize_method(method)      # idempotent; canonical passes through
     fit = _normalize_fit(fit)               # idempotent; canonical passes through
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy(dtype=float).copy()
+
+    # zero ring-widths, recorded before the recode below (dplR reports the zero
+    # years of the *input* series in return.info$data.info).
+    zero_mask = (y == 0)
+    data_info = {"n_zeros": int(zero_mask.sum()),
+                 "zero_years": [int(v) for v in x[zero_mask]]}
 
     # dplR's detrend.series recodes zero ring-widths to 0.001 before fitting the
     # curve and dividing (see detrend.series.R: "y2[y2 == 0] <- 0.001"). A zero
@@ -162,17 +204,37 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
               % (series_name, fit, method, len(y), detail))
 
     # fit is already canonical (see _normalize_fit): Spline, AgeDepSpline,
-    # ModNegExp, ModHugershoff, Mean, Linear.
+    # ModNegExp, ModHugershoff, Mean, Linear. model_info records what was actually
+    # fit (mirroring dplR's return.info$model.info), collected only when needed.
+    model_info = None
     if fit == "Spline":
         yi = spline(x, y, period, f)
+        if return_info:
+            model_info = {"method": "Spline", "nyrs": get_period(period, len(x)),
+                          "f": f}
     elif fit == "ModNegExp":
-        yi = curvefit.mod_neg_exp(x, y, pos_slope, series_name)
+        if return_info:
+            yi, model_info = curvefit.mod_neg_exp(x, y, pos_slope, series_name,
+                                                  info=True)
+        else:
+            yi = curvefit.mod_neg_exp(x, y, pos_slope, series_name)
     elif fit == "ModHugershoff":
-        yi = curvefit.mod_hugershoff(x, y, pos_slope, series_name)
+        if return_info:
+            yi, model_info = curvefit.mod_hugershoff(x, y, pos_slope, series_name,
+                                                     info=True)
+        else:
+            yi = curvefit.mod_hugershoff(x, y, pos_slope, series_name)
     elif fit == "Linear":
         yi = curvefit.linear(x, y)
+        if return_info:
+            slope = (yi[-1] - yi[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
+            model_info = {"method": "Line",
+                          "coefs": {"intercept": float(yi[0] - slope * x[0]),
+                                    "slope": float(slope)}}
     elif fit == "Mean":
         yi = curvefit.horizontal(x, y)
+        if return_info:
+            model_info = {"method": "Mean", "mean": float(np.mean(y))}
     elif fit == "AgeDepSpline":
         yi = ads(y, nyrs0=nyrs0, pos_slope=pos_slope)
         # dplR: if the age-dependent spline is not all-positive (very rare),
@@ -181,7 +243,12 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
             warnings.warn("Fits from fit='AgeDepSpline' are not all positive for "
                           + str(series_name) + "; detrending by the mean instead.\n")
             yi = np.full_like(y, np.mean(y))
-    
+            if return_info:
+                model_info = {"method": "Mean", "mean": float(np.mean(y))}
+        elif return_info:
+            model_info = {"method": "Age-Dep Spline", "nyrs0": nyrs0,
+                          "pos_slope": pos_slope}
+
     if method == "ratio":
         detrended_data = ratio(y, yi)
     else:  # method == "difference"
@@ -204,7 +271,18 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     
         plt.show()
 
-    return pd.Series(detrended_data, index=pd.Index(data=x, name="Year"), name=series_name).combine(data, pick_first)
+    rwi = pd.Series(detrended_data, index=pd.Index(data=x, name="Year"),
+                    name=series_name).combine(data, pick_first)
+    if not return_info:
+        return rwi
+    curve = pd.Series(yi, index=pd.Index(data=x, name="Year"),
+                      name=series_name).combine(data, pick_first)
+    # dplR's "dirty dog": a curve that went non-positive, or a fit that had to
+    # fall back to the series mean.
+    dirty = bool(np.any(yi <= 0)) or (
+        model_info is not None and model_info.get("method") == "Mean"
+        and fit != "Mean")
+    return rwi, curve, model_info, data_info, dirty
 
 def pick_first(a, b):
     return a
