@@ -1,36 +1,109 @@
+__copyright__ = """
+   dplPy for tree ring width time series analyses
+   Copyright (C) 2024  OpenDendro
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+__license__ = "GNU GPLv3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Title: simplesignalfree.py
+# Project: OpenDendro dplPy
+# Description: Simple signal-free chronology (Melvin & Briffa 2008), a port of
+#              dplR's ssf(). A chronology is built, each series is divided by it
+#              to remove the common signal, the "signal-free" measurements are
+#              re-detrended, and a new chronology is built; this repeats until
+#              the high-frequency chronology stops changing (median absolute
+#              difference below a threshold). Reproduces dplR's ssf() to machine
+#              precision.
+
 import numpy as np
 import pandas as pd
-from scipy.signal import medfilt
-from math import cos
-from math import pi
-from csaps import csaps
+
 from .readers import readers
 from .stats import stats
 from .chron import chron
 from .smoothingspline import spline
-from .agedepspline import ads_R2Py
+from .agedepspline import ads
 
-# Date: 01/24/2024
-# Author: Anne Martine Wilce
-# Title: simplesignalfree.pynb
 
-# A simple implentation of the signal-free chronology
-# Ed Cook provided Fortran code that was ported to R by Andy Bunn.
-# Anne Wilce ported the R code to Python.
-
-def ssf(rwl, 
-        method="Spline", 
-        nyrs=None, 
-        difference=False, 
-        maxIterations=25,
-        madThreshold=5e-04,
-        recodeZeros=False,
-        returnInfo=False,
+def ssf(rwl,
+        method="Spline",
+        nyrs=None,
+        difference=False,
+        max_iterations=25,
+        mad_threshold=5e-04,
+        recode_zeros=False,
+        return_info=False,
         verbose=True):
-        
-    if maxIterations > 25:
-        print("Warning: Having to set maxIterations > 25 may indicate non-ideal data for signal-free detrending.")
-    if  not(1e-04 < madThreshold < 1e-03): 
+    """Simple signal-free chronology (dplR's ssf()).
+
+    Extended Summary
+    ----------------
+    Builds a signal-free chronology (Melvin & Briffa 2008): an initial
+    chronology is formed, every series is divided by it to strip the common
+    signal, the resulting "signal-free" measurements are rescaled and
+    re-detrended, and a new chronology is built. This repeats until the
+    high-frequency component of the chronology stops changing between iterations
+    (the sample-depth-weighted median absolute difference falls below
+    ``mad_threshold``) or ``max_iterations`` is reached. Reproduces dplR's ssf().
+
+    Parameters
+    ----------
+    rwl : pandas.DataFrame
+        ring-width series (raw), years as the index and series as columns.
+    method : {"Spline", "AgeDepSpline"}, default "Spline"
+        detrending curve used at each iteration: a cubic smoothing spline
+        (2/3-length stiffness) or an age-dependent spline (dpl.ads()).
+    nyrs : int or None, default None
+        spline stiffness. None uses 2/3 of each series' length for "Spline" or
+        50 for "AgeDepSpline"; a value in (0, 1) is a fraction of series length.
+    difference : bool, default False
+        detrend by subtraction (series - curve) rather than division.
+    max_iterations : int, default 25
+        maximum signal-free iterations before giving up.
+    mad_threshold : float, default 5e-4
+        convergence threshold on the median absolute difference of the
+        high-frequency chronology between successive iterations.
+    recode_zeros : bool, default False
+        recode zero ring-widths to 0.001 before processing (avoids div-by-zero).
+    return_info : bool, default False
+        if True, return a dict of the full iteration history (chronologies,
+        signal-free measurements and curves, MAD vector, ...) instead of just
+        the final chronology.
+    verbose : bool, default True
+        print progress and the per-iteration convergence diagnostics.
+
+    Returns
+    -------
+    pandas.DataFrame
+        the signal-free chronology with columns ``sfc`` and ``samp.depth``,
+        indexed by year. If ``return_info`` is True, a dict of intermediates is
+        returned instead (see above).
+
+    References
+    ----------
+    .. [1] https://rdrr.io/cran/dplR/man/ssf.html
+    .. [2] Melvin, T. M. & Briffa, K. R. (2008) A "signal-free" approach to
+       dendroclimatic standardisation. Dendrochronologia, 26(2), 71-86.
+    """
+    if max_iterations > 25:
+        print("Warning: Having to set max_iterations > 25 may indicate non-ideal data for signal-free detrending.")
+    if  not(1e-04 < mad_threshold < 1e-03): 
         print("Warning: The stopping criteria should probably be between 1e-5 and 1e-4 unless you have a good reason to think otherwise.")
     
 
@@ -57,7 +130,7 @@ def ssf(rwl,
 
     
    # recode zeros to 0.001 if asked.
-    if recodeZeros:
+    if recode_zeros:
         dat[dat == 0] = 0.001
 
     # Look for any rows where all the values are NA -- unconnected floaters
@@ -87,30 +160,30 @@ def ssf(rwl,
     medianSegLength = datSummary['year'].median()
 
     # Make some storage objects
-    # These are arrays of [nYrs,nSeries,maxIterations]
+    # These are arrays of [nYrs,nSeries,max_iterations]
     # Array to hold the SF measurements
-    sfRW_Array = np.full((nYrs, nSeries, maxIterations), np.nan)
+    sfRW_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
     # Array to hold the rescaled SF measurements
 
-    sfRWRescaled_Array = np.full((nYrs, nSeries, maxIterations), np.nan)
+    sfRWRescaled_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
     # Array to hold the rescaled SF curves
 
-    sfRWRescaledCurves_Array = np.full((nYrs, nSeries, maxIterations), np.nan)
+    sfRWRescaledCurves_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
     # Array to hold the SF RWI
 
-    sfRWI_Array = np.full((nYrs, nSeries, maxIterations), np.nan)
+    sfRWI_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
     # Array (2d though) to hold the SF Crn
 
-    sfCrn_Mat = np.full((nYrs, maxIterations), np.nan)
+    sfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
     # Array (2d though) to hold the HF Crn
 
-    hfCrn_Mat = np.full((nYrs, maxIterations), np.nan)
+    hfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
     # Vector for storing median absolute difference (mad)
 
-    MAD_Vec = np.zeros(maxIterations - 1)
+    MAD_Vec = np.zeros(max_iterations - 1)
     # Array (2d though) to hold the differences between the kth
     # and the kth-1 high freq chronology residuals
-    hfCrnResids_Mat = np.full((nYrs, maxIterations - 1), np.nan)
+    hfCrnResids_Mat = np.full((nYrs, max_iterations - 1), np.nan)
 
     # Let's do it. First, here is a simplish detrending function modified from
     # detrend.series(). The issue with using detrend() is that negative values are
@@ -149,15 +222,18 @@ def ssf(rwl,
 
             y_inds = np.arange(1, len(y2) + 1)
 
+            # dplR's caps() truncates its nyrs to an integer (caps.R:
+            # "stiffness = as.integer(nyrs)"), so nyrs = length(y2)*0.6667 is
+            # effectively floored before the spline is fit. Match that here --
+            # passing the raw float instead leaves the spline ~1e-4 off caps.
             Curve = spline(y=y2, x=y_inds, period=int(nyrs2))
-            #Note: nyrs is turned to integer in "caps" in R but not in "spline" in Python, thus, this is needed here to reproduce the same result - AMW
             # Put NA back in
             Curve2 = np.full_like(y, np.nan)
             Curve2[good_y] = Curve
 
         elif "AgeDepSpline" in method2: 
             nyrs2 = 50 if nyrs is None else nyrs
-            Curve = ads_R2Py(y=y2, nyrs0=nyrs2, pos_slope=True)
+            Curve = ads(y=y2, nyrs0=nyrs2, pos_slope=True)
             Curve2 = np.full_like(y, np.nan)
             Curve2[good_y] = Curve
 
@@ -268,7 +344,7 @@ def ssf(rwl,
 
     iterationNumber = 1 # Start on 2 b/c we did one above
 
-    while medianAbsDiff > madThreshold:
+    while medianAbsDiff > mad_threshold:
         k = iterationNumber
 
         # STEP 2 - Divide each series of measurements by the last SF chronology
@@ -327,37 +403,41 @@ def ssf(rwl,
         MAD_Vec[k - 1] = medianAbsDiff
         
         if verbose:
-            print(f"Iteration: {k+1}  Median Abs Diff: {round(medianAbsDiff, 5)}  ({round(madThreshold / medianAbsDiff * 100, 5)}% of threshold)")
+            print(f"Iteration: {k+1}  Median Abs Diff: {round(medianAbsDiff, 5)}  ({round(mad_threshold / medianAbsDiff * 100, 5)}% of threshold)")
 
-        if k == (maxIterations-1) and medianAbsDiff > madThreshold:
+        if k == (max_iterations-1) and medianAbsDiff > mad_threshold:
             raise ValueError(maxIterMsg)
         iterationNumber += 1
-    # Remove empty NAs from output that aren't needed anymore.
-    # Trim the SF measurements    
-    sfRW_Array = sfRW_Array[:, :, :k]
+    # Remove empty NAs from output that aren't needed anymore. `k` is the
+    # 0-based index of the LAST computed iteration, so keep columns 0..k
+    # (slice :k+1) -- slicing :k would drop the final chronology.
+    # Trim the SF measurements
+    sfRW_Array = sfRW_Array[:, :, :k + 1]
     # Trim the rescaled SF measurements
-    sfRWRescaled_Array = sfRWRescaled_Array[:, :, :k]
+    sfRWRescaled_Array = sfRWRescaled_Array[:, :, :k + 1]
     # Trim the rescaled SF curves
-    sfRWRescaledCurves_Array = sfRWRescaledCurves_Array[:, :, :k]
+    sfRWRescaledCurves_Array = sfRWRescaledCurves_Array[:, :, :k + 1]
     # Trim the SF RWI
-    sfRWI_Array = sfRWI_Array[:, :, :k]
+    sfRWI_Array = sfRWI_Array[:, :, :k + 1]
     # Trim the SF crn
-    sfCrn_Mat = sfCrn_Mat[:, :k]
+    sfCrn_Mat = sfCrn_Mat[:, :k + 1]
     # Trim the differences
-    MAD_Vec = MAD_Vec[:k - 1]
-    hfCrnResids_Mat = hfCrnResids_Mat[:, :k - 1]
+    MAD_Vec = MAD_Vec[:k]
+    hfCrnResids_Mat = hfCrnResids_Mat[:, :k]
 
     ### return final crn and add in the OG crn too for completeness
-    
+
     iter0Crn = pd.DataFrame({"std": iter0Crn_col0, "samp.depth": datSampDepth}, index=dat.index)
-    finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k-1], "samp.depth": datSampDepth}, index=dat.index) 
+    # the final chronology is the last computed iteration (column k), matching
+    # dplR's finalCrn <- sfCrn_Mat[,k].
+    finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k], "samp.depth": datSampDepth}, index=dat.index)
 
     if method2 == "AgeDepSpline":
-        infoList = {"method": method2, "nyrs": nyrs, "pos.slope": 'True', 
-                        "maxIterations": maxIterations, "madThreshold": madThreshold}
+        infoList = {"method": method2, "nyrs": nyrs, "pos_slope": True,
+                        "max_iterations": max_iterations, "mad_threshold": mad_threshold}
     else:
-        infoList = {"method": method2, "nyrs": nyrs, "maxIterations": maxIterations, 
-                        "madThreshold": madThreshold}
+        infoList = {"method": method2, "nyrs": nyrs, "max_iterations": max_iterations, 
+                        "mad_threshold": mad_threshold}
     
     if verbose:
         print("Simple Signal Free Chronology Complete")
@@ -365,32 +445,26 @@ def ssf(rwl,
         print(f"Detrending method: {method2}")
         print(f"nyrs: {nyrs}")
         if method2 == "AgeDepSpline":
-            print(f"pos.slope: {'True'}")
-        print(f"maxIterations: {maxIterations}")
-        print(f"madThreshold: {madThreshold}")
+            print("pos_slope: True")
+        print(f"max_iterations: {max_iterations}")
+        print(f"mad_threshold: {mad_threshold}")
     
-    if returnInfo:
-        res = {"infoList": infoList, 
-               "iter0Crn": iter0Crn, 
-               "ssfCrn": finalCrn, 
-               # The SF measurements
-                "sfRW_Array": sfRW_Array, 
-                # The rescaled SF measurements
-                "sfRWRescaled_Array": sfRWRescaled_Array, 
-                # The rescaled SF curves
-                "sfRWRescaledCurves_Array": sfRWRescaledCurves_Array, 
-                # The SF RWI
-                "sfRWI_Array": sfRWI_Array, 
-                # The SF crn
-                "sfCrn_Mat": sfCrn_Mat, 
-                # The high freq chronology
-                "hfCrn_Mat": hfCrn_Mat, 
-                # The high freq chronology residuals
-                "hfCrnResids_Mat": hfCrnResids_Mat, 
-                # The median abs diff
-                "MAD_Vec": MAD_Vec}
-        res = pd.DataFrame(res)
-        res.attrs["comment"] = "ssfLong"
-        return res
+    if return_info:
+        # The full iteration history is a mix of DataFrames, 3-D arrays and a
+        # dict, so it is returned as a dict (not coerced to a DataFrame, which
+        # was the cause of the previous return_info error).
+        return {
+            "infoList": infoList,
+            "iter0Crn": iter0Crn,
+            "ssfCrn": finalCrn,
+            "sfRW_Array": sfRW_Array,                     # SF measurements
+            "sfRWRescaled_Array": sfRWRescaled_Array,     # rescaled SF measurements
+            "sfRWRescaledCurves_Array": sfRWRescaledCurves_Array,  # rescaled SF curves
+            "sfRWI_Array": sfRWI_Array,                   # SF RWI
+            "sfCrn_Mat": sfCrn_Mat,                       # SF chronologies by iteration
+            "hfCrn_Mat": hfCrn_Mat,                       # high-frequency chronologies
+            "hfCrnResids_Mat": hfCrnResids_Mat,           # HF chronology residuals
+            "MAD_Vec": MAD_Vec,                           # median abs diff per iteration
+        }
     else:
         return finalCrn

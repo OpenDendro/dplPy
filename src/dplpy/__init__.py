@@ -62,6 +62,7 @@ from .rwi_stats import rwi_stats, rwi_stats_running
 from .common_interval import common_interval
 from .agedepspline import ads
 from .powt import powt
+from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
 from .cli import help, readme
@@ -88,6 +89,7 @@ __all__ = [
     "common_interval",
     "ads",
     "powt",
+    "ssf",
     "sss",
     "writers",
     "help",
