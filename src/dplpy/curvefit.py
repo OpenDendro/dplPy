@@ -28,6 +28,8 @@ __license__ = "GNU GPLv3"
 #              from a series to curves. The curves included are hugershoff,
 #              modified negative exponential, linear and horizontal.
 
+import warnings
+
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -57,6 +59,38 @@ def negex(x, y):
 
     yi = negex_function(xi, a, b, k)
     return yi
+
+
+# Modified negative exponential detrending curve with dplR's fallback chain.
+# Mirrors dplR detrend.series.R (method="ModNegExp"): fit y = a*exp(b*t)+k with
+# a>0, b<0; reject the fit if a<=0, b>=0, or the curve ends non-positive. If the
+# neg-exp is rejected, fall back to a straight line, accepted only when its slope
+# is <= 0 (or pos_slope is True) AND all its fitted values are positive; otherwise
+# fall back to the series mean (dplR's "dirty dog" case). This keeps a whole
+# collection from aborting on one series the neg-exp can't fit.
+def mod_neg_exp(x, y, pos_slope=False, name=""):
+    t = np.arange(1, len(y) + 1)
+    # 1. constrained negative-exponential fit
+    try:
+        pars, _ = curve_fit(negex_function, t, y,
+                             bounds=([0, -np.inf, 0], [np.inf, 0, np.inf]))
+        a, b, k = pars
+        fit = negex_function(t, a, b, k)
+        if a > 0 and b < 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
+            return fit
+    except (RuntimeError, ValueError):
+        pass
+    # 2. straight-line fallback
+    yl = linear(x, y)
+    slope_sign = yl[-1] - yl[0]            # x is increasing, so this signs the slope
+    if (slope_sign <= 0 or pos_slope) and np.all(yl > 0):
+        warnings.warn("ModNegExp could not fit " + str(name)
+                      + "; using a linear fit instead.\n")
+        return yl
+    # 3. final fallback: the series mean
+    warnings.warn("ModNegExp and the linear fallback are unsuitable for "
+                  + str(name) + "; detrending by the series mean instead.\n")
+    return np.full_like(y, np.mean(y))
 
 # Fit a horizontal line to the series
 def horizontal(x, y):

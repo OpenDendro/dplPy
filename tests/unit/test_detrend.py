@@ -1,3 +1,5 @@
+import warnings
+
 import dplpy as dpl
 import pandas as pd
 import pytest
@@ -60,29 +62,30 @@ def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershof
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
 @patch('dplpy.curvefit.hugershoff')
-@patch('dplpy.curvefit.negex')
+@patch('dplpy.curvefit.mod_neg_exp')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_modnegex(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_negex.side_effect = mock_negex_method
+    # mod_neg_exp is called as (x, y, pos_slope, name); return y*0.5 -> ratio 2.0
+    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: y * 0.5
     mock_hugershoff.side_effect = mock_hugershoff_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
 
     expected_df = pd.DataFrame(data={"SeriesA": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
                                     "SeriesB": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, fit="ModNegEx", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_not_called()
-    mock_negex.assert_called()
+    mock_mod_neg_exp.assert_called()
     mock_hugershoff.assert_not_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
@@ -283,6 +286,56 @@ def test_detrend_fit_names_case_insensitive(mock_spline: Mock):
     c = dpl.detrend(df, fit="SpLiNe", plot=False)
     pd.testing.assert_frame_equal(a, b)
     pd.testing.assert_frame_equal(a, c)
+
+
+def test_mod_neg_exp_fits_decaying_series_no_fallback():
+    # a clean decaying series is fit by the negative exponential itself -- no
+    # fallback warning, and the curve is the fitted exponential (not the mean).
+    import numpy as np
+    from dplpy import curvefit as cf
+    x = np.arange(1, 31)
+    y = 5.0 * np.exp(-0.1 * np.arange(30)) + 1.0
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        yi = cf.mod_neg_exp(x, y, pos_slope=False, name="decay")
+    fallback = [x for x in w if issubclass(x.category, UserWarning)
+                and ("mean" in str(x.message) or "linear" in str(x.message))]
+    assert not fallback                                        # negexp was used
+    assert np.all(yi > 0) and yi[0] > yi[-1]
+    assert not np.allclose(yi, yi.mean())                      # not the flat fallback
+
+
+def test_mod_neg_exp_fallback_chain_when_fit_fails():
+    # Force ONLY the neg-exp fit to fail (as dplR's nls can) -- the linear
+    # fallback uses curve_fit too, so leave that working -- then check the cascade:
+    #  rising + pos_slope=False -> series mean; rising + pos_slope=True -> line;
+    #  decreasing + pos_slope=False -> line (slope <= 0 is accepted).
+    import numpy as np
+    import scipy.optimize as so
+    from dplpy import curvefit as cf
+    from dplpy.curvefit import negex_function
+    real_curve_fit = so.curve_fit
+
+    def only_negex_fails(f, *a, **k):
+        if f is negex_function:
+            raise RuntimeError("no fit")
+        return real_curve_fit(f, *a, **k)
+
+    x = np.arange(1, 31)
+    rising = 0.5 * np.arange(1, 31) + 2.0
+    falling = -0.3 * np.arange(1, 31) + 20.0
+    with patch("dplpy.curvefit.curve_fit", side_effect=only_negex_fails):
+        with pytest.warns(UserWarning, match="series mean"):
+            m = cf.mod_neg_exp(x, rising, pos_slope=False, name="r")
+        assert np.allclose(m, np.mean(rising))                    # -> mean
+
+        with pytest.warns(UserWarning, match="linear fit"):
+            up = cf.mod_neg_exp(x, rising, pos_slope=True, name="r")
+        assert up[-1] > up[0] and np.all(up > 0)                  # -> rising line
+
+        with pytest.warns(UserWarning, match="linear fit"):
+            dn = cf.mod_neg_exp(x, falling, pos_slope=False, name="f")
+        assert dn[-1] < dn[0] and np.all(dn > 0)                  # -> falling line
 
 
 def test_detrend_method_given_curve_name_is_guarded():
