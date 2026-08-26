@@ -47,6 +47,40 @@ def hugershoff(x, y):
     yi = hugershoff_function(xi, a, b, c, d)
     return yi
 
+# Modified Hugershoff detrending curve with dplR's fallback chain. Mirrors dplR
+# detrend.series.R (method="ModHugershoff"): fit y = a*t^b*exp(-g*t)+d (here the
+# exponent parameter c plays the role of dplR's -g); reject the fit if a<=0,
+# b<=0, or the curve ends non-positive (dplR rejects on a<=0 || b<=0 and on a
+# non-positive tail). On rejection, fall back to a straight line -- accepted only
+# when its slope is <= 0 (or pos_slope) AND all its values are positive -- and
+# finally to the series mean, exactly as ModNegExp does.
+def mod_hugershoff(x, y, pos_slope=False, name=""):
+    t = np.arange(1, len(y) + 1)
+    nY = len(y)
+    tail = y[int(np.floor(nY * 0.9)) - 1:]          # dplR seeds a, d from last ~10%
+    a0 = float(np.mean(tail)) if len(tail) else float(np.mean(y))
+    try:
+        pars, _ = curve_fit(hugershoff_function, t, y, p0=[a0, 1.0, -0.1, a0],
+                            bounds=([0, 0, -np.inf, 0], [np.inf, np.inf, 0, np.inf]),
+                            maxfev=10000)
+        a, b, c, d = pars
+        fit = hugershoff_function(t, a, b, c, d)
+        if a > 0 and b > 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
+            return fit
+    except (RuntimeError, ValueError):
+        pass
+    # straight-line fallback
+    yl = linear(x, y)
+    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
+        warnings.warn("ModHugershoff could not fit " + str(name)
+                      + "; using a linear fit instead.\n")
+        return yl
+    # final fallback: the series mean
+    warnings.warn("ModHugershoff and the linear fallback are unsuitable for "
+                  + str(name) + "; detrending by the series mean instead.\n")
+    return np.full_like(y, np.mean(y))
+
+
 # Modified negative exponential function
 def negex_function(x, a, b, k):
     return a * np.exp(b * x) + k

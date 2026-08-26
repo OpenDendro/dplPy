@@ -109,31 +109,32 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_h
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
-@patch('dplpy.curvefit.hugershoff')
-@patch('dplpy.curvefit.negex')
+@patch('dplpy.curvefit.mod_hugershoff')
+@patch('dplpy.curvefit.mod_neg_exp')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_hugershoff(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_hugershoff(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_mod_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_negex.side_effect = mock_negex_method
-    mock_hugershoff.side_effect = mock_hugershoff_method
+    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: y * 0.5
+    # mod_hugershoff is called as (x, y, pos_slope, name); return y*0.25 -> ratio 4.0
+    mock_mod_hugershoff.side_effect = lambda x, y, *a, **k: y * 0.25
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
 
     expected_df = pd.DataFrame(data={"SeriesA": [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
                                     "SeriesB": [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, fit="Hugershoff", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_not_called()
-    mock_negex.assert_not_called()
-    mock_hugershoff.assert_called()
+    mock_mod_neg_exp.assert_not_called()
+    mock_mod_hugershoff.assert_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
 
@@ -379,6 +380,44 @@ def test_detrend_verbose_prints_per_series():
     out = buf.getvalue()
     assert "CAM011" in out and "CAM021" in out
     assert "fit=Spline" in out and "method=ratio" in out
+
+
+def test_mod_hugershoff_fallback_chain_when_fit_fails():
+    # Same fallback structure as ModNegExp: force ONLY the Hugershoff nls to fail
+    # (its linear fallback uses curve_fit too), then check the cascade.
+    import numpy as np
+    import scipy.optimize as so
+    from dplpy import curvefit as cf
+    from dplpy.curvefit import hugershoff_function
+    real_curve_fit = so.curve_fit
+
+    def only_hug_fails(f, *a, **k):
+        if f is hugershoff_function:
+            raise RuntimeError("no fit")
+        return real_curve_fit(f, *a, **k)
+
+    x = np.arange(1, 31)
+    rising = 0.5 * np.arange(1, 31) + 2.0
+    falling = -0.3 * np.arange(1, 31) + 20.0
+    with patch("dplpy.curvefit.curve_fit", side_effect=only_hug_fails):
+        with pytest.warns(UserWarning, match="series mean"):
+            m = cf.mod_hugershoff(x, rising, pos_slope=False, name="r")
+        assert np.allclose(m, np.mean(rising))
+        with pytest.warns(UserWarning, match="linear fit"):
+            up = cf.mod_hugershoff(x, rising, pos_slope=True, name="r")
+        assert up[-1] > up[0] and np.all(up > 0)
+        with pytest.warns(UserWarning, match="linear fit"):
+            dn = cf.mod_hugershoff(x, falling, pos_slope=False, name="f")
+        assert dn[-1] < dn[0] and np.all(dn > 0)
+
+
+def test_detrend_hugershoff_real_series_positive():
+    # end-to-end: ModHugershoff on a real series returns a finite, all-positive RWI
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    rwi = _detrend_quiet(data["CAM011"], fit="ModHugershoff")
+    v = rwi.dropna().to_numpy()
+    assert np.all(np.isfinite(v)) and np.all(v > 0)
 
 
 def test_detrend_method_given_curve_name_is_guarded():

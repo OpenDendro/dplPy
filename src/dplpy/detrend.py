@@ -168,7 +168,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     elif fit == "ModNegExp":
         yi = curvefit.mod_neg_exp(x, y, pos_slope, series_name)
     elif fit == "ModHugershoff":
-        yi = curvefit.hugershoff(x, y)
+        yi = curvefit.mod_hugershoff(x, y, pos_slope, series_name)
     elif fit == "Linear":
         yi = curvefit.linear(x, y)
     elif fit == "Mean":
