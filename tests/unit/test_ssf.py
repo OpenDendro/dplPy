@@ -69,3 +69,17 @@ def test_ssf_all_zero_row_rejected():
     data = _read_quiet("tests/data/csv/ca533.csv")
     with pytest.raises(ValueError):
         _ssf_quiet(data, method="Spline", recode_zeros=False)
+
+
+def test_ssf_negative_curve_error_is_informative():
+    # co021 (many absent rings) drives the chronology near zero, which blows up
+    # the signal-free measurements and makes a refitted curve go <= 0. Both dplR
+    # and dplPy stop here; dplPy's message should name the offending series and
+    # the near-zero chronology year so the cause is clear.
+    data = _read_quiet("tests/data/csv/co021.csv")
+    with pytest.raises(ValueError) as e:
+        _ssf_quiet(data, method="Spline", recode_zeros=True)
+    msg = str(e.value)
+    assert "X642244" in msg               # the series whose curve dipped <= 0
+    assert "1455" in msg                  # the near-zero chronology year
+    assert "recode_zeros" in msg          # actionable remedy

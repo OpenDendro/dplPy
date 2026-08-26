@@ -41,6 +41,33 @@ from .smoothingspline import spline
 from .agedepspline import ads
 
 
+def _neg_curve_message(curves, series_names, chron=None, years=None):
+    """Build an informative error for the non-positive signal-free curve guard.
+
+    Reports which series' fitted curve dipped to <= 0 and, when the driving
+    chronology is supplied, the near-zero chronology value and year that is the
+    usual root cause (a year dominated by absent, zero-width rings inflates the
+    signal-free measurements once every series is divided by that near-zero
+    chronology).
+    """
+    bad = [str(series_names[j]) for j in range(curves.shape[1])
+           if np.nanmin(curves[:, j]) <= 0]
+    msg = ("[1] The signal-free detrending curve went <= 0 for series: "
+           + ", ".join(bad) + ".")
+    if chron is not None and years is not None and np.isfinite(np.nanmin(chron)):
+        ci = int(np.nanargmin(chron))
+        msg += (" This usually means the chronology is near zero in a year "
+                "dominated by absent (zero-width) rings -- here it reaches "
+                + format(float(np.nanmin(chron)), ".4g")
+                + " at year " + str(int(years[ci]))
+                + ", so dividing by it inflates the signal-free measurements and "
+                "the refitted spline dips below zero. Consider a larger "
+                "recode_zeros value, or a more robust signal-free approach for "
+                "data with many absent rings.")
+    msg += " See help(dplpy.ssf)."
+    return msg
+
+
 def ssf(rwl,
         method="Spline",
         nyrs=None,
@@ -108,7 +135,6 @@ def ssf(rwl,
     
 
     # error msgs for later
-    negCurveMsg = "[1] The signal free detrending curve has values <= 0. See help (?ssf)."
 
     maxIterMsg = "[2] Reached maximum iterations and stopping criteria are not satisfied. See help (?ssf)."
 
@@ -262,7 +288,7 @@ def ssf(rwl,
                                nyrs=nyrs)
     
     if np.any(datCurves[~np.isnan(datCurves)] <= 0):
-        raise ValueError(negCurveMsg)
+        raise ValueError(_neg_curve_message(datCurves, dat.columns))
 
     # get RWI
     if difference:
@@ -316,8 +342,9 @@ def ssf(rwl,
     sfRWRescaledCurves_Array[:, :, 0] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, 0], method=method2, nyrs=nyrs)
     
     if np.any(sfRWRescaledCurves_Array[:, :, 0] <= 0):
-        raise ValueError(negCurveMsg)
-    
+        raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, 0],
+                                            dat.columns, iter0Crn_col0, dat.index.to_numpy()))
+
     # STEP 6 - divide original measurements by curve obtained from signal free measurements fitting
     if difference:
         sfRWI_Array[:, :, 0] = dat.values - sfRWRescaledCurves_Array[:, :, 0]
@@ -373,8 +400,10 @@ def ssf(rwl,
         # STEP 5 - fit curves to signal free measurements
         sfRWRescaledCurves_Array[:, :, k] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, k], method=method2, nyrs=nyrs)
         
-        if np.any(sfRWRescaledCurves_Array[:, :, 0] <= 0):
-            raise ValueError(negCurveMsg)
+        if np.any(sfRWRescaledCurves_Array[:, :, k] <= 0):
+            raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, k],
+                                                dat.columns, sfCrn_Mat[:, k - 1],
+                                                dat.index.to_numpy()))
     
         # STEP 6 - divide original measurements by curve obtained from signal free curves    
         if difference:
