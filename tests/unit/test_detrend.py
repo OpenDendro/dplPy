@@ -467,6 +467,42 @@ def test_detrend_return_info_dirty_dog_on_mean_fallback():
     assert info["dirty_dog"] is True
 
 
+def test_detrend_fit_list_on_series_returns_method_columns():
+    # D9: a list of fits on a Series -> DataFrame with one column per method,
+    # each equal to the corresponding single-method detrend.
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    out = _detrend_quiet(data["CAM011"], fit=["Spline", "ModNegExp", "Mean"])
+    assert isinstance(out, pd.DataFrame)
+    assert list(out.columns) == ["Spline", "ModNegExp", "Mean"]
+    for m in ["Spline", "ModNegExp", "Mean"]:
+        one = _detrend_quiet(data["CAM011"], fit=m)
+        assert np.allclose(out[m].dropna(), one.dropna())
+
+
+def test_detrend_fit_list_on_dataframe_returns_dict():
+    data = _quiet_read("tests/data/csv/ca533.csv")[["CAM011", "CAM021"]]
+    out = _detrend_quiet(data, fit=["Spline", "Mean"])
+    assert isinstance(out, dict)
+    assert set(out) == {"CAM011", "CAM021"}
+    assert list(out["CAM011"].columns) == ["Spline", "Mean"]
+
+
+def test_detrend_fit_list_single_and_dedup():
+    # a one-element list collapses to the scalar (Series) behavior; duplicates and
+    # case variants are de-duplicated (order preserved, canonical names).
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    assert isinstance(_detrend_quiet(data["CAM011"], fit=["Spline"]), pd.Series)
+    dd = _detrend_quiet(data["CAM011"], fit=["spline", "Spline", "MEAN"])
+    assert list(dd.columns) == ["Spline", "Mean"]
+
+
+def test_detrend_fit_list_with_return_info_raises():
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    with pytest.raises(ValueError):
+        _detrend_quiet(data["CAM011"], fit=["Spline", "Mean"], return_info=True)
+
+
 def test_detrend_method_given_curve_name_is_guarded():
     # D12: passing a curve name to method= must raise a helpful error pointing to fit=
     df = pd.DataFrame({"A": [0.1, 0.3, 0.5, 0.7]},

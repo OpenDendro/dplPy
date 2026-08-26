@@ -71,6 +71,11 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         series mean), and 'Linear' (best-fit straight line; a dplPy addition).
         Legacy dplPy spellings ('ModNegEx', 'Hugershoff', 'horizontal') are still
         accepted as case-insensitive aliases.
+        ``fit`` may also be a LIST of curve types (e.g. ['Spline', 'ModNegExp'])
+        to detrend by each and compare them (mirrors dplR's method vector). In
+        that case a Series returns a DataFrame with one column per method, and a
+        DataFrame returns a dict mapping each series name to such a DataFrame.
+        (A list of methods cannot be combined with return_info=True.)
     method : str, default 'ratio'
         how the ring-width index is formed from the data and the fitted curve.
         'ratio' (equivalently 'division') divides the data by the curve;
@@ -126,6 +131,30 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
          
     """
     method = _normalize_method(method)
+
+    # D9: fit may be a LIST of curve types -> return one detrend per method
+    # (mirrors dplR's method vector). For a Series this is a DataFrame with one
+    # column per method; for a DataFrame it is a dict {series: DataFrame}. A
+    # single-element list collapses to the ordinary scalar-fit behavior.
+    if isinstance(fit, (list, tuple)):
+        methods = list(dict.fromkeys(_normalize_fit(m) for m in fit))  # dedup, ordered
+        if len(methods) == 1:
+            fit = methods[0]
+        else:
+            if return_info:
+                raise ValueError("return_info=True is not supported together with "
+                                 "a list of fit methods; request one method at a time.")
+            if isinstance(data, pd.Series):
+                cols = {m: detrend_series(data, m, method, plot, period, nyrs0,
+                                          pos_slope, f, verbose) for m in methods}
+                return pd.DataFrame(cols)
+            elif isinstance(data, pd.DataFrame):
+                return {col: detrend(data[col], methods, method, plot, period,
+                                     nyrs0, pos_slope, f, verbose)
+                        for col in data.columns}
+            else:
+                raise TypeError("argument should be either pandas dataframe or pandas series.")
+
     fit = _normalize_fit(fit)
 
     if isinstance(data, pd.DataFrame):
