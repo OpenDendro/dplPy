@@ -129,7 +129,7 @@ def test_detrend_with_hugershoff(mock_spline: Mock, mock_mod_neg_exp: Mock, mock
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    result_df = dpl.detrend(input_df, fit="Hugershoff", plot=False)
+    result_df = dpl.detrend(input_df, fit="ModHugershoff", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_not_called()
@@ -288,8 +288,10 @@ def test_normalize_fit_canonical_and_aliases():
     assert _normalize_fit("MODNEGEXP") == "ModNegExp"
     # legacy dplPy spellings map to the canonical dplR names
     assert _normalize_fit("ModNegEx") == "ModNegExp"
-    assert _normalize_fit("Hugershoff") == "ModHugershoff"
     assert _normalize_fit("horizontal") == "Mean"
+    # 'Hugershoff' is Cook's ARSTAN closed form; 'ModHugershoff' is dplR's nls
+    assert _normalize_fit("Hugershoff") == "Hugershoff"
+    assert _normalize_fit("ModHugershoff") == "ModHugershoff"
 
 
 @patch.object(_m_detrend, 'spline')
@@ -551,6 +553,36 @@ def test_modhugershoff_warns_on_ill_conditioned_fit():
                             return_info=True)
     assert not [x for x in w if "poorly constrained" in str(x.message)]
     assert info2["model_info"]["cond"] < 1e12
+
+
+def test_detrend_hugershoff_arstan_deterministic_and_positive():
+    # fit='Hugershoff' is Ed Cook's ARSTAN closed-form: always a positive curve,
+    # deterministic, no fallback and no warning even on the ill-conditioned series
+    # where the nls 'ModHugershoff' warns/diverges.
+    import io, contextlib
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    # CAM021 is the series where the nls ModHugershoff warns; ARSTAN must not warn
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        with contextlib.redirect_stdout(io.StringIO()):
+            a = dpl.detrend(data["CAM021"], fit="Hugershoff", plot=False)
+    assert not [x for x in w if "poorly constrained" in str(x.message)]
+    b = _detrend_quiet(data["CAM021"], fit="Hugershoff")
+    v = a.dropna().to_numpy()
+    assert np.all(np.isfinite(v)) and np.all(v > 0)                # positive index
+    assert np.array_equal(v, b.dropna().to_numpy())               # deterministic
+
+
+def test_detrend_hugershoff_arstan_differs_from_nls_and_reports_coefs():
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    info = _detrend_quiet(data["CAM011"], fit="Hugershoff", return_info=True)
+    assert info["model_info"]["method"] == "Hugershoff"
+    assert set(info["model_info"]["coefs"]) == {"a", "m", "k"}
+    nls = _detrend_quiet(data["CAM011"], fit="ModHugershoff")
+    # the two Hugershoff estimators give genuinely different curves
+    assert not np.allclose(info["rwi"].dropna(), nls.dropna(), atol=1e-2)
 
 
 def test_detrend_method_given_curve_name_is_guarded():

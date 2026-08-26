@@ -47,6 +47,55 @@ def hugershoff(x, y):
     yi = hugershoff_function(xi, a, b, c, d)
     return yi
 
+# Hugershoff growth curve, Ed Cook's ARSTAN method (subroutine hughdi): fit
+# y = a * t^m * exp(-k*t) by LINEARIZING -- ln(y) = ln(a) + m*ln(t) - k*t is an
+# ordinary 3-parameter linear regression of ln(y) on [1, ln(t), t], solved in
+# closed form (no iteration, so it never fails to converge or falls back). The
+# amplitude is then rescaled by cc = sum(y)/sum(fit) so the fitted curve preserves
+# the data's total (ARSTAN's log-transform bias correction). Only positive rings
+# enter the regression. Unlike dplR's ModHugershoff nls, this is deterministic and
+# always returns a positive curve, but it optimises log-space error rather than
+# data-space error, so it gives a different (not merely better/worse-converged)
+# curve. Cook deliberately does not reject m<=0 (that check is commented out in
+# hughdi), so on monotonically declining data it returns a power-law decline.
+def hugershoff_arstan(x, y, name="", info=False):
+    def out(curve, meta):
+        return (curve, meta) if info else curve
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    t = np.arange(1.0, n + 1)
+    ok = (y > 0) & (t > 0)                       # ln needs positive rings
+    tk, yk = t[ok], y[ok]
+    xl, yl = np.log(tk), np.log(yk)
+    nred = len(tk)
+    sumt = tk.sum();  sumt2 = (tk * tk).sum()
+    sumx = xl.sum();  sumx2 = (xl * xl).sum();  sumxt = (xl * tk).sum()
+    sumy = yl.sum();  sumxy = (xl * yl).sum();  sumyt = (yl * tk).sum()
+    # 3x3 normal equations for [ln a, m, -k] via Cramer's rule (as in hughdi)
+    rn1 = sumx2 * sumt2 - sumxt ** 2
+    rn2 = sumt * sumxt - sumx * sumt2
+    rn3 = sumx * sumxt - sumt * sumx2
+    rn = nred * rn1 + sumx * rn2 + sumt * rn3
+    if not np.isfinite(rn) or abs(rn) < 1e-300 or nred < 3:
+        warnings.warn("Hugershoff (ARSTAN) regression is singular for "
+                      + str(name) + "; detrending by the series mean instead.\n")
+        m_ = float(np.mean(y))
+        return out(np.full(n, m_), {"method": "Mean", "mean": m_})
+    a_ = (sumy * rn1 + sumxy * rn2 + sumyt * rn3) / rn                 # ln(a)
+    rz2 = sumx * sumt - nred * sumxt
+    cm = (sumy * rn2 + sumxy * (nred * sumt2 - sumt ** 2) + sumyt * rz2) / rn   # m
+    rz1 = sumt * sumx2 - sumx * sumxt
+    rz2b = nred * sumxt - sumx * sumt
+    ck = (sumy * rz1 + sumxy * rz2b + sumyt * (sumx ** 2 - nred * sumx2)) / rn
+    dcoef = (np.exp(a_), cm, -ck)                # (a, m, coefficient on t = -k)
+    fit = dcoef[0] * t ** dcoef[1] * np.exp(dcoef[2] * t)
+    cc = y.sum() / fit.sum()                     # cc = se/sf + 1 = sum(y)/sum(fit)
+    fit = fit * cc
+    return out(fit, {"method": "Hugershoff",
+                     "coefs": {"a": float(dcoef[0] * cc), "m": float(cm),
+                               "k": float(ck)}})
+
+
 # Modified Hugershoff detrending curve with dplR's fallback chain. Mirrors dplR
 # detrend.series.R (method="ModHugershoff"): fit y = a*t^b*exp(-g*t)+d (here the
 # exponent parameter c plays the role of dplR's -g); reject the fit if a<=0,

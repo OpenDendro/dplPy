@@ -67,10 +67,14 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         are used as the canonical spelling):
         'Spline' (smoothing spline), 'AgeDepSpline' (age-dependent spline),
         'ModNegExp' (modified negative exponential, with a linear->mean fallback),
-        'ModHugershoff' (Hugershoff growth curve), 'Mean' (horizontal line at the
+        'ModHugershoff' (Hugershoff growth curve fit by nonlinear least squares,
+        dplR-style, with a linear->mean fallback), 'Hugershoff' (the SAME growth
+        curve but fit by Ed Cook's ARSTAN log-linearised closed form -- always
+        succeeds, never falls back, but optimises log-space error so it gives a
+        different curve than 'ModHugershoff'), 'Mean' (horizontal line at the
         series mean), and 'Linear' (best-fit straight line; a dplPy addition).
-        Legacy dplPy spellings ('ModNegEx', 'Hugershoff', 'horizontal') are still
-        accepted as case-insensitive aliases.
+        Names are case-insensitive; legacy dplPy spellings ('ModNegEx',
+        'horizontal') are also accepted.
         ``fit`` may also be a LIST of curve types (e.g. ['Spline', 'ModNegExp'])
         to detrend by each and compare them (mirrors dplR's method vector). In
         that case a Series returns a DataFrame with one column per method, and a
@@ -253,6 +257,11 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
                                                      info=True)
         else:
             yi = curvefit.mod_hugershoff(x, y, pos_slope, series_name)
+    elif fit == "Hugershoff":
+        if return_info:
+            yi, model_info = curvefit.hugershoff_arstan(x, y, series_name, info=True)
+        else:
+            yi = curvefit.hugershoff_arstan(x, y, series_name)
     elif fit == "Linear":
         yi = curvefit.linear(x, y)
         if return_info:
@@ -319,17 +328,20 @@ def pick_first(a, b):
 
 # Canonical curve-fit names use dplR's spelling. The map takes any accepted
 # spelling (case-insensitive) to the canonical name; dplPy's older names and
-# dplR's names both resolve here, so 'spline', 'Spline', 'ModNegExp', 'ModNegEx',
-# 'modnegexp', 'Hugershoff', 'ModHugershoff', 'horizontal', 'Mean' all work.
+# dplR's names both resolve here. Note there are TWO Hugershoff curves:
+# 'Hugershoff' = Ed Cook's ARSTAN log-linearised closed-form fit, and
+# 'ModHugershoff' = dplR's modified nonlinear-least-squares (nls) fit.
 _FIT_CANON = {
     "spline": "Spline",
     "agedepspline": "AgeDepSpline",
     "modnegexp": "ModNegExp", "modnegex": "ModNegExp",
-    "modhugershoff": "ModHugershoff", "hugershoff": "ModHugershoff",
+    "modhugershoff": "ModHugershoff",
+    "hugershoff": "Hugershoff",
     "mean": "Mean", "horizontal": "Mean",
     "linear": "Linear",
 }
-_FIT_OPTIONS = "Spline, AgeDepSpline, ModNegExp, ModHugershoff, Mean, Linear"
+_FIT_OPTIONS = ("Spline, AgeDepSpline, ModNegExp, ModHugershoff, Hugershoff, "
+                "Mean, Linear")
 
 
 def _normalize_fit(fit):
