@@ -48,14 +48,36 @@ def test_read_and_write_rwl_with_headers(tmp_path):
     pd.testing.assert_frame_equal(th001, th001_alt)
 
 
-def test_read_and_write_long_rwl(tmp_path):
-    ca667 = dpl.readers("./tests/data/rwl/ca667.rwl", header=True)
-
+def test_read_and_write_rwl_gap_sentinel(tmp_path):
+    # Writing interior gaps as Ed Cook's negative sentinel (gaps=-99) and reading
+    # back restores them as NaN, while a real 0 (locally absent ring) is preserved.
+    # The reader flags the sentinels as anomalous negatives, hence the warning
+    # filter here.
+    import numpy as np
+    df = pd.DataFrame({"S1": [0.10, 0.30, np.nan, np.nan, 0.52],
+                       "S2": [0.20, 0.00, 0.40, 0.55, 0.70]},
+                      index=pd.Index(range(1990, 1995), name="Year")).astype(float)
     write_path = os.path.join(tmp_path, "test_write")
+    dpl.writers(df, write_path, "rwl", gaps=-99)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = dpl.readers(write_path + ".rwl")
+    pd.testing.assert_frame_equal(back.reindex(index=df.index, columns=df.columns), df)
 
-    dpl.writers(ca667, write_path, "rwl")
 
-    ca667_alt = dpl.readers(write_path + ".rwl")
+def test_read_and_write_long_rwl(tmp_path):
+    # ca667 has a real interior gap; the default writer marks it with the -99
+    # sentinel, which the reader restores to NaN (and flags as an anomalous
+    # negative -- silence that expected warning for a clean round-trip check).
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ca667 = dpl.readers("./tests/data/rwl/ca667.rwl", header=True)
+
+        write_path = os.path.join(tmp_path, "test_write")
+
+        dpl.writers(ca667, write_path, "rwl")
+
+        ca667_alt = dpl.readers(write_path + ".rwl")
 
     pd.testing.assert_frame_equal(ca667, ca667_alt)
 
