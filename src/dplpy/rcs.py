@@ -32,6 +32,8 @@ __license__ = "GNU GPLv3"
 #              (e.g. multi-centennial) signal. Reproduces dplR's rcs() to machine
 #              precision.
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -102,6 +104,133 @@ def _caps(y, nyrs, f):
     nyrs = int(nyrs)
     x = np.arange(1, len(y) + 1)
     return np.asarray(csaps(x, y, x, smooth=get_param(f, nyrs)))
+
+
+# --- Signal-Free RCS engine (Melvin & Briffa 2014, CRUST stand.f90) ----------
+# The signal-free iteration of CRUST's rcs_detrend/det_sf_rcs, single-curve case
+# (trc=1, src=1). NOT validated against dplR -- dplR has no signal-free RCS -- so
+# this is faithful to stand.f90 with its numerical core (spline3) validated
+# against CRUST's compiled kernel to ~1e-11. See sfrcs.py for the public API.
+
+def _build_rwca(X, po_arr, nrow):
+    """Place each series' rings on the common cambial-age axis: series i's
+    measurements start at cambial-age row ``po_arr[i]-1``. Mirrors the alignment
+    in rcs(); the NaN pattern of ``X`` selects the rings (so a signal-free copy
+    of the measurement matrix aligns identically to the raw one)."""
+    ncol = X.shape[1]
+    rwca = np.full((nrow, ncol), np.nan)
+    for i in range(ncol):
+        vals = X[:, i][~np.isnan(X[:, i])]
+        s = po_arr[i] - 1
+        rwca[s:s + len(vals), i] = vals
+    return rwca
+
+
+def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
+               biweight_crn=True, ss=10, rise=None, max_iterations=40,
+               tol=1e-3, verbose=True):
+    """Single-curve signal-free RCS. Returns (rwi_matrix, crn, samp_depth,
+    history, n_iter, converged).
+
+    Each iteration: form signal-free measurements ``fx = tx/crn`` (only where the
+    calendar year has >1 tree and ``crn >= 0.01``, else keep raw ``tx`` -- CRUST's
+    division guard); build the regional curve by cambial age from ``fx`` (so the
+    age curve is not biased by the age structure of the sample); but form the tree
+    indices from the *original* ``tx`` divided by that curve; rescale so the whole
+    chronology has mean 1; recompute the chronology. Iterate until
+    ``max|crn_k - crn_(k-1)| < tol`` (CRUST's convergence measure).
+    """
+    nyear, ncol = M.shape
+    present = ~np.isnan(M)
+    samp_depth = present.sum(axis=1)
+    qok = samp_depth > 1                          # >1 tree in the calendar year
+    firsts = np.array([int(np.argmax(present[:, i])) for i in range(ncol)])
+    counts = present.sum(axis=0)
+    po_arr = np.array([int(po_map[c]) for c in cols])
+    nrow = int(counts.max()) + int(po_arr.max())
+    rise_flag = (nrow > 1500) if rise is None else bool(rise)
+
+    rwca_orig = _build_rwca(M, po_arr, nrow)      # raw measurements by cambial age
+    row_mean = _row_biweight if biweight_curve else (
+        lambda a: np.nanmean(np.where(np.isnan(a), np.nan, a), axis=1))
+
+    crn = np.ones(nyear)
+    prev = None
+    history = []
+    converged = False
+    k = 0
+    idx = None
+    for k in range(1, max_iterations + 1):
+        # 1. signal-free measurements (calendar space); iteration 1 = raw
+        if k == 1:
+            fx = M
+        else:
+            div = present & qok[:, None] & (crn[:, None] >= 0.01)
+            fx = np.where(div, M / np.where(crn == 0, np.nan, crn)[:, None], M)
+            fx[~present] = np.nan
+        # 2. regional curve by cambial age, from the signal-free measurements
+        rwca_sf = _build_rwca(fx, po_arr, nrow)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            ca_m = row_mean(rwca_sf)
+        ca_n = np.sum(~np.isnan(rwca_sf), axis=1)
+        rc = _crust_regional_curve(ca_m, ca_n, nrow, ss=ss, rise=rise_flag)
+        # 3. tree indices from the ORIGINAL measurements and that curve
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ratio = rwca_orig / rc[:, None]
+        if ratios:
+            rwica = ratio
+        else:
+            # CRUST residual mode (tree_ind ind==2): per tree, z-score the
+            # residuals (tx - cx) and rescale them to the mean and SD of that
+            # tree's ratios -- so residual indices sit on the ratio scale.
+            rwica = np.full_like(ratio, np.nan)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                for j in range(ncol):
+                    r = ratio[:, j]
+                    d = rwca_orig[:, j] - rc
+                    ok = ~np.isnan(r)
+                    if ok.sum() < 2:
+                        rwica[:, j] = d
+                        continue
+                    mn1, sd1 = np.nanmean(r), np.nanstd(r, ddof=1)
+                    mn, sd = np.nanmean(d), np.nanstd(d, ddof=1)
+                    rwica[:, j] = ((d - mn) / sd) * sd1 + mn1 if sd > 0 else r
+        # 4. rescale so the whole chronology has mean 1 (CRUST "prevent drift")
+        gm = np.nanmean(rwica)
+        if np.isfinite(gm) and gm != 0:
+            rwica = rwica / gm
+        # 5. map indices back to calendar space, form the chronology
+        idx = np.full((nyear, ncol), np.nan)
+        for i in range(ncol):
+            s = po_arr[i] - 1
+            n = int(counts[i])
+            idx[firsts[i]:firsts[i] + n, i] = rwica[s:s + n, i]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            crn_new = _row_biweight(idx) if biweight_crn else np.nanmean(idx, axis=1)
+        # 6. convergence (max absolute change, over years with a chronology value)
+        if prev is not None:
+            d = np.abs(crn_new - prev)
+            diff = float(np.nanmax(d)) if np.any(np.isfinite(d)) else 0.0
+            history.append(diff)
+            if diff < tol:
+                crn = crn_new
+                converged = True
+                break
+        prev = crn_new
+        crn = crn_new
+
+    if verbose:
+        if converged:
+            print(f"Signal-free RCS converged in {k} iterations "
+                  f"(max change {history[-1]:.2e} < {tol:g}).")
+        else:
+            print(f"Signal-free RCS did NOT converge in {max_iterations} "
+                  f"iterations (last max change "
+                  f"{history[-1] if history else float('nan'):.2e}).")
+    return idx, crn, samp_depth, history, k, converged
 
 
 def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
