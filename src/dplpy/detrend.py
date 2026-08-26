@@ -40,25 +40,36 @@ from .smoothingspline import spline
 from .agedepspline import ads
 from . import curvefit
 
-def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="ratio",
+def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
             plot=True, period=None, nyrs0=50, pos_slope=False):
     """Detrends a given series or dataframe
-    
+
     Extended Summary
     ----------------
-    Detrends a given series or dataframe, first by fitting data to curve(s),
-    with 'spline' as the default, and then by forming the ring-width index as a
-    ratio ('ratio', i.e. division -- the default) or a difference ('difference',
-    i.e. subtraction) of the data to the fitted curve.
-    Other supported curve fitting methods are 'ModNegex' (modified negative exponential),
-    'Hugershoff', 'linear', 'horizontal'.
-                  
+    Detrends a given series or dataframe, first by fitting data to a growth
+    curve (a smoothing spline by default), and then by forming the ring-width
+    index as a ratio ('ratio', i.e. division -- the default) or a difference
+    ('difference', i.e. subtraction) of the data to the fitted curve.
+
+    IMPORTANT -- ``fit`` chooses the CURVE, ``method`` chooses the ARITHMETIC.
+    This differs from dplR, where ``method`` selects the curve and ``difference``
+    selects the arithmetic. In dplPy the curve type is ``fit=`` and the
+    ratio/difference choice is ``method=``; passing a curve name to ``method=``
+    raises a helpful error.
+
     Parameters
     ----------
     data: pandas dataframe or series
         a data frame loaded using dpl.readers(), or a series extracted from such a datafame.
-    fit: str, default spline
-        fitting method of curve. can be 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), 'spline', and 'AgeDepSpline' (age-dependent spline).
+    fit: str, default 'Spline'
+        the growth curve to fit. Accepted values (case-insensitive; dplR's names
+        are used as the canonical spelling):
+        'Spline' (smoothing spline), 'AgeDepSpline' (age-dependent spline),
+        'ModNegExp' (modified negative exponential, with a linear->mean fallback),
+        'ModHugershoff' (Hugershoff growth curve), 'Mean' (horizontal line at the
+        series mean), and 'Linear' (best-fit straight line; a dplPy addition).
+        Legacy dplPy spellings ('ModNegEx', 'Hugershoff', 'horizontal') are still
+        accepted as case-insensitive aliases.
     method : str, default 'ratio'
         how the ring-width index is formed from the data and the fitted curve.
         'ratio' (equivalently 'division') divides the data by the curve;
@@ -86,7 +97,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="ratio",
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> dpl.detrend(data) # Detrends all series in a dataframe
     >>> dpl.detrend(data["SeriesA"]) # Detrends only SeriesA
-    >>> dpl.detrend(data["SeriesA"], fit="ModNegex", method="difference", plot=True)
+    >>> dpl.detrend(data["SeriesA"], fit="ModNegExp", method="difference", plot=True)
     
     References
     ----------
@@ -94,6 +105,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="ratio",
          
     """
     method = _normalize_method(method)
+    fit = _normalize_fit(fit)
 
     if isinstance(data, pd.DataFrame):
         res = pd.DataFrame(index=pd.Index(data.index))
@@ -118,6 +130,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
                    nyrs0=50, pos_slope=False):
     series_name = data.name
     method = _normalize_method(method)      # idempotent; canonical passes through
+    fit = _normalize_fit(fit)               # idempotent; canonical passes through
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy(dtype=float).copy()
@@ -129,15 +142,17 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     # (0 / curve = 0), which also matches dplR's RWI to machine precision.
     y[y == 0] = 0.001
 
-    if fit == "spline":
+    # fit is already canonical (see _normalize_fit): Spline, AgeDepSpline,
+    # ModNegExp, ModHugershoff, Mean, Linear.
+    if fit == "Spline":
         yi = spline(x, y, period)
-    elif fit == "ModNegEx":
+    elif fit == "ModNegExp":
         yi = curvefit.negex(x, y)
-    elif fit == "Hugershoff":
+    elif fit == "ModHugershoff":
         yi = curvefit.hugershoff(x, y)
-    elif fit == "linear":
+    elif fit == "Linear":
         yi = curvefit.linear(x, y)
-    elif fit == "horizontal":
+    elif fit == "Mean":
         yi = curvefit.horizontal(x, y)
     elif fit == "AgeDepSpline":
         yi = ads(y, nyrs0=nyrs0, pos_slope=pos_slope)
@@ -147,9 +162,6 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
             warnings.warn("Fits from fit='AgeDepSpline' are not all positive for "
                           + str(series_name) + "; detrending by the mean instead.\n")
             yi = np.full_like(y, np.mean(y))
-    else:
-        # give error message for unsupported curve fit
-        raise ValueError("unsupported keyword for curve-fit type. See documentation for more info.")
     
     if method == "ratio":
         detrended_data = ratio(y, yi)
@@ -179,6 +191,32 @@ def pick_first(a, b):
     return a
 
 
+# Canonical curve-fit names use dplR's spelling. The map takes any accepted
+# spelling (case-insensitive) to the canonical name; dplPy's older names and
+# dplR's names both resolve here, so 'spline', 'Spline', 'ModNegExp', 'ModNegEx',
+# 'modnegexp', 'Hugershoff', 'ModHugershoff', 'horizontal', 'Mean' all work.
+_FIT_CANON = {
+    "spline": "Spline",
+    "agedepspline": "AgeDepSpline",
+    "modnegexp": "ModNegExp", "modnegex": "ModNegExp",
+    "modhugershoff": "ModHugershoff", "hugershoff": "ModHugershoff",
+    "mean": "Mean", "horizontal": "Mean",
+    "linear": "Linear",
+}
+_FIT_OPTIONS = "Spline, AgeDepSpline, ModNegExp, ModHugershoff, Mean, Linear"
+
+
+def _normalize_fit(fit):
+    """Resolve a curve-fit name to its canonical (dplR) spelling,
+    case-insensitively. Raises with the full option list on an unknown name."""
+    key = str(fit).strip().lower()
+    if key in _FIT_CANON:
+        return _FIT_CANON[key]
+    raise ValueError(
+        "unsupported curve-fit type '" + str(fit) + "'. Choose one of: "
+        + _FIT_OPTIONS + " (case-insensitive; dplR's names are accepted).")
+
+
 # Canonical detrending-method names. Division = 'ratio' (aka 'division');
 # subtraction = 'difference'. 'residual' is a deprecated alias for 'ratio' -- in
 # dplPy 'residual' otherwise refers only to the residual (AR-prewhitened)
@@ -189,6 +227,14 @@ def _normalize_method(method):
         return "ratio"
     if m == "difference":
         return "difference"
+    if m in _FIT_CANON:
+        # A curve name was passed to method= -- the classic dplR/dplPy mix-up
+        # (dplR's `method` chooses the curve; dplPy's chooses the arithmetic).
+        raise ValueError(
+            "method='" + str(method) + "' looks like a curve type. In dplPy the "
+            "curve is chosen with fit= (e.g. fit='" + _FIT_CANON[m] + "'); "
+            "method= only selects 'ratio' (division) or 'difference' "
+            "(subtraction).")
     if m == "residual":
         warnings.warn(
             "detrend(method='residual') is deprecated and will be removed in a "

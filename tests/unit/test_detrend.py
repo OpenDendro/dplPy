@@ -241,8 +241,9 @@ def test_detrend_invalid_fit():
                                                     name="Year"))
     with pytest.raises(ValueError) as errorMsg:
         dpl.detrend(input_df, fit="vertical", plot=False)
-    invalid_fit_msg = "unsupported keyword for curve-fit type. See documentation for more info."
-    assert invalid_fit_msg == str(errorMsg.value)
+    msg = str(errorMsg.value)
+    assert "unsupported curve-fit type" in msg
+    assert "Spline" in msg and "ModNegExp" in msg          # lists the options
 
 
 def test_detrend_invalid_method():
@@ -251,3 +252,45 @@ def test_detrend_invalid_method():
     with pytest.raises(ValueError) as errorMsg:
         dpl.detrend(input_df, method="bogus", plot=False)
     assert "unsupported detrending method" in str(errorMsg.value)
+
+
+def test_normalize_fit_canonical_and_aliases():
+    from dplpy.detrend import _normalize_fit
+    # dplR canonical names round-trip
+    assert _normalize_fit("Spline") == "Spline"
+    assert _normalize_fit("ModNegExp") == "ModNegExp"
+    assert _normalize_fit("ModHugershoff") == "ModHugershoff"
+    assert _normalize_fit("Mean") == "Mean"
+    assert _normalize_fit("AgeDepSpline") == "AgeDepSpline"
+    assert _normalize_fit("Linear") == "Linear"
+    # case-insensitive
+    assert _normalize_fit("spline") == "Spline"
+    assert _normalize_fit("MODNEGEXP") == "ModNegExp"
+    # legacy dplPy spellings map to the canonical dplR names
+    assert _normalize_fit("ModNegEx") == "ModNegExp"
+    assert _normalize_fit("Hugershoff") == "ModHugershoff"
+    assert _normalize_fit("horizontal") == "Mean"
+
+
+@patch.object(_m_detrend, 'spline')
+def test_detrend_fit_names_case_insensitive(mock_spline: Mock):
+    # 'spline', 'Spline', 'SpLiNe' all reach the spline fitter and give the same result
+    mock_spline.side_effect = mock_spline_method
+    df = pd.DataFrame({"A": [0.1, 0.3, 0.5, 0.7]},
+                      index=pd.Index([1, 2, 3, 4], name="Year"))
+    a = dpl.detrend(df, fit="spline", plot=False)
+    b = dpl.detrend(df, fit="Spline", plot=False)
+    c = dpl.detrend(df, fit="SpLiNe", plot=False)
+    pd.testing.assert_frame_equal(a, b)
+    pd.testing.assert_frame_equal(a, c)
+
+
+def test_detrend_method_given_curve_name_is_guarded():
+    # D12: passing a curve name to method= must raise a helpful error pointing to fit=
+    df = pd.DataFrame({"A": [0.1, 0.3, 0.5, 0.7]},
+                      index=pd.Index([1, 2, 3, 4], name="Year"))
+    with pytest.raises(ValueError) as e:
+        dpl.detrend(df, method="Spline", plot=False)
+    msg = str(e.value)
+    assert "looks like a curve type" in msg
+    assert "fit=" in msg
