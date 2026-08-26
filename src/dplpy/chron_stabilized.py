@@ -1,11 +1,14 @@
 from .rbar import get_running_rbar, mean_series_intercorrelation
 from .chron import chron
+from .smoothingspline import spline
 import numpy as np
 import pandas as pd
 import warnings
 
 
-def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, biweight=True, running_rbar=False):
+def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
+                     biweight=True, running_rbar=False, method="running_rbar",
+                     spline_nyrs=None):
     """ Variance Stabilization functions
     
     Extended Summary
@@ -49,8 +52,30 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
         calculating the mean-value chronology
     running_rbar : boolean, default False
         flag indicating whether or not to return the running rbar values
-        as part of chronology output
-            
+        as part of chronology output (only for method='running_rbar').
+    method : str, default 'running_rbar'
+        the variance-stabilization method:
+
+        - 'running_rbar' : the running-window-rbar effective-signal adjustment
+          (Frank et al. 2006 "RUNNINGr"), a port of dplR's chron.stabilized().
+          The default; uses win_length and min_seg_ratio.
+        - 'briffa' (alias 'mean_rbar') : the same effective-sample-size adjustment
+          but with a single, time-constant rbar computed over all pairwise series
+          overlaps longer than 20 years (Osborn et al. 1997 constant-rbar; Frank
+          et al. 2006 "MEANr"; ARSTAN's Briffa option). Corrects for changing
+          sample size ONLY.
+        - 'spline' : ARSTAN's ad-hoc spline stabilization. Removes any time trend
+          in the ABSOLUTE departures of the chronology with a smoothing spline,
+          so it can stabilize variance even when the heteroscedasticity is NOT a
+          sample-size effect. NOTE (per ARSTAN and Osborn et al. 1997): this is
+          strictly ad hoc and can remove real low-frequency variance -- use with
+          care. Stiffness set by spline_nyrs.
+    spline_nyrs : int, float or None, default None
+        stiffness for method='spline'. An int is a fixed spline wavelength in
+        years (ARSTAN's fixed-n cutoff); a float in (0, 1) is a fraction of the
+        chronology length (ARSTAN's %-n cutoff). None uses 0.5 (half the length).
+        Ignored by the rbar methods.
+
     Returns
     -------
     stabilized_chron: a pandas dataframe of a variance-stabilized mean-value
@@ -75,21 +100,29 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
         raise TypeError("Expected data input to be a pandas dataframe, not " + str(type(rwi_data)) + ".")
     
     
+    if method == "mean_rbar":
+        method = "briffa"
+    if method not in ("running_rbar", "briffa", "spline"):
+        raise ValueError("method must be 'running_rbar', 'briffa' (alias "
+                         "'mean_rbar'), or 'spline'; got '" + str(method) + "'.")
+
     num_years = rwi_data.shape[0]
 
     if win_length > num_years:
         raise ValueError("Window length should not be greater than the number of rows in the dataset")
-    
+
     if min_seg_ratio <= 0 or min_seg_ratio > 1:
         raise ValueError("min_seg_ratio cannot be <= 0 or > 1")
-    
+
+    # win_length only drives the running-window rbar; warn about it only there.
     # Matches dplR's chron.stabilized(): these are two independent checks (an
     # absolute floor and a relative ceiling), not one combined 30-50% band --
     # either, both, or neither can fire depending on win_length and num_years.
-    if win_length <= 30:
-        warnings.warn("Window length less than 30 is not recommended. Consider a longer window.\n")
-    if win_length / num_years > 0.5:
-        warnings.warn("Window length greater than 50% of the chronology length is not recommended. Consider a shorter window.\n")
+    if method == "running_rbar":
+        if win_length <= 30:
+            warnings.warn("Window length less than 30 is not recommended. Consider a longer window.\n")
+        if win_length / num_years > 0.5:
+            warnings.warn("Window length greater than 50% of the chronology length is not recommended. Consider a shorter window.\n")
     
     print("Generating variance stabilized chronology...\n")
 
@@ -114,39 +147,49 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
     # zero total sample depth across every series.
     n_samps = zero_mean_data.notnull().sum(axis=1).to_numpy()
 
-    rbar_array = np.full(zero_mean_data.shape[0], np.nan)
-
-    if win_length % 2 == 0:
-        target = (win_length)/2
-    else:
-        target = (win_length-1)/2
-    
-    for i in range(num_years-win_length + 1):
-        data_segment = zero_mean_data[i:i + win_length]
-        if data_segment.shape[0] < win_length:
-            continue
-        target_index = int(i + target)
-        rbar_array[target_index] = get_running_rbar(data_segment, min_seg_ratio)
-
-    rbar_array = pad_rbar_array(rbar_array, n_samps)
-
     reg_chron = chron(zero_mean_data, biweight=biweight, plot=False)
-
     mean_rwis = reg_chron["std"].to_numpy()
-    denom = np.multiply(n_samps-1, rbar_array) + 1
 
-    n_eff = np.minimum(np.divide(n_samps, denom), n_samps)
-    # The overall rbar constant is deliberately unmasked (apply_mask=False),
-    # unlike the moving-window rbar above -- dplR computes this one as a plain
-    # pairwise-complete correlation mean over the whole record, with no
-    # minimum-overlap filtering between series pairs.
-    rbar_const = mean_series_intercorrelation(zero_mean_data, "pearson", min_seg_ratio, apply_mask=False)
-    stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_const))
+    rbar_array = None
+    if method == "running_rbar":
+        # RUNNINGr: moving-window rbar (Frank et al. 2006), a port of dplR's
+        # chron.stabilized(). rbar varies through time.
+        rbar_array = np.full(zero_mean_data.shape[0], np.nan)
+        target = (win_length) / 2 if win_length % 2 == 0 else (win_length - 1) / 2
+        for i in range(num_years - win_length + 1):
+            data_segment = zero_mean_data[i:i + win_length]
+            if data_segment.shape[0] < win_length:
+                continue
+            rbar_array[int(i + target)] = get_running_rbar(data_segment, min_seg_ratio)
+        rbar_array = pad_rbar_array(rbar_array, n_samps)
+        denom = np.multiply(n_samps - 1, rbar_array) + 1
+        n_eff = np.minimum(np.divide(n_samps, denom), n_samps)
+        # The overall rbar constant is deliberately unmasked (apply_mask=False),
+        # unlike the moving-window rbar above -- dplR computes this one as a plain
+        # pairwise-complete correlation mean over the whole record, with no
+        # minimum-overlap filtering between series pairs.
+        rbar_const = mean_series_intercorrelation(zero_mean_data, "pearson", min_seg_ratio, apply_mask=False)
+        stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_const))
+        vsc = stabilized_means + mean_val
 
-    if running_rbar:
-        stabilized_chron =  pd.DataFrame(data={"vsc": stabilized_means + mean_val, "Running rbar": rbar_array, "samp_depth": n_samps}, index=reg_chron.index)
-    else:
-        stabilized_chron =  pd.DataFrame(data={"vsc": stabilized_means + mean_val, "samp_depth": n_samps}, index=reg_chron.index)
+    elif method == "briffa":
+        # MEANr / Osborn constant-rbar / ARSTAN Briffa: a single rbar over all
+        # pairwise overlaps longer than 20 years; sample-size correction only.
+        rbar_b = _briffa_rbar(zero_mean_data, min_overlap=20)
+        denom = np.multiply(n_samps - 1, rbar_b) + 1
+        n_eff = np.minimum(np.divide(n_samps, denom), n_samps)
+        stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_b))
+        vsc = stabilized_means + mean_val
+
+    else:  # method == "spline"
+        # ARSTAN's ad-hoc spline stabilization (stabit): flatten the time trend
+        # in the chronology's absolute departures with a smoothing spline.
+        vsc = _spline_stabilize(mean_rwis + mean_val, n_samps, spline_nyrs)
+
+    out = {"vsc": vsc, "samp_depth": n_samps}
+    if method == "running_rbar" and running_rbar:
+        out = {"vsc": vsc, "Running rbar": rbar_array, "samp_depth": n_samps}
+    stabilized_chron = pd.DataFrame(data=out, index=reg_chron.index)
 
     print("SUCCESS!\n")
     return stabilized_chron
@@ -173,3 +216,52 @@ def pad_rbar_array(rbar_array, n_samps):
     rbar_array[n_samps == 0] = np.nan
 
     return rbar_array
+
+
+def _briffa_rbar(data, min_overlap=20):
+    """A single time-constant rbar: the mean of the pairwise correlations
+    between series, counting only pairs whose overlap exceeds ``min_overlap``
+    years (ARSTAN's Briffa method uses n > 20). Osborn constant-rbar / Frank
+    MEANr."""
+    corr = data.corr("pearson")
+    arr = corr.to_numpy(copy=True)
+    np.fill_diagonal(arr, np.nan)
+    corr = pd.DataFrame(arr, index=corr.index, columns=corr.columns)
+    presence = data.notnull().astype("int")
+    overlap = presence.transpose() @ presence
+    corr = corr.where(overlap > min_overlap)
+    return corr.mean().mean()
+
+
+def _spline_stabilize(chron_series, n_samps, spline_nyrs):
+    """ARSTAN's ad-hoc spline variance stabilization (subroutine stabit): centre
+    the chronology, fit a smoothing spline to the ABSOLUTE departures to capture
+    their time trend, divide the departures by that trend (restoring sign), then
+    rescale to the chronology's original mean and standard deviation. Removes
+    time-varying variance whatever its cause -- strictly ad hoc (it can remove
+    real low-frequency variance), per ARSTAN and Osborn et al. (1997)."""
+    tr = np.asarray(chron_series, dtype=float).copy()
+    n = len(tr)
+    ok = np.asarray(n_samps) > 0
+    xbar1 = np.mean(tr[ok])
+    sig1 = np.std(tr[ok], ddof=1)
+    dep = tr - xbar1
+    sign = np.where(dep < 0, -1.0, 1.0)
+    absdep = np.abs(dep)
+    # stiffness: int -> fixed wavelength in years; 0<float<1 -> fraction of n
+    if spline_nyrs is None:
+        nyrs = max(int(round(0.5 * n)), 2)
+    elif isinstance(spline_nyrs, float) and 0 < spline_nyrs < 1:
+        nyrs = max(int(round(spline_nyrs * n)), 2)
+    else:
+        nyrs = max(int(spline_nyrs), 2)
+    x = np.arange(1, n + 1)
+    cv = np.asarray(spline(x, absdep, period=nyrs), dtype=float)
+    cv = np.where(cv <= 0, np.nan, cv)          # guard: |departures| envelope > 0
+    sb = (absdep / cv) * sign
+    with np.errstate(invalid="ignore"):
+        xbar = np.nanmean(sb[ok])
+        sig = np.nanstd(sb[ok], ddof=1)
+    sb = ((sb - xbar) / sig) * sig1 + xbar1
+    sb[sb < 0] = 0.0
+    return sb
