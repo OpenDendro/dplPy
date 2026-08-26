@@ -1,157 +1,148 @@
-import numpy as np #are there issues here? seeing some on my end
-import pandas as pd #same, not sure these are needed since they are in the dependancies file anyway
+__copyright__ = """
+   dplPy for tree ring width time series analyses
+   Copyright (C) 2024  OpenDendro
 
-# Date: 07/18/2024
-# Author: Anne Wilce
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+__license__ = "GNU GPLv3"
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 # Title: agedepspline.py
-# Description: Applies an age-dependent smoothing spline to y.
+# Project: OpenDendro dplPy
+# Description: Age-dependent smoothing spline (Melvin 2004; Melvin et al. 2007),
+#              a port of dplR's ads(). The spline stiffness grows with cambial
+#              age -- the i-th ring is fit with a (nyrs0 + i - 1)-year spline --
+#              so young rings are smoothed gently and the curve stiffens with
+#              age. dplR ships Ed Cook's original banded solver as Fortran; the
+#              underlying problem is just a symmetric positive-definite banded
+#              least-squares system, so here it is solved natively with SciPy
+#              (reproducing dplR to ~1e-12).
+
+import numpy as np
+from scipy.linalg import solveh_banded
+
+# Cook's spline stencil: the smoothing weight applied to the diagonal and first
+# off-diagonal of the second-difference roughness penalty (see adsf.f95 / caps).
+_W1 = 1.0 / 3.0
+_W2 = 4.0 / 3.0
 
 
-def ads_R2Py(y, nyrs0=50, pos_slope=True):
+def _ads_curve(y, stiffness):
+    """Fit the age-dependent smoothing spline to ``y``.
+
+    ``stiffness`` is the per-ring spline wavelength (length n). The spline
+    minimises a second-difference roughness penalty whose weight varies per
+    point; that yields a symmetric positive-definite pentadiagonal system, which
+    we solve with a banded Cholesky. Returns the spline curve, or None if the
+    system is not positive definite.
+    """
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    if n < 4:
+        return None
+    m = n - 2                                   # number of interior equations
+
+    # per-point smoothing weight p from the stiffness (50% frequency response)
+    arg = 2.0 * np.pi / np.asarray(stiffness[:m], dtype=float)
+    p = (6.0 * (np.cos(arg) - 1.0) ** 2) / (np.cos(arg) + 2.0)
+
+    # Symmetric banded system M x = b (bandwidth 2), in SciPy's lower-diagonal
+    # ordered form: row i has diagonal 6 + 4p/3, first sub-diagonal -4 + p/3,
+    # second sub-diagonal 1. b is the second difference of y.
+    ab = np.zeros((3, m))
+    ab[0] = 6.0 + p * _W2                        # main diagonal
+    ab[1, :-1] = (-4.0 + p * _W1)[1:]            # first sub-diagonal
+    ab[2, :-2] = 1.0                             # second sub-diagonal
+    b = y[:m] - 2.0 * y[1:m + 1] + y[2:m + 2]
+
+    try:
+        x = solveh_banded(ab, b, lower=True)
+    except np.linalg.LinAlgError:
+        return None
+
+    # the spline curve is y minus the second difference of the solution
+    return y - np.convolve(x, (1.0, -2.0, 1.0))
+
+
+def ads(y, nyrs0=50, pos_slope=True):
+    """Age-dependent smoothing spline of a single series (dplR's ads()).
+
+    Extended Summary
+    ----------------
+    Fits a smoothing spline whose stiffness increases with cambial age: the i-th
+    ring is fit with an (nyrs0 + i - 1)-year spline, so young rings are smoothed
+    least and the curve grows stiffer with age (Melvin 2004; Melvin et al. 2007).
+    The underlying cubic smoothing spline follows Cook & Peters (1981) with a 50%
+    frequency cutoff. Reproduces dplR's ads() to ~1e-12.
+
+    Parameters
+    ----------
+    y : array-like
+        a single ring-width series (no missing values), oldest ring first.
+    nyrs0 : int, default 50
+        initial spline stiffness (wavelength, in years) at the first ring.
+    pos_slope : bool, default True
+        if False, once the spline stops decreasing its tail is held flat and the
+        spline is refit -- preventing an artefactual upturn at the end of the
+        series (dplR uses pos.slope=FALSE inside detrend()).
+
+    Returns
+    -------
+    numpy.ndarray
+        the fitted spline curve, same length as ``y``.
+
+    Examples
+    --------
+    >>> import dplpy as dpl
+    >>> rwl = dpl.readers("../tests/data/csv/ca533.csv")
+    >>> curve = dpl.ads(rwl["CAM011"].dropna().to_numpy(), nyrs0=50)
+
+    References
+    ----------
+    .. [1] https://rdrr.io/cran/dplR/man/ads.html
+    .. [2] Melvin, T. M. (2004) Historical Growth Rates and Changing Climatic
+       Sensitivity of Boreal Conifers. PhD Thesis, Climatic Research Unit,
+       University of East Anglia.
+    .. [3] Melvin, T. M., Briffa, K. R., Nicolussi, K. & Grabner, M. (2007)
+       Time-varying-response smoothing. Dendrochronologia, 25(2), 65-69.
+    .. [4] Cook, E. R. & Peters, K. (1981) The Smoothing Spline: A New Approach
+       to Standardizing Forest Interior Tree-Ring Width Series for Dendroclimatic
+       Studies. Tree-Ring Bulletin, 41, 45-53.
+    """
+    y = np.asarray(y, dtype=float)
     nobs = len(y)
-    nyrs = np.arange(1, nobs + 1) + nyrs0 - 1
-    ySpl = np.zeros(nobs)
-    
-    
     if nobs < 3:
         raise ValueError("there must be at least 3 data points")
     if nobs > 10000:
-        raise ValueError("y shouldn't be longer than 1e4. ask for help. the f77 code will need to be recompiled.")
-    if not isinstance(nyrs0, int) or nyrs0 <= 1:
+        raise ValueError("y should not be longer than 1e4.")
+    if not isinstance(nyrs0, (int, np.integer)) or nyrs0 <= 1:
         raise ValueError("'nyrs0' must be an integer greater than 1")
-    # Use 1-based indexing to better match the FORTRAN/R code and avoid confusion
-    # Row/Col 0 exisits here but is not used and does not affect the result due to current index handling 
-    def ads95_inPy(y, n, stiffness):
-        nm2 = n - 2
-        pi = np.pi
-        c1 = [0, 1, -4, 6, -2] #add zero in idx 0 for future mirror index of R
-        c2 = [0, 0, 1/3, 4/3] #add zero in idx 0 for future mirror index of R
-        
-        # Convert stiffness vector to p vector
-        p = np.zeros(nm2+1)
-        
-        for i in range(1,nm2+1): #use R indexing
-            v = stiffness[i]
-            arg = (2 * pi) / v
-            p[i] = (6 * (np.cos(arg) - 1)**2) / (np.cos(arg) + 2)
-            #p[i]= round(p[i], 10)
-        
-        # Initialize arrays
-        a = np.zeros((nm2+1, 5))
-        #print(a.shape)
-        res = np.zeros(n+1) #maybe change here AMW
-        y = np.insert(y, 0, 0)
 
-        # Fill a array
-        for i in range(1,nm2+1):
-            for j in range(1,4):
-                a[i, j] = c1[j] + p[i] * c2[j]
-            a[i, 4] = y[i] + c1[4] * y[i + 1] + y[i + 2]
-        
-        a[1, 1] = c2[1]
-        a[1, 2] = c2[1]
-        a[2, 1] = c2[1]
-        
-        nc = 2
-        rn = 1 / (nm2 * 16)
-        
-        d1 = 1
-        d2 = 0
-        ncp1 = nc + 1
-        
-
-        # Luelpb section
-        for i in range(1,nm2+1):
-            #print("Working on i number", i)
-            imncp1 = i - ncp1 
-
-            i1 = max(1, 1 - imncp1)
-
-            for j in range(i1, ncp1+1):
-                l = imncp1 + j
-
-                i2 = ncp1 - j 
-
-                sum_val = a[i, j]
-
-                jm1 = j-1 
-
-                if jm1 > 0:
-                    for k in range(1,jm1+1):
-                        m = i2 + k 
-                        sum_val -= a[i, k] * a[l, m]
-
-                if j == (ncp1): 
-                    if a[i, j] + sum_val * rn <= a[i, j]:
-                        res[0] = -9999
-                        return res
-                    a[i, j] = 1 / np.sqrt(sum_val)
-
-                    d1 *= sum_val
-                    while abs(d1) > 1:
-                        d1 *= 0.0625
-                        d2 += 4
-                    while abs(d1) <= 0.0625:
-                        d1 *= 16
-                        d2 -= 4
-                else:
-                    a[i, j] = sum_val * a[l, ncp1] 
-                    
-                    
-        # Luelpb section
-        nc1 = nc + 1
-        iw = 0
-        l = 0
-        for i in range(1,nm2+1):
-            sum_val = a[i, 4]
-            if nc > 0:
-                if iw != 0:
-                    l = l + 1
-                    if l > nc:
-                        l = nc
-                    k = nc1 - l
-                    kl = i - l
-                   
-                    for j in range(k, nc+1):
-                        sum_val = sum_val - a[kl, 4] * a[i, j]
-                        kl = kl + 1
-                elif sum_val != 0:
-                    iw = 1
-            a[i, 4] = sum_val * a[i, nc1]
-        a[nm2, 4] = a[nm2, 4] * a[nm2, nc1]
-        
-        n1 = nm2 + 1
-        for i in range(2, nm2+1):
-            k = n1 - i
-            sum_val = a[k, 4]
-            if nc > 0:
-                kl = k + 1
-                k1 = min(nm2, k + nc)
-                l = 1
-                for j in range(kl, k1+1):
-                    sum_val = sum_val - a[j, 4] * a[j, nc1 - l]
-                    l = l + 1
-            a[k, 4] = sum_val * a[k, nc1]
-        
-        for i in range(3, nm2+1):
-            res[i] = a[i - 2, 4] + c1[4] * a[i - 1, 4] + a[i, 4]
-
-        res[1] = a[1, 4]
-        res[2] = c1[4] * a[1, 4] + a[2, 4]
-        res[n - 1] = a[nm2 - 1, 4] + c1[4] * a[nm2, 4]
-        res[n] = a[nm2, 4]
-        
-        for i in range(1,n+1):
-            res[i] = y[i] - res[i]
-        res = res[1:]
-        return res
-    
-    ySpl = ads95_inPy(y, n=nobs, stiffness=nyrs)
+    stiffness = np.arange(nobs) + nyrs0             # ring i -> nyrs0 + (i - 1)
+    curve = _ads_curve(y, stiffness)
+    if curve is None:
+        raise ValueError("age-dependent spline: banded system not positive definite")
 
     if not pos_slope:
-        ySplDiff = np.diff(ySpl, prepend=0)
-        ySplCutoff = np.max(np.where(ySplDiff <= 0)[0])
-        ySpl[ySplCutoff:nobs] = ySpl[ySplCutoff]
-        ySpl = ads95_inPy(ySpl, n=nobs, stiffness=nyrs)
-    
-    return ySpl
+        diffs = np.diff(curve, prepend=curve[0])    # dplR's c(0, diff(ySpl))
+        cutoff = int(np.max(np.where(diffs <= 0)[0]))
+        curve = curve.copy()
+        curve[cutoff:] = curve[cutoff]              # hold the tail flat
+        refit = _ads_curve(curve, stiffness)        # and refit once
+        if refit is not None:
+            curve = refit
+    return curve

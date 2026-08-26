@@ -28,13 +28,17 @@ __license__ = "GNU GPLv3"
 #              with spline(s) as the default, and then by calculating residuals or differences 
 #              compared to the original data (residuals by default).
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from .smoothingspline import spline
+from .agedepspline import ads
 from . import curvefit
 
-def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plot=True, period=None):
+def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual",
+            plot=True, period=None, nyrs0=50, pos_slope=False):
     """Detrends a given series or dataframe
     
     Extended Summary
@@ -49,12 +53,17 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
     ----------
     data: pandas dataframe or series
         a data frame loaded using dpl.readers(), or a series extracted from such a datafame.
-    fit: str, default spline 
-        fitting method of curve. can be 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), and 'spline'.
+    fit: str, default spline
+        fitting method of curve. can be 'horizontal', 'Hugershoff', 'linear', 'ModNegex' (modified negative exponential), 'spline', and 'AgeDepSpline' (age-dependent spline).
     method : str, default residual
         detrending method, can be 'difference' or 'residual'.
     plot : boolean, default True
         flag indicating whether or not to plot the results.
+    nyrs0 : int, default 50
+        initial spline stiffness for fit='AgeDepSpline' (see dpl.ads()).
+    pos_slope : boolean, default False
+        for fit='AgeDepSpline', whether to allow a positive slope at the end of
+        the series (dplR's detrend uses pos.slope=FALSE).
     
     Returns
     -------
@@ -77,12 +86,13 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
         res = pd.DataFrame(index=pd.Index(data.index))
         to_add = [res]
         for column in data.columns:
-            to_add.append(detrend_series(data[column], fit, method, plot, period))
+            to_add.append(detrend_series(data[column], fit, method, plot, period,
+                                         nyrs0, pos_slope))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
-    
+
     elif isinstance(data, pd.Series):
-        return detrend_series(data, fit, method, plot, period)
+        return detrend_series(data, fit, method, plot, period, nyrs0, pos_slope)
     else:
         raise TypeError("argument should be either pandas dataframe or pandas series.")
 
@@ -91,7 +101,8 @@ def detrend(data: pd.DataFrame | pd.Series, fit="spline", method="residual", plo
 # Can specify what type of alternate curve-fits, or if the user
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
-def detrend_series(data: pd.Series, fit, method, plot, period=None):
+def detrend_series(data: pd.Series, fit, method, plot, period=None,
+                   nyrs0=50, pos_slope=False):
     series_name = data.name
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
@@ -114,6 +125,14 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None):
         yi = curvefit.linear(x, y)
     elif fit == "horizontal":
         yi = curvefit.horizontal(x, y)
+    elif fit == "AgeDepSpline":
+        yi = ads(y, nyrs0=nyrs0, pos_slope=pos_slope)
+        # dplR: if the age-dependent spline is not all-positive (very rare),
+        # fall back to detrending by the series mean.
+        if np.any(yi <= 0):
+            warnings.warn("Fits from fit='AgeDepSpline' are not all positive for "
+                          + str(series_name) + "; detrending by the mean instead.\n")
+            yi = np.full_like(y, np.mean(y))
     else:
         # give error message for unsupported curve fit
         raise ValueError("unsupported keyword for curve-fit type. See documentation for more info.")
