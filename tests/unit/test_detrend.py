@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from unittest.mock import patch, Mock
 
-def mock_spline_method(x, inp_arr, period):
+def mock_spline_method(x, inp_arr, period, f=0.5):
     return inp_arr
 
 def mock_negex_method(x, inp_arr):
@@ -22,6 +22,22 @@ def mock_horizontal_method(x, inp_arr):
 
 import importlib
 _m_detrend = importlib.import_module("dplpy.detrend")
+
+
+def _quiet_read(path):
+    import io, contextlib
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(io.StringIO()):
+            return dpl.readers(path)
+
+
+def _detrend_quiet(data, **kw):
+    import io, contextlib
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(io.StringIO()):
+            return dpl.detrend(data, plot=False, **kw)
 
 def test_detrend_with_invalid_input():
     with pytest.raises(TypeError) as errorMsg:
@@ -336,6 +352,33 @@ def test_mod_neg_exp_fallback_chain_when_fit_fails():
         with pytest.warns(UserWarning, match="linear fit"):
             dn = cf.mod_neg_exp(x, falling, pos_slope=False, name="f")
         assert dn[-1] < dn[0] and np.all(dn > 0)                  # -> falling line
+
+
+def test_detrend_spline_f_exposed():
+    # D5: f defaults to 0.5 (unchanged) and actually tunes the spline when set.
+    import io, contextlib
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    s = data["CAM011"]
+    default = _detrend_quiet(s)
+    same = _detrend_quiet(s, f=0.5)
+    diff = _detrend_quiet(s, f=0.1)
+    assert np.allclose(default.dropna(), same.dropna())
+    assert not np.allclose(default.dropna(), diff.dropna())
+
+
+def test_detrend_verbose_prints_per_series():
+    # D7: verbose prints one line per series naming the curve and method.
+    import io, contextlib
+    data = _quiet_read("tests/data/csv/ca533.csv")[["CAM011", "CAM021"]]
+    buf = io.StringIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(buf):
+            dpl.detrend(data, plot=False, verbose=True)
+    out = buf.getvalue()
+    assert "CAM011" in out and "CAM021" in out
+    assert "fit=Spline" in out and "method=ratio" in out
 
 
 def test_detrend_method_given_curve_name_is_guarded():

@@ -36,12 +36,13 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from .smoothingspline import spline
+from .smoothingspline import spline, get_period
 from .agedepspline import ads
 from . import curvefit
 
 def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
-            plot=True, period=None, nyrs0=50, pos_slope=False):
+            plot=True, period=None, nyrs0=50, pos_slope=False, f=0.5,
+            verbose=False):
     """Detrends a given series or dataframe
 
     Extended Summary
@@ -84,8 +85,16 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     nyrs0 : int, default 50
         initial spline stiffness for fit='AgeDepSpline' (see dpl.ads()).
     pos_slope : boolean, default False
-        for fit='AgeDepSpline', whether to allow a positive slope at the end of
-        the series (dplR's detrend uses pos.slope=FALSE).
+        for fit='ModNegExp' and fit='AgeDepSpline', whether to allow a positive
+        slope (in the ModNegExp linear fallback, and at the end of the age-
+        dependent spline). dplR's detrend uses pos.slope=FALSE.
+    f : float, default 0.5
+        frequency-response amplitude of the smoothing spline at the `period`
+        wavelength (dplR's `f`): the fraction of amplitude retained there. Only
+        used for fit='Spline'.
+    verbose : boolean, default False
+        print, per series, the curve fitted and the detrending arithmetic used.
+        (Fallbacks in fit='ModNegExp' are also reported via warnings.)
     
     Returns
     -------
@@ -112,12 +121,13 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         to_add = [res]
         for column in data.columns:
             to_add.append(detrend_series(data[column], fit, method, plot, period,
-                                         nyrs0, pos_slope))
+                                         nyrs0, pos_slope, f, verbose))
         output_df = pd.concat(to_add, axis=1)
         return output_df.rename_axis(data.index.name)
 
     elif isinstance(data, pd.Series):
-        return detrend_series(data, fit, method, plot, period, nyrs0, pos_slope)
+        return detrend_series(data, fit, method, plot, period, nyrs0, pos_slope,
+                              f, verbose)
     else:
         raise TypeError("argument should be either pandas dataframe or pandas series.")
 
@@ -127,7 +137,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
 def detrend_series(data: pd.Series, fit, method, plot, period=None,
-                   nyrs0=50, pos_slope=False):
+                   nyrs0=50, pos_slope=False, f=0.5, verbose=False):
     series_name = data.name
     method = _normalize_method(method)      # idempotent; canonical passes through
     fit = _normalize_fit(fit)               # idempotent; canonical passes through
@@ -142,10 +152,19 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     # (0 / curve = 0), which also matches dplR's RWI to machine precision.
     y[y == 0] = 0.001
 
+    if verbose:
+        detail = ""
+        if fit == "Spline":
+            detail = " (nyrs=%d, f=%g)" % (get_period(period, len(x)), f)
+        elif fit == "AgeDepSpline":
+            detail = " (nyrs0=%d, pos_slope=%s)" % (nyrs0, pos_slope)
+        print("detrend: %s  fit=%s  method=%s  n=%d%s"
+              % (series_name, fit, method, len(y), detail))
+
     # fit is already canonical (see _normalize_fit): Spline, AgeDepSpline,
     # ModNegExp, ModHugershoff, Mean, Linear.
     if fit == "Spline":
-        yi = spline(x, y, period)
+        yi = spline(x, y, period, f)
     elif fit == "ModNegExp":
         yi = curvefit.mod_neg_exp(x, y, pos_slope, series_name)
     elif fit == "ModHugershoff":

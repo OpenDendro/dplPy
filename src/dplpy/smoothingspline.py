@@ -50,8 +50,10 @@ def get_period(period, n):
     else:
         return period
 
-# Fits a curve to the series given as input and returns the y-values of the curve
-def spline(x, y, period=None):
-    p = get_param(0.5, get_period(period, len(x)))
+# Fits a curve to the series given as input and returns the y-values of the curve.
+# `f` is the spline's frequency-response amplitude at the `period` wavelength
+# (dplR's `f`, default 0.5: a 50% amplitude cutoff at that wavelength).
+def spline(x, y, period=None, f=0.5):
+    p = get_param(f, get_period(period, len(x)))
     yi = csaps(x, y, x, smooth=p)
     return yi
