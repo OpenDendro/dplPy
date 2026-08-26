@@ -41,34 +41,46 @@ from .autoreg import ar_func
 
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
-def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
+def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
+          max_lag=5, aic=True):
     """Creates a mean value chronology for a dataset of tree-ring widths.
-    
+
     Extended Summary
     ----------------
-    Creates a mean value chronology for a dataset, typically the ring width 
-    indices of a detrended series. Takes three optional arguments 'biweight', 
-    'prewhiten', and 'plot'. They determine whether to find means using Tukey's 
-    bi-weight robust mean (default 'True'), whether to prewhiten data by fitting 
-    to an AR model (default 'False'), and whether to plot the results of the 
-    chronology (default 'True').
-    
+    Creates a mean value chronology for a dataset, typically the ring width
+    indices of a detrended series. Determines whether to find means using Tukey's
+    bi-weight robust mean (default 'True'), whether to prewhiten data by fitting
+    to an AR model (default 'False'), and whether to plot the results of the
+    chronology (default 'True'). When prewhitening, the AR-model order can be
+    controlled with ``max_lag`` and ``aic`` (mirroring dplR's chron(), which
+    forwards these to ar() as order.max and aic).
+
     Parameters
     ----------
     data : pandas dataframe
         a pandas dataframe imported from dpl.readers()
     biweight : boolean, default True
-        use Tukey's bi-weight robust mean   
-    prewhiten : boolean, default False   
+        use Tukey's bi-weight robust mean
+    prewhiten : boolean, default False
         run pre-whitening on the time series before building
         chronology
-    plot : boolean, default True 
-        plot the results    
-        
+    plot : boolean, default True
+        plot the results
+    max_lag : int, default 5
+        when ``prewhiten`` is True, the maximum AR order considered (dplR's
+        ar() order.max). Note dplR's own default is floor(10*log10(n)); dplPy
+        keeps 5 for backward compatibility.
+    aic : boolean, default True
+        when ``prewhiten`` is True, select the AR order by AIC up to ``max_lag``
+        (dplR's ar() aic=TRUE). If False, fit a fixed AR of order ``max_lag``.
+
     Returns
     -------
     data: pandas dataframe
-        a dataframe representing the mean-value chronology.
+        a mean-value chronology indexed by year. Columns: ``std`` (the standard
+        chronology), ``res`` (the residual/AR-prewhitened chronology; only when
+        ``prewhiten`` is True), and ``samp_depth`` (the sample depth). These
+        names match chron_ars() and mirror dplR's std/res/samp.depth.
     
     Examples
     --------
@@ -99,15 +111,16 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True):
     
     years, means, depths = get_chron_info(chron_data, biweight)
     chron_res = pd.DataFrame(data={"Year":years})
-    chron_res = pd.concat([chron_res, pd.Series(data=means, name="Mean RWI")], axis=1)
-    
+    chron_res = pd.concat([chron_res, pd.Series(data=means, name="std")], axis=1)
+
     if prewhiten:
-        whitened_means = get_whitened_chron_info(rwi_data, chron_data, biweight)
-        chron_res = pd.concat([chron_res, pd.Series(data=whitened_means, name="Mean Res")], axis=1)
+        whitened_means = get_whitened_chron_info(rwi_data, chron_data, biweight,
+                                                 max_lag, aic)
+        chron_res = pd.concat([chron_res, pd.Series(data=whitened_means, name="res")], axis=1)
     else:
         whitened_means = None
-    
-    chron_res = pd.concat([chron_res, pd.Series(data=depths, name="Sample depth")], axis=1)
+
+    chron_res = pd.concat([chron_res, pd.Series(data=depths, name="samp_depth")], axis=1)
     chron_res.set_index('Year', inplace = True, drop = True)
 
     if plot:
@@ -134,13 +147,13 @@ def get_chron_info(chron_data, biweight):
 
 # Does the work of creating a chronology when the data has to be fit to an AR model
 # first (i.e. prewhitened).
-def get_whitened_chron_info(rwi_data, chron_data, biweight):
+def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=5, aic=True):
     whitened_data = {}
     ar_fit_data = {}
 
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
-        ar_fit_data[series] = ar_func(series_data)
+        ar_fit_data[series] = ar_func(series_data, max_lag=max_lag, aic=aic)
 
         for year, value in ar_fit_data[series].items():
             if year not in whitened_data:
@@ -166,10 +179,10 @@ def plot_chron(years, depths, means, whitened_means):
 
     if whitened_means is not None:
         y_val = whitened_means
-        y_label = "Mean Res"
+        y_label = "res"
     else:
         y_val = means
-        y_label = "Mean RWI"
+        y_label = "std"
 
     # make plot of RWI means
     ax.plot(years, y_val, "k-")
@@ -180,6 +193,6 @@ def plot_chron(years, depths, means, whitened_means):
     ax2=ax.twinx()
     # make plot of sample depths
     ax2.fill_between(years, depths, color=((0.2, 0.6, 0.9, 0.3)))
-    ax2.set_ylabel("Sample depth",fontsize=14)
+    ax2.set_ylabel("samp_depth",fontsize=14)
     fig.set_size_inches(14, 8)
     plt.show()

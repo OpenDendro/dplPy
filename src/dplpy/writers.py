@@ -176,8 +176,8 @@ def write_crn(data, site_id, file, site_name="Unnamed object", species_code="UNK
     file.write(str(rwi_data.first_valid_index()).rjust(4))
 
     for year in rwi_data.index.to_numpy():
-        file.write(str(round(rwi_data["Mean RWI"][year], 2)).replace(".", "").replace("0", "").rjust(4))
-        file.write(str(rwi_data["Sample depth"][year]).rjust(3))
+        file.write(str(round(rwi_data["std"][year], 2)).replace(".", "").replace("0", "").rjust(4))
+        file.write(str(rwi_data["samp_depth"][year]).rjust(3))
         
         if year % 10 == 9:
             # write TRL ID#(optional) which takes columns 82-88 
@@ -203,16 +203,16 @@ def write_txt(data, file):
     last = rwi_chron.last_valid_index()
 
     for year in range(first, last+1):
-        samp_dep = rwi_chron["Sample depth"][year]
-        
+        samp_dep = rwi_chron["samp_depth"][year]
+
         # standard chronology of detrended data
-        std = rwi_chron["Mean RWI"][year]
+        std = rwi_chron["std"][year]
 
         # residuals of detrended data?
-        res =  mean_res["Mean RWI"][year]
+        res =  mean_res["std"][year]
 
         # residuals of ar modeled data?
-        ars = ar_chron["Mean Res"][year]
+        ars = ar_chron["res"][year]
         
         year_data = data.loc[[year]].dropna(axis=1)
         column_names = year_data.columns

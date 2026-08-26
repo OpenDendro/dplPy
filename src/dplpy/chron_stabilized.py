@@ -53,8 +53,11 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
             
     Returns
     -------
-    stabilized_chron: a pandas dataframe of a mean value chronology with stabilized
-                      variance.
+    stabilized_chron: a pandas dataframe of a variance-stabilized mean-value
+                      chronology, indexed by year. Columns: ``vsc`` (the
+                      variance-stabilized chronology, matching dplR's naming),
+                      ``Running rbar`` (only when running_rbar=True), and
+                      ``samp_depth``.
         
     Examples
     --------
@@ -129,7 +132,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
 
     reg_chron = chron(zero_mean_data, biweight=biweight, plot=False)
 
-    mean_rwis = reg_chron["Mean RWI"].to_numpy()
+    mean_rwis = reg_chron["std"].to_numpy()
     denom = np.multiply(n_samps-1, rbar_array) + 1
 
     n_eff = np.minimum(np.divide(n_samps, denom), n_samps)
@@ -141,9 +144,9 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33, 
     stabilized_means = np.multiply(mean_rwis, np.sqrt(n_eff * rbar_const))
 
     if running_rbar:
-        stabilized_chron =  pd.DataFrame(data={"Adjusted CRN": stabilized_means + mean_val, "Running rbar": rbar_array, "Sample depth": n_samps}, index=reg_chron.index)
+        stabilized_chron =  pd.DataFrame(data={"vsc": stabilized_means + mean_val, "Running rbar": rbar_array, "samp_depth": n_samps}, index=reg_chron.index)
     else:
-        stabilized_chron =  pd.DataFrame(data={"Adjusted CRN": stabilized_means + mean_val, "Sample depth": n_samps}, index=reg_chron.index)
+        stabilized_chron =  pd.DataFrame(data={"vsc": stabilized_means + mean_val, "samp_depth": n_samps}, index=reg_chron.index)
 
     print("SUCCESS!\n")
     return stabilized_chron

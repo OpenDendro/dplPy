@@ -131,7 +131,7 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
         # set is never mutated.
         others = ready_series.drop(columns=[series_name])
 
-        master_chron = chron(others, biweight=biweight, plot=False)["Mean RWI"]
+        master_chron = chron(others, biweight=biweight, plot=False)["std"]
 
         inp = pd.concat([removed, master_chron], axis=1, join="inner").dropna()
 

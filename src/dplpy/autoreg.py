@@ -28,12 +28,12 @@ __license__ = "GNU GPLv3"
 #              related to AR modeling.
 #              NOTE: This function only accepts pandas series and dataframes as parameters.
 
-from statsmodels.tsa.ar_model import ar_select_order
+from statsmodels.tsa.ar_model import ar_select_order, AutoReg
 import pandas as pd
 import numpy as np
 import warnings
 
-def ar_func(data: pd.DataFrame | pd.Series, max_lag=5) -> (pd.DataFrame | pd.Series):
+def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True) -> (pd.DataFrame | pd.Series):
     """Auto Regressive (AR) functions 
       
     Extended Summary
@@ -70,20 +70,20 @@ def ar_func(data: pd.DataFrame | pd.Series, max_lag=5) -> (pd.DataFrame | pd.Ser
         start_df = pd.DataFrame(index=pd.Index(data.index))
         to_concat = [start_df]
         for column in data.columns:
-            to_concat.append(ar_func_series(data[column], max_lag))
+            to_concat.append(ar_func_series(data[column], max_lag, aic))
         res = pd.concat(to_concat, axis=1)
         return res
     elif isinstance(data, pd.Series):
-        res = ar_func_series(data, max_lag)
+        res = ar_func_series(data, max_lag, aic)
         return res
     else:
         raise TypeError("Data argument should be either pandas dataframe or pandas series.")
 
 # This function returns residuals plus mean of the best fit AR
 # model of the data.
-def ar_func_series(data: pd.Series, max_lag) -> pd.Series: 
+def ar_func_series(data: pd.Series, max_lag, aic=True) -> pd.Series:
     nullremoved_data = data.dropna()
-    pars = autoreg(nullremoved_data, max_lag)
+    pars = autoreg(nullremoved_data, max_lag, aic)
     
     y = nullremoved_data
     
@@ -99,7 +99,7 @@ def ar_func_series(data: pd.Series, max_lag) -> pd.Series:
     return res
 
 
-def autoreg(data: pd.Series, max_lag=5):
+def autoreg(data: pd.Series, max_lag=5, aic=True):
     """ Auto Regressive (AR) functions
     
     Extended Summary
@@ -142,8 +142,14 @@ def autoreg(data: pd.Series, max_lag=5):
     # Need to change this to only ignore specific warnings instead of all
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
-    results = ar_data.model.fit()
+        if aic:
+            # select the AR order by AIC, up to max_lag (dplR ar(aic=TRUE))
+            ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
+            results = ar_data.model.fit()
+        else:
+            # fit a fixed AR of order max_lag (dplR ar(aic=FALSE, order.max=...))
+            results = AutoReg(data.dropna(), lags=max(max_lag_used, 1),
+                              old_names=False).fit()
     return results.params
 
 # This function calculates the in-sample predicted values of a series,

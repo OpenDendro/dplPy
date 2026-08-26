@@ -6,7 +6,7 @@ from unittest.mock import patch, Mock
 def mock_tbrm_out(inp):
     return sum(inp)
 
-def mock_ar_func_out(inp_series):
+def mock_ar_func_out(inp_series, max_lag=5, aic=True):
     inp_series += 0.01
     return inp_series
 
@@ -19,8 +19,8 @@ def test_chron_simple_means():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
 
-    expected_df = pd.DataFrame(data={"Mean RWI": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
-                                    "Sample depth": [2, 2, 2, 2, 2, 2, 2, 2]},
+    expected_df = pd.DataFrame(data={"std": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
+                                    "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
     
@@ -46,8 +46,8 @@ def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
     
-    expected_df = pd.DataFrame(data={"Mean RWI": [0.3, 0.7, 1.1, 1.5, 1.9, 2.3, 2.7, 3.1],
-                                     "Sample depth": [2, 2, 2, 2, 2, 2, 2, 2]},
+    expected_df = pd.DataFrame(data={"std": [0.3, 0.7, 1.1, 1.5, 1.9, 2.3, 2.7, 3.1],
+                                     "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
                                      index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
     
@@ -68,9 +68,9 @@ def test_chron_prewhiten(mock_ar_func: Mock, mock_tbrm: Mock):
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
     
-    expected_df = pd.DataFrame(data={"Mean RWI": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
-                                     "Mean Res": [0.16, 0.36, 0.56, 0.76, 0.96, 1.16, 1.36, 1.56],
-                                     "Sample depth": [2, 2, 2, 2, 2, 2, 2, 2]},
+    expected_df = pd.DataFrame(data={"std": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
+                                     "res": [0.16, 0.36, 0.56, 0.76, 0.96, 1.16, 1.36, 1.56],
+                                     "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
                                      index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
                                                     name="Year"))
     result_df = dpl.chron(input_df, biweight=False, prewhiten=True, plot=False)

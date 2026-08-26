@@ -76,7 +76,7 @@ def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
         rel_series = rel_series.abs()
         rel_series_rwi = detrend(rel_series, fit="spline")
         res_frame = rel_series_rwi * signs
-        return chron(res_frame, plot=False)['Mean RWI'].tolist()
+        return chron(res_frame, plot=False)['std'].tolist()
 
     return None
 
