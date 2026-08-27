@@ -46,8 +46,8 @@ __license__ = "GNU GPLv3"
 #autocorr_coeff = autocorr[1]
 
 import pandas as pd
+from ._validate import _coerce_to_frame
 import numpy as np
-from .readers import readers
 from statsmodels.tsa.ar_model import AutoReg
 
 def stats(inp: pd.DataFrame | str):
@@ -78,10 +78,7 @@ def stats(inp: pd.DataFrame | str):
     
     
     """
-    if isinstance(inp, pd.DataFrame):
-        series_data = inp
-    elif isinstance(inp, str):
-        series_data = readers(inp)
+    series_data = _coerce_to_frame(inp)
 
         
     stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[], "ar1":[]}

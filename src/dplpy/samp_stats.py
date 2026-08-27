@@ -31,6 +31,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 
 
 def samp_stats(data: pd.DataFrame):
@@ -74,9 +75,7 @@ def samp_stats(data: pd.DataFrame):
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> dpl.samp_stats(data)
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected input data to be pandas dataframe, not "
-                        + str(type(data)))
+    _require_dataframe(data)
 
     present = data.notna()                              # years x series, bool
     samp_depth = present.sum(axis=1)                    # per-year count

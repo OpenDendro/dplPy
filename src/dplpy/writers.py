@@ -44,6 +44,7 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import numpy as np
+from ._validate import _require_dataframe
 
 def writers(data: pd.DataFrame, label: str, format: str, header=None,
             chronology_type="standard", column="std", prec=0.001, gaps=-99,
@@ -109,8 +110,8 @@ def writers(data: pd.DataFrame, label: str, format: str, header=None,
     """
     # 'txt' accepts a DataFrame, a single Series, or a list of year-aligned Series
     # (the author chooses the columns). Every other format requires a DataFrame.
-    if format != "txt" and not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
+    if format != "txt":
+        _require_dataframe(data)
 
     if not isinstance(label, str):
         raise TypeError("Expected label to be of type str, not " + str(type(label)))

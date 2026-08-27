@@ -46,6 +46,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 
 from .rwi_stats import rwi_stats, _resolve_tree_mapping
 from .common_interval import apply_common_interval
@@ -120,8 +121,7 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
 
     """
-    if not isinstance(rwi_data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(rwi_data)) + " instead.")
+    _require_dataframe(rwi_data)
 
     # Optionally restrict to a common interval first. This matches dplR's own
     # recipe for a common-interval SSS -- sss(common.interval(rwi)) -- where the

@@ -50,6 +50,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 from scipy.signal import lfilter
 
 from .tbrm import tbrm
@@ -125,8 +126,7 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
            standardization. PhD dissertation, University of Arizona.
 
     """
-    if not isinstance(rwi_data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(rwi_data)) + " instead.")
+    _require_dataframe(rwi_data)
     if prewhiten_method not in _KNOWN_PREWHITEN_METHODS:
         raise ValueError("prewhiten_method must be one of " + str(_KNOWN_PREWHITEN_METHODS)
                          + ", got '" + str(prewhiten_method) + "'.")

@@ -30,7 +30,7 @@ __license__ = "GNU GPLv3"
 
 
 import pandas as pd
-from .readers import readers
+from ._validate import _coerce_to_frame
 from .stats import stats
 import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
@@ -70,12 +70,7 @@ def report(inp: pd.DataFrame | str):
     .. [1] https:/opendendro.org/dplpy-man/#report
 
     """
-    if isinstance(inp, pd.DataFrame):
-        series_data = inp
-    elif isinstance(inp, str):
-        series_data = readers(inp)
-    else:
-        return
+    series_data = _coerce_to_frame(inp)
     
     statistics = stats(series_data)
     no_of_series = series_data.shape[1]

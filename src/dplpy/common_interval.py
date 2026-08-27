@@ -33,6 +33,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 import matplotlib.pyplot as plt
 
 _TYPES = ("series", "years", "both")
@@ -147,10 +148,7 @@ def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
     .. [1] https://rdrr.io/cran/dplR/man/common.interval.html
     .. [2] Bunn (2008), Dendrochronologia, 26, 115-124.
     """
-    if not isinstance(rwl, pd.DataFrame):
-        # NB: 'type' is a parameter here, so the builtin is shadowed -- use
-        # rwl.__class__ rather than type(rwl).
-        raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")
+    _require_dataframe(rwl)
     if type not in _TYPES:
         raise ValueError("type must be 'series', 'years' or 'both', got '" + str(type) + "'.")
 

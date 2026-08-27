@@ -36,8 +36,8 @@ __license__ = "GNU GPLv3"
 # 
 
 import pandas as pd
+from ._validate import _coerce_to_frame
 import matplotlib.pyplot as plt
-from .readers import readers
 from .stats import stats
 
 def plot(inp: pd.DataFrame | str, type="seg"):
@@ -68,12 +68,7 @@ def plot(inp: pd.DataFrame | str, type="seg"):
     .. [1] https:/opendendro.org/dplpy-man/#plot
     
     """
-    if isinstance(inp, pd.DataFrame):
-        series_data = inp
-    elif isinstance(inp, str):
-        series_data = readers(inp)
-    else:
-        return
+    series_data = _coerce_to_frame(inp)
 
     if type == "line":
         plt.plot(series_data)

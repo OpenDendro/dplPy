@@ -38,6 +38,7 @@ from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bo
 
 from math import ceil
 import pandas as pd
+from ._validate import _require_dataframe
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -123,8 +124,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#series_corr
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(data)) + " instead.")
+    _require_dataframe(data)
     if not isinstance(series_name, str):
         raise TypeError("Expected string input as series name, got " + str(type(series_name)) + " instead.")
     if series_name not in data.columns:

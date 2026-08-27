@@ -44,6 +44,7 @@ from .detrend import detrend
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pandas as pd
+from ._validate import _require_dataframe
 import numpy as np
 import scipy
 import warnings
@@ -296,8 +297,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#xdate
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(data)) + " instead.")
+    _require_dataframe(data)
     method = _CORR_ALIASES.get(str(corr).strip().lower())
     if method is None:
         raise ValueError("corr must be 'spearman', 'pearson' or 'kendall'")

@@ -33,7 +33,7 @@ def test_wrong_input():
     with pytest.raises(TypeError) as errorMsg:
         dpl.chron("string")
     
-    assert "Expected pandas dataframe as input, got <class 'str'> instead" == str(errorMsg.value)
+    assert "Expected dataframe input, got <class 'str'> instead." == str(errorMsg.value)
 
 @patch.object(_m_chron, 'tbrm')
 @patch.object(_m_chron, 'ar_func')

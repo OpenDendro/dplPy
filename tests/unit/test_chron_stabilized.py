@@ -58,7 +58,7 @@ def test_chron_stabilized_wrong_input_type(mock_mean_series_corr: Mock, mock_chr
 
     with pytest.raises(TypeError) as errorMsg:
         dpl.chron_stabilized("data")
-    expected_msg = "Expected data input to be a pandas dataframe, not <class 'str'>."
+    expected_msg = "Expected dataframe input, got <class 'str'> instead."
     assert expected_msg == str(errorMsg.value)
 
     mock_mean_series_corr.assert_not_called()

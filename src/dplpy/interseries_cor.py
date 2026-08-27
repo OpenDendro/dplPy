@@ -43,6 +43,7 @@ from .chron import chron
 from .xdate import normalize_for_crossdating
 
 import pandas as pd
+from ._validate import _require_dataframe
 import scipy.stats
 
 
@@ -112,8 +113,7 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
     .. [1] https://rdrr.io/cran/dplR/man/interseries.cor.html
 
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(data)) + " instead.")
+    _require_dataframe(data)
 
     if corr not in ("Spearman", "Pearson"):
         raise ValueError("corr must be either 'Spearman' or 'Pearson', got '" + str(corr) + "'.")

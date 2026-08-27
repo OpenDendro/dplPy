@@ -34,6 +34,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 import matplotlib.pyplot as plt
 from csaps import csaps
 
@@ -175,8 +176,7 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
        implementation of Regional Chronology Standardisation: Part 2, Further
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
-    if not isinstance(rwl, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")
+    _require_dataframe(rwl)
     if method not in ("caps", "ads"):
         raise ValueError("method must be 'caps' or 'ads', got '" + str(method) + "'.")
     if preset not in (None, "crust"):

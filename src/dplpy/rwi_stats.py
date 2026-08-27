@@ -53,6 +53,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 
 from .autoreg import ar_func
 from .common_interval import apply_common_interval
@@ -227,8 +228,7 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
 
     """
-    if not isinstance(rwi_data, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(type(rwi_data)) + " instead.")
+    _require_dataframe(rwi_data)
 
     # Optionally restrict to a common interval before computing statistics: a
     # 'series'/'years'/'both' strategy or a (start_year, end_year) pair. The

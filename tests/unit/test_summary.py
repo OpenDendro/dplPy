@@ -17,7 +17,7 @@ def mock_dataframe_summary(self):
 import importlib
 _m_summary = importlib.import_module("dplpy.summary")
 
-@patch.object(_m_summary, 'readers')
+@patch('dplpy.readers.readers')
 @patch.object(pd.DataFrame, 'describe', new=mock_dataframe_summary)
 def test_summary_given_filename(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
@@ -29,7 +29,7 @@ def test_summary_given_filename(mock_readers: Mock):
     mock_readers.assert_called_once_with("valid_file")
     pd.testing.assert_frame_equal(results, expected_df)
 
-@patch.object(_m_summary, 'readers')
+@patch('dplpy.readers.readers')
 @patch.object(pd.DataFrame, 'describe', new=mock_dataframe_summary)
 def test_summary_given_dataframe(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
@@ -49,18 +49,6 @@ def test_summary_given_wrong_type():
     with pytest.raises(TypeError) as errorMsg:
         dpl.summary(1)
 
-    expected_err_msg =  """
-Unable to generate summary report. Input must be string path to file to be read
-or Dataframe object.
-
-Note: for file pathname inputs, only CSV and RWL file formats are accepted
-
-Example usages:
-
->>> import dplpy as dpl
->>> data = dpl.readers('../tests/data/csv/file.csv')
->>> dpl.summary(data)
->>> dpl.summary('../tests/data/csv/file.csv')
-
-"""
+    expected_err_msg = ("Input must be a pandas DataFrame or a path (str) to a "
+                        "CSV/RWL file, not <class 'int'>.")
     assert expected_err_msg == str(errorMsg.value)

@@ -33,6 +33,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 
 
 def po_to_wc(po: pd.DataFrame) -> pd.DataFrame:
@@ -56,8 +57,7 @@ def po_to_wc(po: pd.DataFrame) -> pd.DataFrame:
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/po.to.wc.html
     """
-    if not isinstance(po, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(po.__class__) + " instead.")
+    _require_dataframe(po)
     series = po["series"] if "series" in po.columns else po.iloc[:, 0]
     pith_offset = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
     return pd.DataFrame(
@@ -91,8 +91,7 @@ def wc_to_po(wc: pd.DataFrame) -> pd.DataFrame:
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/wc.to.po.html
     """
-    if not isinstance(wc, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(wc.__class__) + " instead.")
+    _require_dataframe(wc)
     n = len(wc)
     nan = pd.Series(np.full(n, np.nan))
     pith = wc["pith_presence"].reset_index(drop=True) if "pith_presence" in wc.columns else nan

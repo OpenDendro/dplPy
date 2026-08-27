@@ -3,6 +3,7 @@ from .chron import chron
 from .smoothingspline import spline
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 import warnings
 
 
@@ -96,8 +97,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
     .. [1] https://rdrr.io/cran/dplR/man/chron.stabilized.html
     
     """
-    if not isinstance(rwi_data, pd.DataFrame):
-        raise TypeError("Expected data input to be a pandas dataframe, not " + str(type(rwi_data)) + ".")
+    _require_dataframe(rwi_data)
     
     
     if method == "mean_rbar":

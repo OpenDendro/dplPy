@@ -35,6 +35,7 @@ __license__ = "GNU GPLv3"
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from ._validate import _require_dataframe
 import numpy as np
 from .tbrm import tbrm
 from .autoreg import ar_func
@@ -96,8 +97,7 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     .. [1] https:/opendendro.org/dplpy-man/#chron
     
     """
-    if not isinstance(rwi_data, pd.DataFrame):
-        raise TypeError("Expected pandas dataframe as input, got " + str(type(rwi_data)) + " instead")
+    _require_dataframe(rwi_data)
     
     chron_data = {}
     for series in rwi_data:

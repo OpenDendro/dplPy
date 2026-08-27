@@ -33,6 +33,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+from ._validate import _require_dataframe
 
 _SIMPLE_METHODS = ("Mean", "Spline", "Linear")
 
@@ -146,9 +147,7 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
     shared year-to-year signal from all series, which is the point of Cook's
     method.
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Expected input data to be pandas dataframe, not "
-                        + str(type(data)))
+    _require_dataframe(data)
 
     # Resolve the fill mode: a number (constant), "ARSTAN", or a simple method.
     if isinstance(fill, str):

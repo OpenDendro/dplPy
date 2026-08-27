@@ -37,8 +37,8 @@ __license__ = "GNU GPLv3"
 
 # Create Summaries for Tucson (*rwl) files
 import pandas as pd
+from ._validate import _coerce_to_frame
 
-from .readers import readers
 def summary(inp: pd.DataFrame | str):
     """ Summarizes a chronology
     
@@ -66,26 +66,7 @@ def summary(inp: pd.DataFrame | str):
     .. [1] https:/opendendro.org/dplpy-man/#summary
     
     """
-    if isinstance(inp, pd.DataFrame):
-        series_data = inp
-    elif isinstance(inp, str):
-        series_data = readers(inp)
-    else:
-        errorMsg = """
-Unable to generate summary report. Input must be string path to file to be read
-or Dataframe object.
-
-Note: for file pathname inputs, only CSV and RWL file formats are accepted
-
-Example usages:
-
->>> import dplpy as dpl
->>> data = dpl.readers('../tests/data/csv/file.csv')
->>> dpl.summary(data)
->>> dpl.summary('../tests/data/csv/file.csv')
-
-"""
-        raise TypeError(errorMsg)
+    series_data = _coerce_to_frame(inp)
 
     summary = series_data.describe()
     return summary
