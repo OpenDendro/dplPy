@@ -144,12 +144,11 @@ def autoreg(data: pd.Series, max_lag=5, aic=True):
         warnings.filterwarnings("ignore")
         if aic:
             # select the AR order by AIC, up to max_lag (dplR ar(aic=TRUE))
-            ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic', old_names=False)
+            ar_data = ar_select_order(data.dropna(), max_lag_used, ic='aic')
             results = ar_data.model.fit()
         else:
             # fit a fixed AR of order max_lag (dplR ar(aic=FALSE, order.max=...))
-            results = AutoReg(data.dropna(), lags=max(max_lag_used, 1),
-                              old_names=False).fit()
+            results = AutoReg(data.dropna(), lags=max(max_lag_used, 1)).fit()
     return results.params
 
 # This function calculates the in-sample predicted values of a series,

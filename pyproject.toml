@@ -29,6 +29,12 @@ dependencies=[
     "scipy>=1.13.0"
 ]
 
+# Console entry point: installs a `dplpy` command that calls dplpy.cli:main.
+# dplPy is primarily a library (`import dplpy as dpl`); this is a small
+# convenience CLI (version / help / open the manual).
+[project.scripts]
+dplpy = "dplpy.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["dplpy"]

@@ -35,7 +35,19 @@ __license__ = "GNU GPLv3"
 # >>> dpl.readers(input="tests/csv/ca533.csv")
 # >>> dpl.writers(input="tests/csv/ca533.csv",output="ca533.rwl")
 
+import argparse
 import webbrowser
+from importlib.metadata import version as _dist_version, PackageNotFoundError
+
+
+def _version():
+    """The installed package version (via importlib.metadata), or a clear
+    placeholder when running from a source tree that isn't installed."""
+    try:
+        return _dist_version("dplpy")
+    except PackageNotFoundError:
+        return "unknown (running from an uninstalled source tree)"
+
 
 # Help Menu
 def help():
@@ -75,44 +87,30 @@ def readme():
     except Exception as e:
         print(e)
 
-# Get package versioning -- commented out until we add dplPy to pypi.org
-#def dplpy_version():
-#    url = "https://pypi.org/project/dplpy/"
-#    source = requests.get(url)
-#    html_content = source.text
-#    soup = BeautifulSoup(html_content, "html.parser")
-#    company = soup.find("h1")
-#    vcheck = ob1.compareVersion(
-#        company.string.strip().split(" ")[-1],
-#        pkg_resources.get_distribution("dplpy").version,
-#    )
-#    if vcheck == 1:
-#        print(
-#            "\n"
-#            + "========================================================================="
-#        )
-#        print(
-#            "Current version of dplPy is {} upgrade to lastest version: {}".format(
-#                pkg_resources.get_distribution("dplpy").version,
-#                company.string.strip().split(" ")[-1],
-#            )
-#        )
-#        print(
-#            "========================================================================="
-#        )
-#    elif vcheck == -1:
-#        print(
-#            "\n"
-#            + "========================================================================="
-#        )
-#        print(
-#            "Possibly running staging code {} compared to pypi release {}".format(
-#                pkg_resources.get_distribution("dplpy").version,
-#                company.string.strip().split(" ")[-1],
-#            )
-#        )
-#        print(
-#            "========================================================================="
-#        )
-#
-#dplpy_version()
+# Console entry point (the `dplpy` command and `python -m dplpy`).
+def main(argv=None):
+    """Small convenience CLI. dplPy is primarily used as a library
+    (``import dplpy as dpl``); this exposes version / help / manual from a shell."""
+    parser = argparse.ArgumentParser(
+        prog="dplpy",
+        description="dplPy -- the Dendrochronology Program Library for Python. "
+                    "Primarily used as a library: `import dplpy as dpl`.",
+    )
+    parser.add_argument("--version", action="version", version="dplpy " + _version())
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("help", help="print the console help menu")
+    sub.add_parser("readme", help="open the online manual in a web browser")
+    args = parser.parse_args(argv)
+
+    if args.command == "help":
+        help()
+    elif args.command == "readme":
+        readme()
+    else:                                   # no subcommand: short banner
+        print("dplPy " + _version())
+        print("The Dendrochronology Program Library for Python.")
+        print("")
+        print("Use it as a library:  import dplpy as dpl")
+        print("Console help:         dplpy help    (or dpl.help() in Python)")
+        print("Online manual:        dplpy readme  (or dpl.readme() in Python)")
+    return 0

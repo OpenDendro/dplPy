@@ -106,7 +106,7 @@ def get_report_stats(series_data):
     for series_name, data in series_data.items():
         missing_rings[series_name] = list(map(str, data[data==0].index.tolist()))
         internal_nans[series_name] = list(map(str, get_internal_na_years(data)))
-        ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
+        ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1).fit().params[1], 3))
     avg_ar = sum(ar1s)/len(ar1s)
 
     return missing_rings, internal_nans, avg_ar

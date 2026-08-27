@@ -96,7 +96,7 @@ def stats(inp: pd.DataFrame | str):
         stats["stdev"].append(round(data.std(), 3))
         stats["skew"].append(round(get_skew(data), 3))
         stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
-        stats["ar1"].append(round(AutoReg(data.dropna().to_numpy(), 1, old_names=False).fit().params[1], 3))
+        stats["ar1"].append(round(AutoReg(data.dropna().to_numpy(), 1).fit().params[1], 3))
 
 
     statistics = pd.DataFrame(stats)

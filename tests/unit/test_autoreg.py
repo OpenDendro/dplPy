@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from unittest.mock import patch, Mock
 
-def mock_ar_sel_order_method(inp_ser, max_lag, ic='aic', old_names=False):
+def mock_ar_sel_order_method(inp_ser, max_lag, ic='aic'):
     inp_ser_name = inp_ser.name
     param_name = inp_ser_name + ".L1"
     res = pd.Series(data=[0.5, 0.5], index=pd.Index(data=['const', param_name]))
