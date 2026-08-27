@@ -37,6 +37,7 @@ import pandas as pd
 from .readers import readers
 from .stats import stats
 from .chron import chron
+from .tbrm import tbrm_rows
 from .smoothingspline import spline
 from .agedepspline import ads
 
@@ -399,8 +400,10 @@ def ssf(rwl,
     else:
         sfRWI_Array[:, :, 0] = dat.values / sfRWRescaledCurves_Array[:, :, 0]
 
-    # STEP 7 - create 1st signal-free chronology
-    sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=True, plot=False).iloc[:, 0]
+    # STEP 7 - create 1st signal-free chronology (the biweight mean per year;
+    # tbrm_rows is chron(biweight=True)'s std column, vectorized without the
+    # per-iteration dict rebuild).
+    sfCrn_Mat[:, 0] = tbrm_rows(sfRWI_Array[:, :, 0])
     # Check for zeros in the chronology. This can happen in VERY sensitive
     # chrons with years that mostly zeros if the chron is built with tukey's
     # biweight robust mean (e.g., co021). This causes problems with div0 later on
@@ -453,8 +456,9 @@ def ssf(rwl,
         else:
             sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
         
-        # STEP 7 - create kth signal-free chronology
-        sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=True, plot=False).iloc[:, 0]
+        # STEP 7 - create kth signal-free chronology (biweight mean per year;
+        # see the iter-0 note -- tbrm_rows replaces the per-iteration chron rebuild)
+        sfCrn_Mat[:, k] = tbrm_rows(sfRWI_Array[:, :, k])
         # Check for zeros in the chronology. This can happen in VERY sensitive
         # chrons with years that mostly zeros if the chron is built with tukey's
         # biweight robust mean (e.g., co021). This causes problems with div0 later on
