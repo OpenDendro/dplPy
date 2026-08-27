@@ -115,3 +115,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+# Local working docs (reviews, plans) -- kept with the code, never published
+/dev/
