@@ -45,6 +45,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pandas as pd
 from ._validate import _require_dataframe, _normalize_corr
+from .tbrm import tbrm_rows
 import numpy as np
 import scipy
 import warnings
@@ -101,22 +102,10 @@ def _ar_yw_prewhiten(x):
     return out + xbar
 
 
-def _row_biweight(mat):
-    """Per-row Tukey biweight robust mean (C=9), NaN-aware -- the leave-one-out
-    master used by dplR (apply(subset, 1, tbrm, C=9)). `mat` is (nyears, k)."""
-    c, eps = 9.0, 1e-6
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        med = np.nanmedian(mat, axis=1)
-        s = np.nanmedian(np.abs(mat - med[:, None]), axis=1)
-    denom = c * s + eps
-    u = (mat - med[:, None]) / denom[:, None]
-    w = np.where(np.abs(u) <= 1, (1 - u ** 2) ** 2, 0.0)
-    w = np.where(np.isnan(mat), 0.0, w)
-    num = np.nansum(w * mat, axis=1)
-    den = np.sum(w, axis=1)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        return np.where(den > 0, num / den, np.nan)
+# The leave-one-out crossdating master is the per-row biweight robust mean
+# (dplR's apply(subset, 1, tbrm, C=9)); the single implementation lives in
+# tbrm.tbrm_rows. Kept under this name so series_corr / rcs imports are stable.
+_row_biweight = tbrm_rows
 
 
 def _row_mean(mat):

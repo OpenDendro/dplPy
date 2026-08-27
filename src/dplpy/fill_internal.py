@@ -31,6 +31,8 @@ __license__ = "GNU GPLv3"
 #              which imputes each missing ring from the population's common signal
 #              scaled to the individual series (see _fill_arstan).
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
@@ -263,7 +265,7 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
     from csaps import csaps
     from .smoothingspline import get_param
     from .chron_stabilized import _spline_stabilize
-    from .tbrm import tbrm
+    from .tbrm import tbrm_rows
 
     df = data.copy()
     if not all(np.issubdtype(df[c].dtype, np.number) for c in df.columns):
@@ -313,11 +315,12 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
         growth[span, s] = g_span
 
     # ---- 2. common chronology: biweight mean of raw, n/3-spline detrend, stabit ----
-    m_raw = np.full(n_years, np.nan)
-    for t in range(n_years):
-        row = X[t][~np.isnan(X[t])]
-        if row.size > 0:
-            m_raw[t] = tbrm(row, c=9) if biweight else row.mean()
+    if biweight:
+        m_raw = tbrm_rows(X)
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)     # all-NaN rows -> NaN
+            m_raw = np.nanmean(X, axis=1)
 
     present_year = depth > 0
     yi = np.flatnonzero(present_year)

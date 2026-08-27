@@ -53,7 +53,7 @@ import pandas as pd
 from ._validate import _require_dataframe
 from scipy.signal import lfilter
 
-from .tbrm import tbrm
+from .tbrm import tbrm_rows
 
 _KNOWN_PREWHITEN_METHODS = ("ar.yw", "arima.CSS-ML")
 
@@ -174,19 +174,11 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
 def _aggregate(mat, biweight):
     """Per-year aggregation across series: biweight robust mean or arithmetic
     mean, ignoring NaN. An all-NaN year yields NaN."""
-    n_years = mat.shape[0]
-    out = np.full(n_years, np.nan)
     if biweight:
-        for t in range(n_years):
-            row = mat[t]
-            row = row[~np.isnan(row)]
-            if row.size > 0:
-                out[t] = tbrm(row, c=9)
-    else:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN rows -> NaN
-            out = np.nanmean(mat, axis=1)
-    return out
+        return tbrm_rows(mat)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN rows -> NaN
+        return np.nanmean(mat, axis=1)
 
 
 def _pooled_ar(x, max_lag, first_aic_min):
