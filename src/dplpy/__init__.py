@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
-__author__ = "Tyson Lee Swetnam"
-__email__ = "tswetnam@arizona.edu"
+__author__ = "Kevin Anchukaitis"
+__email__ = "kanchukaitis@arizona.edu"
 __version__ = "0.3.0"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses
-   Copyright (C) 2021  OpenDendro
+   Copyright (C) 2026  OpenDendro
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
