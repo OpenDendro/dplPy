@@ -59,7 +59,7 @@ from .chron_stabilized import chron_stabilized
 from .chron_ars import chron_ars
 from .xdate import xdate, xdate_plot
 from .series_corr import series_corr
-from .interseries_cor import interseries_cor
+from .interseries_corr import interseries_corr
 from .read_ids import read_ids
 from .rwi_stats import rwi_stats, rwi_stats_running
 from .common_interval import common_interval
@@ -91,7 +91,7 @@ __all__ = [
     "xdate",
     "xdate_plot",
     "series_corr",
-    "interseries_cor",
+    "interseries_corr",
     "read_ids",
     "rwi_stats",
     "rwi_stats_running",

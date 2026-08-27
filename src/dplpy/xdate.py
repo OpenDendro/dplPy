@@ -204,7 +204,7 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFram
     """Divide each series by its own mean (dplR's normalize1 with n=NULL, i.e.
     dplPy's 'horizontal' detrend) and, optionally, Yule-Walker prewhiten it
     keeping the series length. Returns a year-indexed dataframe. Shared by
-    series_corr() and interseries_cor()."""
+    series_corr() and interseries_corr()."""
     rwi_data = detrend(data, fit="horizontal", plot=False)
     if isinstance(rwi_data, (ValueError, TypeError)):
         raise rwi_data

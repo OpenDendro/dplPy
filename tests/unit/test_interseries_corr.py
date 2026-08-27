@@ -5,7 +5,7 @@ import pytest
 
 def test_interseries_cor_wrong_data_type():
     with pytest.raises(TypeError) as errorMsg:
-        dpl.interseries_cor("input_df")
+        dpl.interseries_corr("input_df")
     expected_errorMsg = "Expected dataframe input, got <class 'str'> instead."
     assert expected_errorMsg == str(errorMsg.value)
 
@@ -17,7 +17,7 @@ def test_interseries_cor_wrong_corr_type():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     with pytest.raises(ValueError) as errorMsg:
-        dpl.interseries_cor(input_df, corr="Kendall")
+        dpl.interseries_corr(input_df, corr="Kendall")
     expected_errorMsg = "corr must be one of Spearman / Pearson, got 'Kendall'."
     assert expected_errorMsg == str(errorMsg.value)
 
@@ -37,10 +37,10 @@ def test_interseries_cor_values_no_prewhiten():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
-    result_df = dpl.interseries_cor(input_df, prewhiten=False, biweight=False)
+    result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False)
 
     expected_df = pd.DataFrame(
-        data={"interseries_cor": [0.857, 0.934, 0.929],
+        data={"interseries_corr": [0.857, 0.934, 0.929],
               "p_val": [0.0032650086273576452, 0.0003395528726155486, 0.00043148409144998836]},
         index=pd.Index(data=["SeriesA", "SeriesB", "SeriesC"], name="series"),
     )
@@ -55,10 +55,10 @@ def test_interseries_cor_values_pearson_no_prewhiten():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
-    result_df = dpl.interseries_cor(input_df, prewhiten=False, biweight=False, corr="Pearson")
+    result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False, corr="Pearson")
 
     assert list(result_df.index) == ["SeriesA", "SeriesB", "SeriesC"]
-    assert (result_df["interseries_cor"] > 0.8).all()
+    assert (result_df["interseries_corr"] > 0.8).all()
     assert (result_df["p_val"] < 0.05).all()
 
 
@@ -78,9 +78,9 @@ def test_interseries_cor_default_settings_sane():
         index=pd.Index(data=list(range(1, 13)), name="Year"),
     )
 
-    result_df = dpl.interseries_cor(input_df)
+    result_df = dpl.interseries_corr(input_df)
 
     assert list(result_df.index) == ["SeriesA", "SeriesB", "SeriesC"]
-    assert list(result_df.columns) == ["interseries_cor", "p_val"]
-    assert result_df["interseries_cor"].between(-1, 1).all()
+    assert list(result_df.columns) == ["interseries_corr", "p_val"]
+    assert result_df["interseries_corr"].between(-1, 1).all()
     assert result_df["p_val"].between(0, 1).all()

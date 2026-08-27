@@ -36,7 +36,7 @@ __license__ = "GNU GPLv3"
 #              correlation between series (optionally split into within-tree and
 #              between-tree components when tree IDs are supplied). This is a
 #              different statistic from the "interseries correlation" computed
-#              by dpl.interseries_cor(), which correlates each series against a
+#              by dpl.interseries_corr(), which correlates each series against a
 #              composite chronology of the others.
 #
 # example usage from Python Console:

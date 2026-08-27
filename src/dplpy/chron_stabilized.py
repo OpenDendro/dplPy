@@ -22,7 +22,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
 
         where n(t) is the number of series at time t, and rbar(t) is the
         mean pairwise correlation between all series (not "interseries
-        correlation" -- see dpl.interseries_cor() -- which correlates each
+        correlation" -- see dpl.interseries_corr() -- which correlates each
         series against a composite chronology of the others, rather than
         against each other series individually).
 

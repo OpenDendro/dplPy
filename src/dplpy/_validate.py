@@ -70,7 +70,7 @@ def _normalize_corr(corr, allowed=("spearman", "pearson", "kendall")):
 
     Case-insensitive, so "Spearman", "spearman" and "SPEARMAN" are all accepted.
     ``allowed`` restricts the methods a given caller supports -- xdate/series_corr
-    accept all three, while interseries_cor/rwi_stats support only spearman and
+    accept all three, while interseries_corr/rwi_stats support only spearman and
     pearson. Raises ValueError if ``corr`` is unknown or outside ``allowed``.
     """
     method = _CORR_ALIASES.get(str(corr).strip().lower())

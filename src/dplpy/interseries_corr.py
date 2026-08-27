@@ -21,14 +21,15 @@ __license__ = "GNU GPLv3"
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Title: interseries_cor.py
+# Title: interseries_corr.py
 # Project: OpenDendro dplPy
 # Description: Calculates the mean interseries correlation -- the correlation
 #              between each series in a dataset and a master chronology built
 #              from every other series (leave-one-out principle). This is the
 #              statistic commonly reported by COFECHA and by dplR's
-#              interseries.cor(), and is a distinct quantity from rbar (see
-#              rbar.py): rbar is the mean of pairwise correlations between
+#              interseries.cor(), and is a distinct quantity from rbar (the
+#              mean pairwise inter-series correlation reported by dpl.rwi_stats()):
+#              rbar is the mean of pairwise correlations between
 #              every series and every OTHER series individually, while the
 #              interseries correlation here is the mean of the correlation
 #              between each series and the composite chronology of the rest.
@@ -36,8 +37,8 @@ __license__ = "GNU GPLv3"
 # example usage from Python Console:
 # >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.interseries_cor(data)
-# >>> dpl.interseries_cor(data, prewhiten=False, corr="Pearson")
+# >>> dpl.interseries_corr(data)
+# >>> dpl.interseries_corr(data, prewhiten=False, corr="Pearson")
 
 from .xdate import normalize_for_crossdating, _row_mean
 from .tbrm import tbrm_rows
@@ -48,7 +49,7 @@ from ._validate import _require_dataframe, _normalize_corr
 import scipy.stats
 
 
-def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spearman"):
+def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spearman"):
     """Mean interseries correlation
 
     Extended Summary
@@ -59,8 +60,9 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
     reported by COFECHA as the mean interseries correlation, and computed by
     dplR's interseries.cor().
 
-    This is a fundamentally different statistic from rbar (see rbar.py and
-    chron_stabilized.py): rbar is the mean of the pairwise correlations
+    This is a fundamentally different statistic from rbar (reported by
+    dpl.rwi_stats() and used by dpl.chron_stabilized()): rbar is the mean of the
+    pairwise correlations
     between every series and every OTHER series individually -- a stricter
     test to pass -- while the interseries correlation computed here is the
     mean of the correlation between each series and the composite chronology
@@ -106,8 +108,8 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.interseries_cor(data)
-    >>> dpl.interseries_cor(data, prewhiten=False, corr="Pearson")
+    >>> dpl.interseries_corr(data)
+    >>> dpl.interseries_corr(data, prewhiten=False, corr="Pearson")
 
     References
     ----------
@@ -153,7 +155,7 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
         p_values.append(test_result.pvalue)
 
     result_df = pd.DataFrame(
-        data={"interseries_cor": interseries_corrs, "p_val": p_values},
+        data={"interseries_corr": interseries_corrs, "p_val": p_values},
         index=pd.Index(series_names, name="series"),
     )
 
