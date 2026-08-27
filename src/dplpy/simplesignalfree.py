@@ -159,7 +159,7 @@ def ssf(rwl,
     Returns
     -------
     pandas.DataFrame
-        the signal-free chronology with columns ``sfc`` and ``samp.depth``,
+        the signal-free chronology with columns ``sfc`` and ``samp_depth``,
         indexed by year. If ``return_info`` is True, a dict of intermediates is
         returned instead (see above).
 
@@ -502,10 +502,10 @@ def ssf(rwl,
 
     ### return final crn and add in the OG crn too for completeness
 
-    iter0Crn = pd.DataFrame({"std": iter0Crn_col0, "samp.depth": datSampDepth}, index=dat.index)
+    iter0Crn = pd.DataFrame({"std": iter0Crn_col0, "samp_depth": datSampDepth}, index=dat.index)
     # the final chronology is the last computed iteration (column k), matching
     # dplR's finalCrn <- sfCrn_Mat[,k].
-    finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k], "samp.depth": datSampDepth}, index=dat.index)
+    finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k], "samp_depth": datSampDepth}, index=dat.index)
 
     if method2 == "AgeDepSpline":
         infoList = {"method": method2, "nyrs": nyrs, "pos_slope": True,

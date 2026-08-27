@@ -44,24 +44,33 @@ import pandas as pd
 def get_running_rbar(data, min_seg_ratio, corr_type="pearson"):
     return mean_series_intercorrelation(data, corr_type, min_seg_ratio)
 
+def pairwise_corr_mean(data, method="pearson", min_overlap=None, strict=False):
+    """Mean of the off-diagonal pairwise correlations between the columns of
+    ``data`` (self-correlations excluded by setting the diagonal to NaN).
+
+    When ``min_overlap`` is given, a series pair is counted only if its number of
+    overlapping (both-present) years passes the threshold -- strictly greater
+    (``strict=True``, ARSTAN's Briffa n>20) or at least (``strict=False``, the
+    moving-window rbar). This is the single home for the correlation-matrix ->
+    overlap-mask -> mean-of-means step shared by the rbar variants.
+    """
+    # corr.to_numpy() can be a read-only view under numpy 2 / copy-on-write, so
+    # fill_diagonal needs an explicit writable copy, not the view pandas hands back.
+    corr = data.corr(method)
+    arr = corr.to_numpy(copy=True)
+    np.fill_diagonal(arr, np.nan)
+    corr = pd.DataFrame(arr, index=corr.index, columns=corr.columns)
+    if min_overlap is not None:
+        presence = data.notnull().astype("int")
+        overlap = presence.transpose() @ presence
+        corr = corr.where(overlap > min_overlap if strict else overlap >= min_overlap)
+    return corr.mean().mean()
+
+
 def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio, apply_mask=True):
-    # corr_mat.values / .to_numpy() can come back as a read-only view under
-    # numpy 2 / pandas' copy-on-write, so np.fill_diagonal needs an explicit,
-    # independent writable copy rather than the view pandas hands back.
-    corr_mat = data_set.corr(corr_type)
-    corr_arr = corr_mat.to_numpy(copy=True)
-    np.fill_diagonal(corr_arr, np.nan)
-    corr_mat = pd.DataFrame(corr_arr, index=corr_mat.index, columns=corr_mat.columns)
-
-    if apply_mask:
-        # Only used for the moving-window rbar (dplR's rbarWinLength): a series
-        # pair needs at least min_seg_ratio of the window's years overlapping
-        # to count. The overall rbar constant (apply_mask=False) is not
-        # filtered this way in dplR -- it's a plain pairwise-complete mean.
-        presence_df = data_set.notnull().astype('int')
-        trans_presence_df = presence_df.transpose()
-        overlap_mat = trans_presence_df @ presence_df
-        min_overlap = data_set.shape[0] * min_seg_ratio
-        corr_mat = corr_mat.where(overlap_mat >= min_overlap)
-
-    return corr_mat.mean().mean()
+    # apply_mask=True is the moving-window rbar (dplR's rbarWinLength): a series
+    # pair needs at least min_seg_ratio of the window's years overlapping to
+    # count. apply_mask=False is the overall rbar constant, which dplR does not
+    # filter this way -- a plain pairwise-complete mean.
+    min_overlap = data_set.shape[0] * min_seg_ratio if apply_mask else None
+    return pairwise_corr_mean(data_set, corr_type, min_overlap=min_overlap, strict=False)

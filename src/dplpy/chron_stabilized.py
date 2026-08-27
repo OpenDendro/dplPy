@@ -1,4 +1,4 @@
-from .rbar import get_running_rbar, mean_series_intercorrelation
+from .rbar import get_running_rbar, mean_series_intercorrelation, pairwise_corr_mean
 from .chron import chron
 from .smoothingspline import spline
 import numpy as np
@@ -223,14 +223,7 @@ def _briffa_rbar(data, min_overlap=20):
     between series, counting only pairs whose overlap exceeds ``min_overlap``
     years (ARSTAN's Briffa method uses n > 20). Osborn constant-rbar / Frank
     MEANr."""
-    corr = data.corr("pearson")
-    arr = corr.to_numpy(copy=True)
-    np.fill_diagonal(arr, np.nan)
-    corr = pd.DataFrame(arr, index=corr.index, columns=corr.columns)
-    presence = data.notnull().astype("int")
-    overlap = presence.transpose() @ presence
-    corr = corr.where(overlap > min_overlap)
-    return corr.mean().mean()
+    return pairwise_corr_mean(data, "pearson", min_overlap=min_overlap, strict=True)
 
 
 def _spline_stabilize(chron_series, n_samps, spline_nyrs):

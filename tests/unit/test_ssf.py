@@ -33,7 +33,7 @@ _DPLR_SSF_CA533 = [0.394662, 0.302022, 0.325494, 0.442067, 0.512245]
 def test_ssf_matches_dplR_ca533_spline():
     data = _read_quiet("tests/data/csv/ca533.csv")
     out = _ssf_quiet(data, method="Spline", recode_zeros=True)
-    assert list(out.columns) == ["sfc", "samp.depth"]
+    assert list(out.columns) == ["sfc", "samp_depth"]
     assert np.allclose(out["sfc"].to_numpy()[:5], _DPLR_SSF_CA533, atol=1e-4)
 
 
@@ -92,7 +92,7 @@ def test_ssf_crust_preset_rescues_co021():
     with pytest.raises(ValueError):
         _ssf_quiet(data, recode_zeros=True)                    # basic: fails
     out = _ssf_quiet(data, preset="crust", recode_zeros=True)  # crust: succeeds
-    assert list(out.columns) == ["sfc", "samp.depth"]
+    assert list(out.columns) == ["sfc", "samp_depth"]
     assert np.all(np.isfinite(out["sfc"].to_numpy()))
 
 
