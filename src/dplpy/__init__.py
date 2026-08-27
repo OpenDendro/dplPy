@@ -45,6 +45,7 @@ del _hard_dependencies, _dependency, _missing_dependencies
 
 from .readers import readers
 from .readers import metadata
+from .readers_url import readers_url
 from .summary import summary
 from .stats import stats
 from .samp_stats import samp_stats
@@ -73,11 +74,15 @@ from .cli import help, readme
 
 __all__ = [
     "readers",
+    "metadata",
+    "readers_url",
     "summary",
     "stats",
+    "samp_stats",
     "report",
     "plot",
     "detrend",
+    "fill_internal",
     "ar_func",
     "autoreg",
     "chron",
