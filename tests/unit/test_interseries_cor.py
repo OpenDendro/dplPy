@@ -18,7 +18,7 @@ def test_interseries_cor_wrong_corr_type():
                                                     name="Year"))
     with pytest.raises(ValueError) as errorMsg:
         dpl.interseries_cor(input_df, corr="Kendall")
-    expected_errorMsg = "corr must be either 'Spearman' or 'Pearson', got 'Kendall'."
+    expected_errorMsg = "corr must be one of Spearman / Pearson, got 'Kendall'."
     assert expected_errorMsg == str(errorMsg.value)
 
 

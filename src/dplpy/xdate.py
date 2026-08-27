@@ -44,7 +44,7 @@ from .detrend import detrend
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _normalize_corr
 import numpy as np
 import scipy
 import warnings
@@ -124,9 +124,6 @@ def _row_mean(mat):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         return np.nanmean(mat, axis=1)
-
-
-_CORR_ALIASES = {"spearman": "spearman", "pearson": "pearson", "kendall": "kendall"}
 
 
 def _fast_corr(a, b, method, b_ranked=False):
@@ -298,9 +295,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     .. [1] https:/opendendro.org/dplpy-man/#xdate
     """
     _require_dataframe(data)
-    method = _CORR_ALIASES.get(str(corr).strip().lower())
-    if method is None:
-        raise ValueError("corr must be 'spearman', 'pearson' or 'kendall'")
+    method = _normalize_corr(corr)
 
     # normalize + prewhiten, then work on a dense (years x series) matrix on a
     # consecutive-year grid (like dplR), so the leave-one-out master is a single

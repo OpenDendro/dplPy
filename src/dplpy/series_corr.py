@@ -34,11 +34,11 @@ __license__ = "GNU GPLv3"
 # >>> dpl.series_corr(data, "CAM011")
 
 from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
-                    _corr_pval, get_bins, _CORR_ALIASES)
+                    _corr_pval, get_bins)
 
 from math import ceil
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _normalize_corr
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -129,9 +129,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
         raise TypeError("Expected string input as series name, got " + str(type(series_name)) + " instead.")
     if series_name not in data.columns:
         raise ValueError("Series named " + series_name + " not found in provided dataframe.")
-    method = _CORR_ALIASES.get(str(corr).strip().lower())
-    if method is None:
-        raise ValueError("corr must be 'spearman', 'pearson' or 'kendall'")
+    method = _normalize_corr(corr)
 
     ready = normalize_for_crossdating(data, prewhiten)
     first_year = int(ready.first_valid_index())

@@ -43,7 +43,7 @@ from .chron import chron
 from .xdate import normalize_for_crossdating
 
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _normalize_corr
 import scipy.stats
 
 
@@ -115,8 +115,7 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
     """
     _require_dataframe(data)
 
-    if corr not in ("Spearman", "Pearson"):
-        raise ValueError("corr must be either 'Spearman' or 'Pearson', got '" + str(corr) + "'.")
+    method = _normalize_corr(corr, allowed=("spearman", "pearson"))
 
     ready_series = normalize_for_crossdating(data, prewhiten)
 
@@ -138,7 +137,7 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
         # alternative="greater": matches dplR's cor.test(..., alternative="greater")
         # -- a one-sided test, since a series is expected to correlate
         # positively with a chronology built largely from its own signal.
-        if corr == "Spearman":
+        if method == "spearman":
             test_result = scipy.stats.spearmanr(inp.iloc[:, 0], inp.iloc[:, 1], alternative="greater")
         else:
             test_result = scipy.stats.pearsonr(inp.iloc[:, 0], inp.iloc[:, 1], alternative="greater")

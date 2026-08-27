@@ -53,7 +53,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _normalize_corr
 
 from .autoreg import ar_func
 from .common_interval import apply_common_interval
@@ -235,9 +235,7 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     # result is a complete, overlap-only block.
     rwi_data = apply_common_interval(rwi_data, common_interval)
 
-    corr_method = corr.lower()
-    if corr_method not in ("spearman", "pearson"):
-        raise ValueError("corr must be either 'Spearman' or 'Pearson', got '" + str(corr) + "'.")
+    corr_method = _normalize_corr(corr, allowed=("spearman", "pearson"))
     if period not in ("max", "common"):
         raise ValueError("period must be either 'max' or 'common', got '" + str(period) + "'.")
 

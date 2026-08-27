@@ -58,3 +58,24 @@ def _coerce_to_frame(inp):
         return readers(inp)
     raise TypeError("Input must be a pandas DataFrame or a path (str) to a "
                     "CSV/RWL file, not " + str(type(inp)) + ".")
+
+
+# Canonical correlation-method names; the single home for the case-insensitive
+# alias table the crossdating / rbar functions share.
+_CORR_ALIASES = {"spearman": "spearman", "pearson": "pearson", "kendall": "kendall"}
+
+
+def _normalize_corr(corr, allowed=("spearman", "pearson", "kendall")):
+    """Return the canonical (lower-case) correlation-method name for ``corr``.
+
+    Case-insensitive, so "Spearman", "spearman" and "SPEARMAN" are all accepted.
+    ``allowed`` restricts the methods a given caller supports -- xdate/series_corr
+    accept all three, while interseries_cor/rwi_stats support only spearman and
+    pearson. Raises ValueError if ``corr`` is unknown or outside ``allowed``.
+    """
+    method = _CORR_ALIASES.get(str(corr).strip().lower())
+    if method is None or method not in allowed:
+        raise ValueError("corr must be one of "
+                         + " / ".join(m.capitalize() for m in allowed)
+                         + ", got '" + str(corr) + "'.")
+    return method
