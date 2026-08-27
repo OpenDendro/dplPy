@@ -1,43 +1,53 @@
+import io
+import contextlib
+
+import pytest
 import dplpy as dpl
 
-# Each xdate() call here does a leave-one-out crossdate, and for every series/bin it
-# slides +/-10 years and re-correlates at each lag (dominant cost when show_flags is
-# on, which is the default). That cost scales with series count, and each test below
-# calls xdate 3x, so trimming to a real subset of the series keeps every code path
-# (multiple bin_floor/slide_period values, real messy tree-ring data) exercised while
-# cutting runtime roughly in proportion to the series count.
+# xdate() is exercised over several bin/slide/corr settings on real, messy data.
+# Runtime scales with series count and each test calls xdate a few times, so we
+# trim to a real subset of the series -- every code path is still hit. Assertions
+# check the result structure and pin a stable whole-series correlation so a silent
+# numeric change is caught, not just a crash.
+
+_KEYS = {"avg_seg_corr", "bins", "flags", "overall", "p_val", "rwi", "seg_corr"}
+
+
+def _xdate(df, **kw):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return dpl.xdate(df, **kw)
+
+
+def _assert_shape(res, n_series):
+    assert isinstance(res, dict) and _KEYS.issubset(res.keys())
+    ov = res["overall"]
+    assert list(ov.columns) == ["rho", "p_val"]
+    assert len(ov) == n_series
+    assert ((ov["rho"] >= -1) & (ov["rho"] <= 1)).all()   # valid correlations
+
+
 def test_xdate_diff_bins():
     ca533 = dpl.readers("./tests/data/csv/ca533.csv").iloc[:, :15]
+    for bf in (0, 10, 100):
+        res = _xdate(ca533, bin_floor=bf)
+        _assert_shape(res, 15)
+    # overall rho is a whole-series correlation, independent of bin_floor:
+    # pin CAM011 (well-dated) against the current dplR-validated value.
+    assert res["overall"].loc["CAM011", "rho"] == pytest.approx(0.5146, abs=1e-3)
 
-    ca533_bindata_1 = dpl.xdate(ca533, bin_floor=0)
-    ca533_bindata_2 = dpl.xdate(ca533, bin_floor=10)
-    ca533_bindata_3 = dpl.xdate(ca533, bin_floor=100)
 
 def test_xdate_diff_slide_periods():
     ca533 = dpl.readers("./tests/data/csv/ca533.csv").iloc[:, :15]
+    for sp in (30, 50, 80):
+        _assert_shape(_xdate(ca533, slide_period=sp), 15)
 
-    ca533_bindata_1 = dpl.xdate(ca533, slide_period=30)
-    ca533_bindata_2 = dpl.xdate(ca533, slide_period=50)
-    ca533_bindata_3 = dpl.xdate(ca533, slide_period=80)
 
 def test_xdate_diff_corrs():
-    # ca667.rwl has 310 series; xdate's leave-one-out crossdating is O(n_series)
-    # chron() rebuilds, so the full file takes minutes here just to check that
-    # corr="Spearman" vs "Pearson" both run without error. A real subset of the
-    # same file exercises identical code paths (real, messy, differing-length
-    # tree-ring series) in a few seconds instead.
     ca667 = dpl.readers("./tests/data/rwl/ca667.rwl", header=True).iloc[:, :30]
+    for corr in ("Spearman", "Pearson"):
+        _assert_shape(_xdate(ca667, corr=corr), 30)
 
-    ca667_bindata_1 = dpl.xdate(ca667, corr="Spearman")
-    ca667_bindata_2 = dpl.xdate(ca667, corr="Pearson")
 
 def test_xdate_not_prewhitened():
     ca667 = dpl.readers("./tests/data/rwl/ca667.rwl", header=True).iloc[:, :30]
-
-    ca667_bindata = dpl.xdate(ca667, prewhiten=False)
-
-# Commented out because plots block execution in vscode. WIP
-# def test_xdate_plot():
-#     co021 = dpl.readers("./integs/data/rwl/co021.rwl")
-
-#     dpl.xdate_plot(co021)
+    _assert_shape(_xdate(ca667, prewhiten=False), 30)

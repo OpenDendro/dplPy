@@ -55,19 +55,23 @@ def test_chron_stab_bad_method():
 
 def test_chron_stab_no_biweight():
     data = dpl.readers("./tests/data/csv/ca533.csv")
-
     res = dpl.chron_stabilized(data, biweight=False)
-    # TODO: assert contents of res
+    assert list(res.columns) == ["vsc", "samp_depth"]
+    assert len(res) == data.shape[0]
+    assert np.all(np.isfinite(res["vsc"].to_numpy()))
 
 
 def test_chron_stab_with_biweight():
     data = dpl.readers("./tests/data/csv/ca533.csv")
-
     res = dpl.chron_stabilized(data)
-    # TODO: assert contents of res
+    assert list(res.columns) == ["vsc", "samp_depth"]
+    assert np.all(np.isfinite(res["vsc"].to_numpy()))
+    assert (res["samp_depth"] >= 0).all()
+
 
 def test_chron_stab_with_running_rbar():
     data = dpl.readers("./tests/data/csv/ca533.csv")
-
     res = dpl.chron_stabilized(data, running_rbar=True)
-    # TODO: assert contents of res
+    # running_rbar=True adds the per-window rbar column
+    assert list(res.columns) == ["vsc", "Running rbar", "samp_depth"]
+    assert np.all(np.isfinite(res["vsc"].to_numpy()))

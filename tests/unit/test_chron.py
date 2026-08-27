@@ -78,6 +78,15 @@ def test_chron_prewhiten(mock_ar_func: Mock, mock_tbrm: Mock):
     mock_tbrm.assert_not_called()
     mock_ar_func.assert_called()
 
-# TODO: Add unit test for plot
 def test_chron_plot():
-    pass
+    # headless smoke test: chron(plot=True) draws a figure without error
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8]},
+                            index=pd.Index(data=[1, 2, 3, 4], name="Year"))
+    plt.close("all")
+    dpl.chron(input_df, prewhiten=False, plot=True)
+    assert len(plt.get_fignums()) >= 1
+    plt.close("all")
