@@ -34,7 +34,7 @@ __license__ = "GNU GPLv3"
 # >>> dpl.series_corr(data, "CAM011")
 
 from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
-                    _corr_pval, get_bins, get_crit, _CORR_ALIASES)
+                    _corr_pval, get_bins, _CORR_ALIASES)
 
 from math import ceil
 import pandas as pd

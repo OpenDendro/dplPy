@@ -8,12 +8,6 @@ from unittest.mock import patch, Mock
 def mock_spline_method(x, inp_arr, period, f=0.5):
     return inp_arr
 
-def mock_negex_method(x, inp_arr):
-    return inp_arr * 0.5
-
-def mock_hugershoff_method(x, inp_arr):
-    return inp_arr * 0.25
-
 def mock_linear_method(x, inp_arr):
     return inp_arr * 4
 
@@ -47,13 +41,9 @@ def test_detrend_with_invalid_input():
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
-@patch('dplpy.curvefit.hugershoff')
-@patch('dplpy.curvefit.negex')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_spline(mock_spline: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_negex.side_effect = mock_negex_method
-    mock_hugershoff.side_effect = mock_hugershoff_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
     
@@ -70,21 +60,17 @@ def test_detrend_with_spline(mock_spline: Mock, mock_negex: Mock, mock_hugershof
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_called()
-    mock_negex.assert_not_called()
-    mock_hugershoff.assert_not_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
-@patch('dplpy.curvefit.hugershoff')
 @patch('dplpy.curvefit.mod_neg_exp')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
     # mod_neg_exp is called as (x, y, pos_slope, name); return y*0.5 -> ratio 2.0
     mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: y * 0.5
-    mock_hugershoff.side_effect = mock_hugershoff_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
 
@@ -102,7 +88,6 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_h
 
     mock_spline.assert_not_called()
     mock_mod_neg_exp.assert_called()
-    mock_hugershoff.assert_not_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
     
@@ -141,13 +126,9 @@ def test_detrend_with_hugershoff(mock_spline: Mock, mock_mod_neg_exp: Mock, mock
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
-@patch('dplpy.curvefit.hugershoff')
-@patch('dplpy.curvefit.negex')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_linear(mock_spline: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_negex.side_effect = mock_negex_method
-    mock_hugershoff.side_effect = mock_hugershoff_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
     
@@ -164,20 +145,14 @@ def test_detrend_with_linear(mock_spline: Mock, mock_negex: Mock, mock_hugershof
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_not_called()
-    mock_negex.assert_not_called()
-    mock_hugershoff.assert_not_called()
     mock_linear.assert_called()
     mock_horizontal.assert_not_called()
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
-@patch('dplpy.curvefit.hugershoff')
-@patch('dplpy.curvefit.negex')
 @patch.object(_m_detrend, 'spline')
-def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
+def test_detrend_with_horizontal(mock_spline: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_negex.side_effect = mock_negex_method
-    mock_hugershoff.side_effect = mock_hugershoff_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
     
@@ -194,8 +169,6 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_negex: Mock, mock_huger
     pd.testing.assert_frame_equal(expected_df, result_df)
 
     mock_spline.assert_not_called()
-    mock_negex.assert_not_called()
-    mock_hugershoff.assert_not_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_called()
 

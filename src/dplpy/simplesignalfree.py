@@ -286,7 +286,6 @@ def ssf(rwl,
         else:
             y2 = y[good_y]
 
-        nY2 = len(y2) #not used (in R either)
 
         ## Recode any zero values to 0.001 to avoid div0
         y2[y2 == 0] = 0.001

@@ -439,28 +439,6 @@ def _print_flags(flags, lag_max):
 # Critical correlation (kept for plotting / callers)
 # ---------------------------------------------------------------------------
 
-def get_crit(alpha=0.01, n=50, type="one-tailed"):
-    """Critical Pearson correlation for a given alpha and n (t-approximation).
-    Used for the plot significance line; the segment flags use the exact
-    per-method p-value instead."""
-    if n <= 2:
-        return np.nan
-    if type == "two-tailed":
-        tcrit = scipy.stats.t.ppf(1 - (alpha / 2), n - 2)
-    else:
-        tcrit = scipy.stats.t.ppf(1 - alpha, n - 2)
-    cc = pow((tcrit / np.sqrt(n - 2)), 2)
-    return np.sqrt(cc / (1 + cc))
-
-
-def correlate(data, corr_type):
-    """Correlation of the two columns of `data` (kept for series_corr)."""
-    method = _CORR_ALIASES.get(str(corr_type).strip().lower(), "spearman")
-    arr = np.asarray(data, dtype=float)
-    r, _ = _corr_pval(arr[:, 0], arr[:, 1], method)
-    return r
-
-
 # ---------------------------------------------------------------------------
 # Plot
 # ---------------------------------------------------------------------------
@@ -609,9 +587,3 @@ def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
     bin_bounds = [_bin_bounds(b) for b in res["bins"]]
     return _plot_crs(res["seg_corr"], res["p_val"], res["rwi"], res["bins"],
                      bin_bounds, p_val, slide_period, slide_period // 2)
-
-
-def get_ar_lag(data):
-    """Max AR lag (kept for backward compatibility with callers)."""
-    n = len(data)
-    return min(int(n - 1), int(10 * np.log10(n)))

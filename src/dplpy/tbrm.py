@@ -34,13 +34,10 @@ def tbrm(data, c=9):
     e = 1 * pow(10, -6)  # regularization epsilon; matches dplR's tbrm C code (C*MAD + 1e-6)
     m = np.median(data)
 
-    s = np.median(getabs(data - m)) # star?
+    s = np.median(np.abs(data - m))
 
     u = (data - m) / ((c * s) + e)
 
     w = np.where(np.abs(u) <= 1, (1 - u ** 2) ** 2, 0.0)
 
     return np.sum(w*data)/np.sum(w)
-
-def getabs(data):
-    return np.abs(data)

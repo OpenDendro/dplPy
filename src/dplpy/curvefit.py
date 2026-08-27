@@ -37,16 +37,6 @@ from scipy.optimize import curve_fit
 def hugershoff_function(x, a, b, c, d):
     return a*(x**b)*np.exp(c*x) + d
 
-# Attempt to fit a hugershoff curve to the series
-def hugershoff(x, y):
-    xi = np.arange(1, len(y)+1)
-    pars, unk= curve_fit(hugershoff_function, xi, y, bounds=([0, -2, -np.inf, min(y)], [np.inf, 2, 0, max(y)]), 
-                            p0=[max(y)-min(y), 0, 0, y[0]])
-    a, b, c, d = pars
-
-    yi = hugershoff_function(xi, a, b, c, d)
-    return yi
-
 # Hugershoff growth curve, Ed Cook's ARSTAN method (subroutine hughdi): fit
 # y = a * t^m * exp(-k*t) by LINEARIZING -- ln(y) = ln(a) + m*ln(t) - k*t is an
 # ordinary 3-parameter linear regression of ln(y) on [1, ln(t), t], solved in
@@ -158,16 +148,6 @@ def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
 # Modified negative exponential function
 def negex_function(x, a, b, k):
     return a * np.exp(b * x) + k
-
-# Attempt to fit a negative exponential curve to the series
-def negex(x, y):
-    xi = np.arange(1, len(y)+1)
-    pars, unk= curve_fit(negex_function, xi, y, bounds=([0, -np.inf, 0], [np.inf, 0, np.inf]))
-    a, b, k = pars
-
-    yi = negex_function(xi, a, b, k)
-    return yi
-
 
 # Modified negative exponential detrending curve with dplR's fallback chain.
 # Mirrors dplR detrend.series.R (method="ModNegExp"): fit y = a*exp(b*t)+k with

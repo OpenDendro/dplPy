@@ -538,73 +538,6 @@ def _warn_salvage_summary(basename, report):
         warnings.warn("Salvaged " + basename + ": " + "; ".join(parts))
 
 
-def _detect_header(first_line):
-    """Return True if the first line looks like site metadata, not data.
-
-    Port of dplR read.tucson()'s header heuristic: a data line has an integer
-    year in cols 9-12 and integer measurements from col 13 on; anything else is
-    treated as a header, with a rescue for data lines that carry unusually long
-    IDs / spacing.
-    """
-    if len(first_line) < 12:
-        raise ValueError("first line in rwl file ends before column 12")
-
-    is_head = False
-
-    # Year must be an integer in [-1e4, 1e4] in columns 9-12 (0-indexed 8:12).
-    yr_field = first_line[8:12]
-    try:
-        yrcheck = float(yr_field)
-        if yrcheck < -1e4 or yrcheck > 1e4 or yrcheck != round(yrcheck):
-            is_head = True
-    except ValueError:
-        is_head = True
-
-    # Data fields (10 x 6 chars from col 13) must be blank or integer, no letters.
-    if not is_head:
-        fields = [first_line[i:i + 6].lstrip() for i in range(12, 12 + 6 * 10, 6)]
-        nonempty = [k for k, f in enumerate(fields) if f != ""]
-        if not nonempty:
-            is_head = True
-        else:
-            fields = fields[:nonempty[-1] + 1]
-            if any(any(c.isalpha() for c in f) for f in fields):
-                is_head = True
-            else:
-                for f in fields:
-                    if f == "":
-                        continue
-                    try:
-                        if float(f) != round(float(f)):
-                            is_head = True
-                            break
-                    except ValueError:
-                        is_head = True
-                        break
-
-    # Rescue: a data line with a long ID / odd spacing can trip the checks
-    # above. If splitting on whitespace yields an ID followed by all-integer
-    # tokens, it is really data after all.
-    if is_head:
-        parts = first_line.strip().split()
-        if 3 <= len(parts) <= 13:
-            rest = parts[1:]
-            if not any(any(c.isalpha() for c in p) for p in rest):
-                ok = True
-                for p in rest:
-                    try:
-                        if float(p) != round(float(p)):
-                            ok = False
-                            break
-                    except ValueError:
-                        ok = False
-                        break
-                if ok:
-                    is_head = False
-
-    return is_head
-
-
 def _looks_like_data(line):
     """True if the line parses as a Tucson data row: an ID, an integer year, and
     a numeric first measurement. Header/metadata lines fail because their first
@@ -661,7 +594,7 @@ def _trim_trailing_junk(values):
     return values[:last + 1]
 
 
-def _parse_fixed(line, long=False):
+def _parse_fixed(line):
     """Parse one line by fixed Tucson columns: (id, year, [value strings]).
 
     Interior blank 6-char fields are kept as "" so a missing ring written as
@@ -671,13 +604,13 @@ def _parse_fixed(line, long=False):
     A bunched 5-char negative year (a BC year < -999 written with no space
     between ID and year, e.g. 'MNP262M-1262' = year -1262) is detected per line
     -- a '-' in column 8 with column 12 filled -- and read as a 7-char ID + a
-    5-char year, the same heuristic dplR's `long` mode and read.tucson2 use.
-    Without this the '-' lands in the ID field and the year reads as +1262,
-    which then trips the self-overlap check."""
-    if not long and len(line) >= 12 and line[7] == '-' and line[11] != ' ':
-        idw, yrw = 7, 5
+    5-char year, the same handling dplR's `long` mode and read.tucson2 give the
+    long-chronology case. Without this the '-' lands in the ID field and the year
+    reads as +1262, which then trips the self-overlap check."""
+    if len(line) >= 12 and line[7] == '-' and line[11] != ' ':
+        idw, yrw = 7, 5                       # bunched 5-char BC year
     else:
-        idw, yrw = (7, 5) if long else (8, 4)
+        idw, yrw = 8, 4                        # standard 8-char id + 4-char year
     series_id = line[:idw].strip()
     year = int(line[idw:idw + yrw])          # may raise ValueError
     rest = line[idw + yrw:]
@@ -697,7 +630,7 @@ def _parse_ws(line):
     return series_id, year, values
 
 
-def _parse_all(lines, method, long=False):
+def _parse_all(lines, method):
     """Parse every line with one method. Returns a list where each element is
     (id, year, values, lineno) or None if that line could not be parsed."""
     rows = []
@@ -707,7 +640,7 @@ def _parse_all(lines, method, long=False):
             continue
         try:
             if method == "fixed":
-                sid, yr, vals = _parse_fixed(line, long)
+                sid, yr, vals = _parse_fixed(line)
             else:
                 sid, yr, vals = _parse_ws(line)
             rows.append((sid, yr, vals, k))
@@ -822,7 +755,7 @@ def _rename_overlapping_duplicates(rows):
     return rows, records
 
 
-def read_rwl(lines, long=False, on_error="raise"):
+def read_rwl(lines, on_error="raise"):
     """Parse cleaned Tucson data lines into (rwl_data, precision, order, report).
 
     rwl_data  : {series_id: {year: raw_integer_value}}
@@ -841,7 +774,7 @@ def read_rwl(lines, long=False, on_error="raise"):
     """
     salvage = (on_error == "warn")
     report = []
-    fixed_rows = _parse_all(lines, "fixed", long)
+    fixed_rows = _parse_all(lines, "fixed")
     if _rows_valid(fixed_rows):
         rows = fixed_rows
     else:

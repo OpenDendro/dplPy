@@ -30,8 +30,6 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
-from .detrend import detrend
-from .chron import chron
 
 # NOTE: the earlier rectangle-maximising common_interval() that lived here has
 # been superseded by dplpy.common_interval (see common_interval.py), a faithful
@@ -39,46 +37,12 @@ from .chron import chron
 # selection strategies and validated exactly against dplR.
 
 
-# rbar returns a list of constants to multiply with each mean value generated for a range of years from a mean value chronology.
-# Can use osborn, frank and 67spline methods to generate rbar values.
-# Will be updated in the future to prioritize number of series, number of years or both. Currently attempts to do both.
-def get_running_rbar(data, min_seg_ratio, method="osborn", corr_type="pearson"):
-    # how we deal with nans will depend on method chosen for finding rbar. 
-    # drop all series with nans for osborn, but drop only if they are not up to fraction of seg_length for frank
-
-    # Osborn assumes all series are overlapping along the entire period. Drops none
-    if method == "osborn":
-        r_bar = mean_series_intercorrelation(data, corr_type, min_seg_ratio)
-        return r_bar
-    
-    elif method == "frank":
-        rel_data = data.copy()
-        drop_columns = []
-
-        # Identify columns that need to be dropped and drop them
-        
-        for column in rel_data:
-            num_valid_elems = rel_data[column].size
-            if num_valid_elems/data.shape[0] < min_seg_ratio:
-                drop_columns.append(column)
-        rel_data = rel_data.drop(columns=drop_columns)
-
-        r_bar = mean_series_intercorrelation(rel_data, corr_type, min_seg_ratio)
-
-        return r_bar
-    
-    elif method == "67spline":
-        # probably need to update this
-        rel_data = data.copy()
-        signs = rel_data.where(rel_data < 0, 1)
-
-        signs = signs.where(signs >= 0, -1)
-        rel_series = rel_series.abs()
-        rel_series_rwi = detrend(rel_series, fit="spline")
-        res_frame = rel_series_rwi * signs
-        return chron(res_frame, plot=False)['std'].tolist()
-
-    return None
+# rbar: the mean inter-series correlation over a window, used by
+# chron_stabilized to adjust chronology variance. Osborn's definition -- all
+# series assumed to overlap the period, none dropped -- is the one dplR/dplPy's
+# chron.stabilized uses.
+def get_running_rbar(data, min_seg_ratio, corr_type="pearson"):
+    return mean_series_intercorrelation(data, corr_type, min_seg_ratio)
 
 def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio, apply_mask=True):
     # corr_mat.values / .to_numpy() can come back as a read-only view under
