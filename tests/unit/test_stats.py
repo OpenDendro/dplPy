@@ -23,8 +23,9 @@ def mock_readers_output(file_name):
 
 import importlib
 _m_stats = importlib.import_module("dplpy.stats")
+_m_readers = importlib.import_module("dplpy.readers")
 
-@patch('dplpy.readers.readers')
+@patch.object(_m_readers, 'readers')
 @patch.object(AutoReg, 'fit', new=mock_auto_reg_fit)
 def test_stats_with_inp_string(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
@@ -47,7 +48,7 @@ def test_stats_with_inp_string(mock_readers: Mock):
     pd.testing.assert_frame_equal(results, expected_df)
 
 
-@patch('dplpy.readers.readers')
+@patch.object(_m_readers, 'readers')
 @patch.object(AutoReg, 'fit', new=mock_auto_reg_fit)
 def test_stats_with_inp_df(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output

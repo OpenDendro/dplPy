@@ -16,8 +16,9 @@ def mock_dataframe_summary(self):
 
 import importlib
 _m_summary = importlib.import_module("dplpy.summary")
+_m_readers = importlib.import_module("dplpy.readers")
 
-@patch('dplpy.readers.readers')
+@patch.object(_m_readers, 'readers')
 @patch.object(pd.DataFrame, 'describe', new=mock_dataframe_summary)
 def test_summary_given_filename(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
@@ -29,7 +30,7 @@ def test_summary_given_filename(mock_readers: Mock):
     mock_readers.assert_called_once_with("valid_file")
     pd.testing.assert_frame_equal(results, expected_df)
 
-@patch('dplpy.readers.readers')
+@patch.object(_m_readers, 'readers')
 @patch.object(pd.DataFrame, 'describe', new=mock_dataframe_summary)
 def test_summary_given_dataframe(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
