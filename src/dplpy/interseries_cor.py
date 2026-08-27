@@ -39,9 +39,10 @@ __license__ = "GNU GPLv3"
 # >>> dpl.interseries_cor(data)
 # >>> dpl.interseries_cor(data, prewhiten=False, corr="Pearson")
 
-from .chron import chron
-from .xdate import normalize_for_crossdating
+from .xdate import normalize_for_crossdating, _row_mean
+from .tbrm import tbrm_rows
 
+import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe, _normalize_corr
 import scipy.stats
@@ -119,28 +120,33 @@ def interseries_cor(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spe
 
     ready_series = normalize_for_crossdating(data, prewhiten)
 
+    # Work on a dense (years x series) matrix so each series' leave-one-out master
+    # is a single vectorized robust mean rather than a full chron() rebuild
+    # (previously O(n_series^2 x years)). tbrm_rows reproduces chron(biweight=True)
+    # ["std"] exactly; _row_mean reproduces the arithmetic (biweight=False) mean.
+    names = list(ready_series.columns)
+    M = ready_series.to_numpy(dtype=float)
+    aggregate = tbrm_rows if biweight else _row_mean
+
     series_names = []
     interseries_corrs = []
     p_values = []
 
-    for series_name in sorted(ready_series.columns):
-        removed = ready_series[series_name].dropna()
-        # Non-destructive: unlike series_corr()'s single-series pop/restore,
-        # every series needs its own turn being left out here, so the full
-        # set is never mutated.
-        others = ready_series.drop(columns=[series_name])
-
-        master_chron = chron(others, biweight=biweight, plot=False)["std"]
-
-        inp = pd.concat([removed, master_chron], axis=1, join="inner").dropna()
+    for series_name in sorted(names):
+        i = names.index(series_name)
+        keep = np.ones(M.shape[1], dtype=bool)
+        keep[i] = False                                     # leave this series out
+        master = aggregate(M[:, keep])                      # master of all the others
+        series = M[:, i]
+        ok = ~np.isnan(series) & ~np.isnan(master)          # overlap (both present)
 
         # alternative="greater": matches dplR's cor.test(..., alternative="greater")
         # -- a one-sided test, since a series is expected to correlate
         # positively with a chronology built largely from its own signal.
         if method == "spearman":
-            test_result = scipy.stats.spearmanr(inp.iloc[:, 0], inp.iloc[:, 1], alternative="greater")
+            test_result = scipy.stats.spearmanr(series[ok], master[ok], alternative="greater")
         else:
-            test_result = scipy.stats.pearsonr(inp.iloc[:, 0], inp.iloc[:, 1], alternative="greater")
+            test_result = scipy.stats.pearsonr(series[ok], master[ok], alternative="greater")
 
         series_names.append(series_name)
         interseries_corrs.append(round(test_result.statistic, 3))
