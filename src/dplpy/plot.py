@@ -73,9 +73,9 @@ def plot(inp: pd.DataFrame | str, type="seg"):
     if type == "line":
         plt.plot(series_data)
     elif type == "spag":
-        spag_plot(inp)
+        spag_plot(series_data)
     elif type == "seg":
-        seg_plot(inp)
+        seg_plot(series_data)
     else:
         raise ValueError("Unsupported plot type.")
 
@@ -131,6 +131,9 @@ def seg_plot(data):
     num=0
     for column_name in series_by_start_date:
         num+=1
+        # `value - value` is 0 where the ring exists and NaN where it doesn't, so
+        # each series draws as a flat line at its offset that spans exactly its
+        # coverage (NaN gaps break the line) -- a segment plot, not the values.
         plt.plot(years, (data[column_name].to_numpy() - data[column_name].to_numpy()) + (offset * (num-1)), marker='', linewidth=1, alpha=0.9, color='k')
         y_divisions.append(offset*(num-1))
 

@@ -32,8 +32,8 @@ __license__ = "GNU GPLv3"
 import pandas as pd
 from ._validate import _coerce_to_frame
 from .stats import stats
+from .interseries_corr import interseries_corr
 import numpy as np
-from statsmodels.tsa.ar_model import AutoReg
 
 def report(inp: pd.DataFrame | str):
     """Generates a report
@@ -77,15 +77,23 @@ def report(inp: pd.DataFrame | str):
     no_of_measurements = series_data.count().sum()
     first_year = statistics["first"].min()
     last_year = statistics["last"].max()
-    missing_rings, internal_nans, avg_ar = get_report_stats(series_data)
+    missing_rings, internal_nans = get_report_stats(series_data)
+
+    # AR1: reuse the per-series AR1 that stats() already computed (no refit).
+    ar1 = statistics["ar1"]
+    # Mean interseries correlation (each series vs a leave-one-out master --
+    # the COFECHA-style statistic; see dpl.interseries_corr()).
+    ic = interseries_corr(series_data)["interseries_corr"]
 
     print("Number of dated series:", no_of_series)
     print("Number of measurements:", no_of_measurements)
     print("Avg series length:", round(no_of_measurements/no_of_series, 4))
     print("Range:", (last_year - first_year + 1))
     print("Span:", first_year, "-", last_year)
-    print("Mean (Std dev) series intercorrelation:")
-    print("Mean (Std dev) AR1:", round(avg_ar, 4))
+    print("Mean (Std dev) series intercorrelation:",
+          str(round(ic.mean(), 3)) + " (" + str(round(ic.std(), 3)) + ")")
+    print("Mean (Std dev) AR1:",
+          str(round(ar1.mean(), 4)) + " (" + str(round(ar1.std(), 4)) + ")")
     print("-------------")
     print("Years with absent rings listed by series\n")
     print_missing_ring_data(missing_rings)
@@ -95,16 +103,12 @@ def report(inp: pd.DataFrame | str):
 
 # Analyze the dataframe to generate report on missing data (and internal NAs)
 def get_report_stats(series_data):
-    ar1s = []
     missing_rings = {}
     internal_nans = {}
     for series_name, data in series_data.items():
         missing_rings[series_name] = list(map(str, data[data==0].index.tolist()))
         internal_nans[series_name] = list(map(str, get_internal_na_years(data)))
-        ar1s.append(round(AutoReg(data.dropna().to_numpy(), 1).fit().params[1], 3))
-    avg_ar = sum(ar1s)/len(ar1s)
-
-    return missing_rings, internal_nans, avg_ar
+    return missing_rings, internal_nans
 
 # Finds years with NA (missing) values that fall strictly within a series' own
 # first-to-last valid year span, i.e. excludes years before the series starts

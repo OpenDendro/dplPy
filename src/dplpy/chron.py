@@ -177,15 +177,21 @@ def plot_chron(years, depths, means, whitened_means):
     # create figure and axis objects with subplots()
     fig,ax = plt.subplots()
 
+    # When prewhitening is on, chron() plots the residual (res) chronology rather
+    # than the standard (std) one; make that explicit in the title and y-axis so
+    # the figure is not mistaken for the standard chronology.
     if whitened_means is not None:
         y_val = whitened_means
         y_label = "res"
+        title = "Residual (prewhitened) chronology"
     else:
         y_val = means
         y_label = "std"
+        title = "Standard chronology"
 
     # make plot of RWI means
     ax.plot(years, y_val, "k-")
+    ax.set_title(title, fontsize=14)
     ax.set_xlabel("Year", fontsize = 14)
     ax.set_ylabel(y_label, fontsize=14)
 
