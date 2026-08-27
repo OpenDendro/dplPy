@@ -183,4 +183,59 @@ def test_write_crn_type_code(tmpdir):
     assert rec2[61:63] == "A "        # ARSTAN type code at columns 62-63
 
 
-#TODO: Add tests for txt
+def test_samp_stats_depth_seg_age():
+    import numpy as np
+    df = pd.DataFrame({"S1": [0.1, 0.2, 0.3, np.nan, 0.5],
+                       "S2": [np.nan, 0.5, 0.6, 0.7, 0.8],
+                       "S3": [np.nan, np.nan, 0.9, 1.0, 1.1]},
+                      index=pd.Index(range(1990, 1995), name="Year"))
+    ss = dpl.samp_stats(df)
+    assert list(ss.columns) == ["samp_depth", "seg", "age"]
+    assert list(ss["samp_depth"]) == [1, 2, 3, 2, 3]        # per-year present count
+    assert ss["samp_depth"].dtype.kind == "i"               # integer count
+    # 1992: S1,S2,S3 present; ring counts 4,4,3 -> seg 3.667; ages 3,2,1 -> 2.0
+    assert round(ss.loc[1992, "seg"], 3) == 3.667
+    assert ss.loc[1992, "age"] == 2.0
+    # 1993: S1 is a gap -> only S2,S3 present; ring counts 4,3 -> 3.5; ages 3,2 -> 2.5
+    assert ss.loc[1993, "samp_depth"] == 2
+    assert ss.loc[1993, "seg"] == 3.5
+    assert ss.loc[1993, "age"] == 2.5
+
+
+def test_samp_stats_rejects_non_dataframe():
+    with pytest.raises(TypeError):
+        dpl.samp_stats([1, 2, 3])
+
+
+def test_write_txt_dataframe(tmpdir):
+    # Generic tab table: author-chosen columns, year index becomes the first column.
+    import numpy as np
+    df = pd.DataFrame({"num": [1, 2], "std": [0.95, 1.10], "res": [np.nan, 0.4]},
+                      index=pd.Index([1990, 1991], name="year"))
+    file = tmpdir.join("t.txt")
+    dpl.writers(df, file.strpath[:-4], "txt")
+    assert file.readlines() == ["year\tnum\tstd\tres\n",
+                                "1990\t1\t0.9500\tNA\n",
+                                "1991\t2\t1.1000\t0.4000\n"]
+
+
+def test_write_txt_list_of_series(tmpdir):
+    # A list of year-aligned Series is concatenated, one column each.
+    a = pd.Series([0.1, 0.2], index=[1990, 1991], name="raw")
+    b = pd.Series([1.0, 1.2], index=[1990, 1991], name="std")
+    file = tmpdir.join("t.txt")
+    dpl.writers([a, b], file.strpath[:-4], "txt")
+    assert file.readlines() == ["year\traw\tstd\n",           # unnamed index -> "year"
+                                "1990\t0.1000\t1.0000\n",
+                                "1991\t0.2000\t1.2000\n"]
+
+
+def test_write_txt_options(tmpdir):
+    # sep / float_format / na_rep are honoured; a non-Series list item is rejected.
+    import numpy as np
+    df = pd.DataFrame({"x": [0.5, np.nan]}, index=pd.Index([1, 2], name="year"))
+    file = tmpdir.join("t.txt")
+    dpl.writers(df, file.strpath[:-4], "txt", sep=" ", float_format="%.2f", na_rep="-9.99")
+    assert file.readlines() == ["year x\n", "1 0.50\n", "2 -9.99\n"]
+    with pytest.raises(TypeError):
+        dpl.writers([df], tmpdir.join("b").strpath, "txt")   # list must hold Series

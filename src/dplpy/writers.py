@@ -44,11 +44,10 @@ __license__ = "GNU GPLv3"
 
 import pandas as pd
 import numpy as np
-from .chron import chron
-from .detrend import detrend
 
 def writers(data: pd.DataFrame, label: str, format: str, header=None,
-            chronology_type="standard", column="std", prec=0.001, gaps=-99):
+            chronology_type="standard", column="std", prec=0.001, gaps=-99,
+            sep="\t", float_format="%.4f", na_rep="NA"):
     """ Output dplpy datasets to .csv, .rwl and .crn files.
 
     Extended Summary
@@ -95,13 +94,22 @@ def writers(data: pd.DataFrame, label: str, format: str, header=None,
         "split" instead closes the block with the end marker and reopens a new
         block at the next present year (no sentinel in the file; gap still reads
         back as NaN).
+    sep, float_format, na_rep :
+        for format='txt', the column delimiter (default tab), printf float format
+        (default '%.4f', None for full precision), and missing-value text
+        (default 'NA'). For 'txt', `data` may be a DataFrame, a single Series, or
+        a list of year-aligned Series -- you choose the columns; dpl.samp_stats()
+        and dpl.chron_ars() supply the usual sample-depth/seg/age and std/res/ars
+        columns.
 
     Returns
     -------
     None
 
     """
-    if not isinstance(data, pd.DataFrame):
+    # 'txt' accepts a DataFrame, a single Series, or a list of year-aligned Series
+    # (the author chooses the columns). Every other format requires a DataFrame.
+    if format != "txt" and not isinstance(data, pd.DataFrame):
         raise TypeError("Expected input data to be pandas dataframe, not " + str(type(data)))
 
     if not isinstance(label, str):
@@ -122,7 +130,7 @@ def writers(data: pd.DataFrame, label: str, format: str, header=None,
             write_crn(data, output, header=header,
                       chronology_type=chronology_type, column=column)
         elif format == "txt":
-            write_txt(data, output)
+            write_txt(data, output, sep=sep, float_format=float_format, na_rep=na_rep)
         else:
             raise ValueError("Invalid file format given as parameter. Accepted file formats are csv, rwl, crn and txt")
     finally:
@@ -306,50 +314,48 @@ def write_crn(chron_data, file, header=None, chronology_type="standard", column=
     file.write("\n".join(lines) + "\n")
 
 
-def write_txt(data, file):
-    header = ["year", "num".rjust(7), "seg".rjust(7), "age".rjust(7), "raw".rjust(7), "std".rjust(7), "res".rjust(7), "ars".rjust(7)]
-    file.write("    ".join(header))
-    file.write("\n")
-    rwi_data = detrend(data, fit="spline", method="ratio", plot=False)
-    rwi_chron = chron(rwi_data, prewhiten=False)
-    mean_res = chron(rwi_data, biweight=False, prewhiten=False)
-    ar_chron = chron(rwi_data, prewhiten=True)
+def write_txt(data, file, sep="\t", float_format="%.4f", na_rep="NA"):
+    """Write a set of year-aligned variables to a tab/space-delimited text table.
 
-    first = rwi_chron.first_valid_index()
-    last = rwi_chron.last_valid_index()
+    This is a general "columns of your choosing" writer, modelled on ARSTAN's
+    "tabs" file but not fixed to its columns: you decide what to output. Typical
+    ARSTAN columns -- sample depth, mean segment length, mean age, and the raw /
+    standard / residual / ARSTAN chronologies -- are assembled by the caller from
+    dpl.samp_stats() and dpl.chron_ars() (and a raw-width mean), e.g.::
 
-    for year in range(first, last+1):
-        samp_dep = rwi_chron["samp_depth"][year]
+        meta = dpl.samp_stats(data)                     # samp_depth, seg, age
+        ars  = dpl.chron_ars(rwi)                        # std, res, ars, samp_depth
+        raw  = data.mean(axis=1).rename("raw")          # raw-width mean chronology
+        tabs = pd.concat([meta[["samp_depth", "seg", "age"]], raw,
+                          ars[["std", "res", "ars"]]], axis=1)
+        dpl.writers(tabs, "site_tabs", "txt")
 
-        # standard chronology of detrended data
-        std = rwi_chron["std"][year]
+    Parameters
+    ----------
+    data : pandas dataframe, or a single Series, or a list/tuple of Series
+        the variables to write, one per output column. A list/tuple of named
+        Series is aligned on the union of their year indexes; each column's header
+        is its Series/column name.
+    sep : str, default "\\t"
+        column delimiter (tab by default; pass e.g. " " or "," for other layouts).
+    float_format : str or None, default "%.4f"
+        printf-style format for floating-point values; None writes full precision.
+    na_rep : str, default "NA"
+        text written for missing (NaN) cells.
+    """
+    if isinstance(data, pd.Series):
+        frame = data.to_frame()
+    elif isinstance(data, (list, tuple)):
+        if not all(isinstance(s, pd.Series) for s in data):
+            raise TypeError("For 'txt', a list input must contain only pandas "
+                            "Series (one per column).")
+        frame = pd.concat(list(data), axis=1)
+    elif isinstance(data, pd.DataFrame):
+        frame = data
+    else:
+        raise TypeError("Expected a pandas DataFrame, Series, or a list of Series, "
+                        "not " + str(type(data)))
 
-        # residuals of detrended data?
-        res =  mean_res["std"][year]
-
-        # residuals of ar modeled data?
-        ars = ar_chron["res"][year]
-        
-        year_data = data.loc[[year]].dropna(axis=1)
-        column_names = year_data.columns
-        
-        seg = 0
-        age = 0
-        raw = 0
-        
-        for name in column_names:
-            seg += len(data[name].dropna())
-            age += year - data[name].first_valid_index() + 1
-            raw += data[name][year]
-        
-        seg = seg/len(column_names)
-        age = age/len(column_names)
-        raw = raw/len(column_names)
-
-        
-
-        # double check what res and ars are supposed to be
-        # work on other columns
-        line = [str(year).rjust(4), (f"{samp_dep:.3f}").rjust(7), (f"{seg:.3f}").rjust(7), (f"{age:.3f}").rjust(7), (f"{raw:.3f}").rjust(7), (f"{std:.3f}").rjust(7), (f"{res:.3f}").rjust(7), (f"{ars:.3f}").rjust(7),]
-        file.write("    ".join(line))
-        file.write("\n")
+    frame = frame.sort_index()
+    frame.index.name = frame.index.name or "year"
+    frame.to_csv(file, sep=sep, float_format=float_format, na_rep=na_rep)

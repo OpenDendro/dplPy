@@ -47,6 +47,8 @@ from .readers import readers
 from .readers import metadata
 from .summary import summary
 from .stats import stats
+from .samp_stats import samp_stats
+from .fill_internal import fill_internal
 from .report import report
 from .plot import plot
 from .detrend import detrend
