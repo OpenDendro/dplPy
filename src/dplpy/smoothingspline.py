@@ -50,10 +50,16 @@ def get_period(period, n):
     else:
         return period
 
+# The one csaps smoothing-spline call, shared by spline() and rcs's caps(): fit
+# at x with an f-amplitude cutoff at the already-resolved wavelength `nyrs`, and
+# evaluate back at x. Callers resolve `nyrs` themselves -- spline() via
+# get_period, rcs's caps via integer truncation -- so this only centralizes the
+# csaps/get_param wiring, leaving each caller's wavelength convention intact.
+def _smooth_csaps(x, y, nyrs, f):
+    return csaps(x, y, x, smooth=get_param(f, nyrs))
+
 # Fits a curve to the series given as input and returns the y-values of the curve.
 # `f` is the spline's frequency-response amplitude at the `period` wavelength
 # (dplR's `f`, default 0.5: a 50% amplitude cutoff at that wavelength).
 def spline(x, y, period=None, f=0.5):
-    p = get_param(f, get_period(period, len(x)))
-    yi = csaps(x, y, x, smooth=p)
-    return yi
+    return _smooth_csaps(x, y, get_period(period, len(x)), f)

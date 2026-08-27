@@ -33,6 +33,22 @@ import warnings
 import numpy as np
 from scipy.optimize import curve_fit
 
+
+def _mean_curve(y):
+    """The detrend-by-the-series-mean fallback shared by every fitter: a flat
+    curve at the series mean, with its model_info. Returns (curve, meta)."""
+    m = float(np.mean(y))
+    return np.full(len(y), m), {"method": "Mean", "mean": m}
+
+
+def _line_info(x, yl):
+    """model_info for a straight-line detrend fit, from its endpoints (the
+    intercept/slope block shared by the ModNegExp and ModHugershoff fallbacks)."""
+    slope = (yl[-1] - yl[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
+    return {"method": "Line",
+            "coefs": {"intercept": float(yl[0] - slope * x[0]), "slope": float(slope)}}
+
+
 # Modified hugershoff function
 def hugershoff_function(x, a, b, c, d):
     return a*(x**b)*np.exp(c*x) + d
@@ -69,8 +85,7 @@ def hugershoff_arstan(x, y, name="", info=False):
     if not np.isfinite(rn) or abs(rn) < 1e-300 or nred < 3:
         warnings.warn("Hugershoff (ARSTAN) regression is singular for "
                       + str(name) + "; detrending by the series mean instead.\n")
-        m_ = float(np.mean(y))
-        return out(np.full(n, m_), {"method": "Mean", "mean": m_})
+        return out(*_mean_curve(y))
     a_ = (sumy * rn1 + sumxy * rn2 + sumyt * rn3) / rn                 # ln(a)
     rz2 = sumx * sumt - nred * sumxt
     cm = (sumy * rn2 + sumxy * (nred * sumt2 - sumt ** 2) + sumyt * rz2) / rn   # m
@@ -134,15 +149,11 @@ def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
     if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
         warnings.warn("ModHugershoff could not fit " + str(name)
                       + "; using a linear fit instead.\n")
-        slope = (yl[-1] - yl[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
-        return out(yl, {"method": "Line",
-                        "coefs": {"intercept": float(yl[0] - slope * x[0]),
-                                  "slope": float(slope)}})
+        return out(yl, _line_info(x, yl))
     # final fallback: the series mean
     warnings.warn("ModHugershoff and the linear fallback are unsuitable for "
                   + str(name) + "; detrending by the series mean instead.\n")
-    m = float(np.mean(y))
-    return out(np.full_like(y, m), {"method": "Mean", "mean": m})
+    return out(*_mean_curve(y))
 
 
 # Modified negative exponential function
@@ -185,15 +196,11 @@ def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
     if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
         warnings.warn("ModNegExp could not fit " + str(name)
                       + "; using a linear fit instead.\n")
-        slope = (yl[-1] - yl[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
-        return out(yl, {"method": "Line",
-                        "coefs": {"intercept": float(yl[0] - slope * x[0]),
-                                  "slope": float(slope)}})
+        return out(yl, _line_info(x, yl))
     # 3. final fallback: the series mean
     warnings.warn("ModNegExp and the linear fallback are unsuitable for "
                   + str(name) + "; detrending by the series mean instead.\n")
-    m = float(np.mean(y))
-    return out(np.full_like(y, m), {"method": "Mean", "mean": m})
+    return out(*_mean_curve(y))
 
 # Fit a horizontal line to the series
 def horizontal(x, y):

@@ -36,10 +36,8 @@ import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
 import matplotlib.pyplot as plt
-from csaps import csaps
-
 from .agedepspline import ads, _ads_curve
-from .smoothingspline import get_param
+from .smoothingspline import _smooth_csaps
 from .xdate import _row_biweight
 
 
@@ -100,9 +98,8 @@ def _caps(y, nyrs, f):
     """dplR's caps(): a cubic smoothing spline with an ``f`` (default 0.5)
     amplitude cutoff at wavelength ``nyrs``. dplR truncates nyrs to an integer
     (caps.R: as.integer(nyrs)), so we do too."""
-    nyrs = int(nyrs)
     x = np.arange(1, len(y) + 1)
-    return np.asarray(csaps(x, y, x, smooth=get_param(f, nyrs)))
+    return np.asarray(_smooth_csaps(x, y, int(nyrs), f))
 
 
 def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,

@@ -34,7 +34,7 @@ __license__ = "GNU GPLv3"
 # >>> dpl.series_corr(data, "CAM011")
 
 from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
-                    _corr_pval, get_bins)
+                    _corr_pval, get_bins, dense_year_grid)
 
 from math import ceil
 import pandas as pd
@@ -132,10 +132,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     method = _normalize_corr(corr)
 
     ready = normalize_for_crossdating(data, prewhiten)
-    first_year = int(ready.first_valid_index())
-    last_year = int(ready.last_valid_index())
-    years = np.arange(first_year, last_year + 1)
-    ready = ready.reindex(years)
+    ready, years, first_year, last_year = dense_year_grid(ready)
 
     names = list(ready.columns)
     idx = names.index(series_name)

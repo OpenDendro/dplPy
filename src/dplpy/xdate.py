@@ -115,6 +115,16 @@ def _row_mean(mat):
         return np.nanmean(mat, axis=1)
 
 
+def dense_year_grid(df):
+    """Reindex a year-indexed frame onto its full consecutive-year span. Returns
+    (reindexed_frame, years, first_year, last_year) -- shared by xdate() and
+    series_corr(), which both need a gap-free year grid for the segment logic."""
+    first_year = int(df.first_valid_index())
+    last_year = int(df.last_valid_index())
+    years = np.arange(first_year, last_year + 1)
+    return df.reindex(years), years, first_year, last_year
+
+
 def _fast_corr(a, b, method, b_ranked=False):
     """Correlation only (no p-value), over pairwise-complete elements -- used for
     the many lag-table correlations where the p-value is not needed. For spearman
@@ -290,10 +300,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     # consecutive-year grid (like dplR), so the leave-one-out master is a single
     # vectorized robust mean rather than a per-series chronology rebuild.
     ready = normalize_for_crossdating(data, prewhiten)
-    first_year = int(ready.first_valid_index())
-    last_year = int(ready.last_valid_index())
-    years = np.arange(first_year, last_year + 1)
-    ready = ready.reindex(years)
+    ready, years, first_year, last_year = dense_year_grid(ready)
     series_names = list(ready.columns)
     M = ready.to_numpy(dtype=float)                 # (nyears, nseries), NaN gaps
     nyears, nseries = M.shape

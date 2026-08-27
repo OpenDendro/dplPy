@@ -59,16 +59,18 @@ def _getprec(values):
     return 10.0 ** (-maxdig)
 
 
+def _level_spread(x, prec):
+    """Adjacent-ring level M = mean and spread S = |difference| for Cook's power
+    transform, with any exact zero floored to ``prec``. Returns (M, S)."""
+    M = (x[1:] + x[:-1]) / 2.0
+    S = np.abs(x[1:] - x[:-1])
+    return np.where(M == 0, prec, M), np.where(S == 0, prec, S)
+
+
 def _fit_slope(series, prec):
     """Return 1 - b, where b is the slope of log(spread) on log(level) built
     from adjacent rings of ``series`` (which must be NaN-free)."""
-    n = len(series)
-    drop1 = series[1:]
-    dropn = series[:-1]
-    runn_M = (drop1 + dropn) / 2.0
-    runn_S = np.abs(drop1 - dropn)
-    runn_S = np.where(runn_S == 0, prec, runn_S)
-    runn_M = np.where(runn_M == 0, prec, runn_M)
+    runn_M, runn_S = _level_spread(series, prec)
     # OLS of log(S) on [1, log(M)]; slope is the second coefficient.
     b = np.polyfit(np.log(runn_M), np.log(runn_S), 1)[0]
     return 1.0 - b
@@ -213,10 +215,7 @@ def _powt_universal(rwl, rescale, return_power):
     run_M, run_S, year, ID = [], [], [], []
     for name in rwl.columns:
         x = rwl[name].to_numpy(dtype=float)
-        M = (x[1:] + x[:-1]) / 2.0
-        S = np.abs(x[1:] - x[:-1])
-        M = np.where(M == 0, prec, M)
-        S = np.where(S == 0, prec, S)
+        M, S = _level_spread(x, prec)
         run_M.append(np.log(M))
         run_S.append(np.log(S))
         year.append(years[1:])

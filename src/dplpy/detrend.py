@@ -265,10 +265,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     elif fit == "Linear":
         yi = curvefit.linear(x, y)
         if return_info:
-            slope = (yi[-1] - yi[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0.0
-            model_info = {"method": "Line",
-                          "coefs": {"intercept": float(yi[0] - slope * x[0]),
-                                    "slope": float(slope)}}
+            model_info = curvefit._line_info(x, yi)
     elif fit == "Mean":
         yi = curvefit.horizontal(x, y)
         if return_info:

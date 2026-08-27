@@ -345,12 +345,23 @@ def _dm_to_decimal(token):
     return round(-val if neg else val, 4)
 
 
+# Precompiled ITRDB Tucson header-parsing patterns (compiled once, not per file).
+_RE_HEADER_PREFIX = re.compile(r"^\s*(\S+)\s+(?:\d\s)?(.*)$")
+_RE_TRAILING_JUNK = re.compile(r"[\s\-]+$")     # trailing spaces / placeholder dashes
+_RE_SPECIES_CODE = re.compile(r"[A-Z]{2,4}")
+_RE_YEAR_PAIR = re.compile(r"(-?\d{3,4})\s*(-?\d{3,4})$")
+_RE_ELEVATION = re.compile(r"(\d{2,5})\s*[Mm]\b")
+_RE_LATLONG = re.compile(r"(-?\d{4})\s*(-?\d{4,5})")
+_RE_FIELD_SPLIT = re.compile(r"\s{2,}")
+_RE_LEADING_DIGIT = re.compile(r"^-?\d")
+
+
 def _split_header_prefix(line):
     """Strip the leading 'SITEID  N ' prefix from a header line, returning
     (site_id, remaining_content). The line number (1/2/3) is optional -- some
     ITRDB files omit it -- so a header like 'SFP519AA ARIZONA ...' still splits
     into ('SFP519AA', 'ARIZONA ...')."""
-    m = re.match(r"^\s*(\S+)\s+(?:\d\s)?(.*)$", line)
+    m = _RE_HEADER_PREFIX.match(line)
     if m:
         return m.group(1), m.group(2)
     toks = line.split()
@@ -368,9 +379,9 @@ def _extract_header_metadata(header_lines):
     # ---- line 1: site id, site name, species code ----
     sid, c1 = _split_header_prefix(header_lines[0])
     md["site_id"] = sid
-    c1 = re.sub(r"[\s\-]+$", "", c1)          # strip trailing spaces / placeholder dashes
+    c1 = _RE_TRAILING_JUNK.sub("", c1)          # strip trailing spaces / placeholder dashes
     toks1 = c1.split()
-    if toks1 and re.fullmatch(r"[A-Z]{2,4}", toks1[-1]):
+    if toks1 and _RE_SPECIES_CODE.fullmatch(toks1[-1]):
         md["species_code"] = toks1[-1]
         md["site_name"] = c1[:c1.rfind(toks1[-1])].strip() or None
     elif c1.strip():
@@ -379,32 +390,32 @@ def _extract_header_metadata(header_lines):
     # ---- line 2: region, species name, elevation, lat/long, year range ----
     if len(header_lines) >= 2:
         _, c2 = _split_header_prefix(header_lines[1])
-        c2 = re.sub(r"[\s\-]+$", "", c2)      # strip trailing junk (e.g. ' -')
+        c2 = _RE_TRAILING_JUNK.sub("", c2)      # strip trailing junk (e.g. ' -')
         # trailing year pair: space-separated OR bunched negatives ('-2220-1890')
-        ym = re.search(r"(-?\d{3,4})\s*(-?\d{3,4})$", c2)
+        ym = _RE_YEAR_PAIR.search(c2)
         if ym:
             md["first_year"] = int(ym.group(1))
             md["last_year"] = int(ym.group(2))
             c2_geo = c2[:ym.start()]
         else:
             c2_geo = c2
-        em = re.search(r"(\d{2,5})\s*[Mm]\b", c2_geo)          # elevation
+        em = _RE_ELEVATION.search(c2_geo)          # elevation
         if em:
             md["elevation_m"] = int(em.group(1))
-        gm = re.search(r"(-?\d{4})\s*(-?\d{4,5})", c2_geo)      # packed lat/long
+        gm = _RE_LATLONG.search(c2_geo)      # packed lat/long
         if gm:
             md["latitude"] = _dm_to_decimal(gm.group(1))
             md["longitude"] = _dm_to_decimal(gm.group(2))
-        fields2 = [f for f in re.split(r"\s{2,}", c2.strip()) if f]
+        fields2 = [f for f in _RE_FIELD_SPLIT.split(c2.strip()) if f]
         if fields2:
             md["country_region"] = fields2[0]
-            if len(fields2) >= 2 and not re.match(r"^-?\d", fields2[1]):
+            if len(fields2) >= 2 and not _RE_LEADING_DIGIT.match(fields2[1]):
                 md["species_name"] = fields2[1]
 
     # ---- line 3: investigator(s) ----
     if len(header_lines) >= 3:
         _, c3 = _split_header_prefix(header_lines[2])
-        c3 = re.sub(r"[\s\-]+$", "", c3)
+        c3 = _RE_TRAILING_JUNK.sub("", c3)
         md["investigators"] = c3.strip() or None
 
     # ---- hemisphere correction ----
@@ -514,8 +525,11 @@ def _assemble_dataframe(rwl_data, precision, order):
     series_columns = []
     for series in order:
         div = precision[series]
-        data = rwl_data[series]
-        col = [data[yr] / div if yr in data else np.nan for yr in index]
+        # Vectorized: the {year: value} dict becomes a Series indexed by year,
+        # divided to mm and reindexed to the full year span (NaN for missing
+        # years). Values line up positionally with `index`, exactly as the old
+        # per-year comprehension did, but at C speed rather than interpreted.
+        col = (pd.Series(rwl_data[series]) / div).reindex(index).to_numpy()
         series_columns.append(pd.Series(data=col, name=series))
     return pd.concat([df] + series_columns, axis=1)
 
