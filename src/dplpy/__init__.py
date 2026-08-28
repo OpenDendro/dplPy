@@ -62,6 +62,7 @@ from .series_corr import series_corr
 from .interseries_corr import interseries_corr
 from .read_ids import read_ids
 from .rwi_stats import rwi_stats, rwi_stats_running
+from .sensitivity import sens1, sens2
 from .common_interval import common_interval
 from .agedepspline import ads
 from .pith import po_to_wc, wc_to_po
@@ -95,6 +96,8 @@ __all__ = [
     "read_ids",
     "rwi_stats",
     "rwi_stats_running",
+    "sens1",
+    "sens2",
     "common_interval",
     "ads",
     "po_to_wc",
