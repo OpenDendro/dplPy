@@ -53,6 +53,7 @@ import re
 import warnings
 import urllib.request
 from collections import Counter
+from datetime import date
 
 import pandas as pd
 import numpy as np
@@ -147,9 +148,6 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         warnings.warn("File suffix '" + FORMAT + "' not recognized; inferred "
                       + fmt + " format from the file contents.")
 
-    print("\nAttempting to read input file: " + os.path.basename(filename)
-          + " as " + fmt + " format\n")
-
     # open the input file and read its data into a pandas dataframe
     if fmt == "csv":
         series_data = pd.read_csv(filename, skiprows=skip_lines)  # pandas reads paths and URLs
@@ -186,16 +184,34 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
     if meta is not None:
         series_data.attrs["dplpy_metadata"] = meta
 
-    # Display message to show that reading was successful, noting how many header
-    # lines auto-detection skipped (so a rare mis-detection is visible).
-    print("\nSUCCESS!\nFile read as:", fmt, "file")
-    if hdr_skipped:
-        print("(auto-detected and skipped " + str(hdr_skipped) + " header line(s))")
-    print("")
+    basename = os.path.basename(filename)
+    first_year = int(series_data.index.min())
+    last_year = int(series_data.index.max())
 
-    # Display names of all the series found
-    print("Series names:")
-    print(list(series_data.columns), "\n")
+    # Sanity check: a ring cannot post-date the present. A most-recent year in the
+    # future flags a misdated file or a mis-parsed year (e.g. a 5-digit year from
+    # a bad field split). Strict (on_error='raise') stops; salvage warns and keeps.
+    this_year = date.today().year
+    if last_year > this_year:
+        msg = (basename + ": the most recent year is " + str(last_year)
+               + ", which is in the future (the current year is " + str(this_year)
+               + "). A ring cannot post-date the present -- the file may be "
+               "misdated or a year was mis-parsed.")
+        if on_error == "warn":
+            warnings.warn(msg)
+        else:
+            raise ValueError(msg)
+
+    # One-line success summary (concise for notebooks): file, format, series
+    # count, and the period covered, plus a note if a header was auto-detected.
+    label = {"csv": "csv", "tucson": "rwl"}.get(fmt, fmt)
+    summary = (basename + " successfully extracted as " + label + " file with "
+               + str(series_data.shape[1]) + " series covering the period from "
+               + str(first_year) + " to " + str(last_year))
+    if hdr_skipped:
+        summary += (" (auto-detected " + str(hdr_skipped) + " header line"
+                    + ("s" if hdr_skipped != 1 else "") + ")")
+    print(summary)
     return series_data
 
 

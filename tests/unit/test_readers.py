@@ -621,3 +621,23 @@ def test_region_hemisphere_lookup():
     assert _region_hemisphere("Chile") == (None, -1)
     assert _region_hemisphere("Norway") == (None, None)
     assert _region_hemisphere("") == (None, None)
+
+
+def test_future_year_raises_in_strict_mode(tmp_path):
+    # A most-recent year in the future is a sanity-check failure: a ring cannot
+    # post-date the present. 2999 is safely in the future regardless of run date.
+    p = tmp_path / "future.csv"
+    pd.DataFrame({"Year": [2000, 2001, 2999], "S1": [0.1, 0.2, 0.3]}).to_csv(p, index=False)
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p))                               # on_error='raise' (default)
+    assert "future" in str(e.value) and "2999" in str(e.value)
+
+
+def test_future_year_warns_and_continues_in_salvage_mode(tmp_path):
+    p = tmp_path / "future.csv"
+    pd.DataFrame({"Year": [2000, 2001, 2999], "S1": [0.1, 0.2, 0.3]}).to_csv(p, index=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        res = dpl.readers(str(p), on_error="warn")
+    assert res is not None and int(res.index.max()) == 2999   # kept, not dropped
+    assert any("future" in str(x.message) for x in w)
