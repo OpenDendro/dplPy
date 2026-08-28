@@ -60,6 +60,7 @@ from .chron_ars import chron_ars
 from .xdate import xdate, xdate_plot
 from .series_corr import series_corr
 from .interseries_corr import interseries_corr
+from .glk import glk, sgc
 from .read_ids import read_ids
 from .rwi_stats import rwi_stats, rwi_stats_running
 from .sensitivity import sens1, sens2
@@ -93,6 +94,8 @@ __all__ = [
     "xdate_plot",
     "series_corr",
     "interseries_corr",
+    "glk",
+    "sgc",
     "read_ids",
     "rwi_stats",
     "rwi_stats_running",
