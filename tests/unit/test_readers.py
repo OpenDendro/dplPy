@@ -803,3 +803,18 @@ def test_hash_in_series_id_is_not_a_comment(tmp_path):
     assert "SP#1" in df.columns and "SP#2" in df.columns   # not dropped as comments
     assert df.loc[1900, "SP#1"] == pytest.approx(1.00)
     assert df.loc[1901, "SP#2"] == pytest.approx(1.30)
+
+
+def test_hash_marked_note_row_is_stripped_not_counted_as_header(tmp_path):
+    # a '#### ...' annotation row (CDendro-style, as in ita065/prt004) sits between
+    # the header and data; it doesn't start with '#' and doesn't parse as data, so
+    # it must be stripped as a comment -- not counted as a 4th header line (which
+    # would trip the >3 guard).
+    lines = ["metadata header line %d here" % i for i in range(1, 4)]    # 3 real headers
+    lines += ["SER1    #### corrC GT 0.7, CDendro note;"]                # annotation row
+    lines += [_rwl_row("SER1", 1900, [100, 110, 999])]
+    p = tmp_path / "noterow.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    df = dpl.readers(str(p))                                             # not guard-rejected
+    assert list(df.columns) == ["SER1"]
+    assert df.attrs["dplpy_header_lines_skipped"] == 3                   # note row not a header

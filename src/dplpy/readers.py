@@ -262,9 +262,8 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
         if len(line.strip()) == 0:
             warnings.warn("Empty line found at line " + str(lineno) + "\n")
             continue
-        if line.lstrip().startswith("#"):
-            continue  # comment line ('#' as the first non-blank char). A '#' inside
-                      # a series ID (e.g. 'SP#1', 'GFI48C#H') is data, not a comment.
+        if _is_comment_line(line):
+            continue  # a '#'-comment or a '#'-marked note row (not a '#' inside an ID)
         clean_lines.append(line)
 
     # 2. Honour an explicit skip_lines against the cleaned stream.
@@ -545,7 +544,7 @@ def _sniff_format(filename, is_url):
         ln = ln.rstrip("\r\n")
         if len(ln.strip()) == 0:
             continue
-        if ln.lstrip().startswith("#"):        # comment line, not a '#' inside an ID
+        if _is_comment_line(ln):               # '#'-comment or '#'-marked note row
             continue
         sample.append(ln)
         if len(sample) >= 50:
@@ -696,6 +695,36 @@ def _parse_ws(line):
     year = int(tokens[1])                    # may raise ValueError
     values = _trim_trailing_junk(tokens[2:])
     return series_id, year, values
+
+
+def _parses_as_data(line):
+    """True if ``line`` parses as a Tucson data row (an id, a plausible year, values).
+
+    Used to tell a data row whose series ID contains '#' (e.g. 'SP#1', 'GFI48C#H')
+    from a '#'-marked note/annotation line that does not (e.g. a CDendro line
+    'BAZENA  #### corrC GT 0.7...'). The former is data; the latter is a comment.
+    """
+    for parser in (_parse_fixed, _parse_ws):
+        try:
+            _sid, yr, vals = parser(line)
+        except (ValueError, IndexError):
+            continue
+        if -12000 <= yr <= 12000 and vals:
+            return True
+    return False
+
+
+def _is_comment_line(line):
+    """A comment is a line whose first non-blank character is '#', or any other
+    '#'-bearing line that is not a valid data row (a '#'-marked note/annotation).
+
+    A '#' inside a real series ID is data (the row parses), so a parseable row is
+    never treated as a comment -- this keeps ITRDB series like 'SP#1' / 'GFI48C#H'
+    while still dropping interspersed annotation rows like 'BAZENA  #### ...'.
+    """
+    if line.lstrip().startswith("#"):
+        return True
+    return "#" in line and not _parses_as_data(line)
 
 
 def _parse_all(lines, method):
