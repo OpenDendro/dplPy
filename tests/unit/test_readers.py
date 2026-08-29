@@ -641,3 +641,58 @@ def test_future_year_warns_and_continues_in_salvage_mode(tmp_path):
         res = dpl.readers(str(p), on_error="warn")
     assert res is not None and int(res.index.max()) == 2999   # kept, not dropped
     assert any("future" in str(x.message) for x in w)
+
+
+# --- unreadable-value count in the success line + specific space-split warning ---
+# A fixed-width value like '1  065' is a space-split 1065 (a >=10 mm ring whose
+# digits are separated by spaces in its column). The reader cannot int-parse it,
+# so it sets the cell to NaN, counts it in the one-line success message, and warns
+# by name. It is warn-not-raise in BOTH modes (an isolated mangled cell is not a
+# structural failure).
+_SPLIT_RWL = [
+    "S1        1 TEST SITE                      TS",
+    "S1        2 TESTLAND SPECIES     1000 M ...  1900 1911",
+    "S1        3 TESTER",
+    "S1      1900   100   200   300   400   500   600   700   800   900   950",
+    "S1      1910   1501  065   999",
+]
+_CLEAN_RWL = [
+    "S1        1 TEST SITE                      TS",
+    "S1        2 TESTLAND SPECIES     1000 M ...  1900 1902",
+    "S1        3 TESTER",
+    "S1      1900   100   200   999",
+]
+
+
+def test_space_split_value_counted_and_named(tmp_path, capsys):
+    p = tmp_path / "split.rwl"
+    p.write_text("\n".join(_SPLIT_RWL) + "\n")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        df = dpl.readers(str(p), on_error="warn")
+    out = capsys.readouterr().out
+    assert df.attrs["dplpy_dropped"] == 1
+    assert "with 1 unreadable value set to NaN" in out       # singular, appended to success line
+    assert 1911 not in df["S1"].dropna().index               # the mangled cell became NaN
+    assert df["S1"].loc[1910] == pytest.approx(1.50)         # neighbours read fine
+    msgs = " ".join(str(x.message) for x in w)
+    assert "space-split" in msgs and "1065" in msgs          # warning names the pattern + recovery value
+
+
+def test_space_split_is_warn_not_raise(tmp_path):
+    # strict mode still reads the file -- an isolated non-integer cell is not fatal
+    p = tmp_path / "split.rwl"
+    p.write_text("\n".join(_SPLIT_RWL) + "\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = dpl.readers(str(p), on_error="raise")
+    assert df is not None and df.attrs["dplpy_dropped"] == 1
+
+
+def test_clean_file_reports_no_unreadable_clause(tmp_path, capsys):
+    p = tmp_path / "clean.rwl"
+    p.write_text("\n".join(_CLEAN_RWL) + "\n")
+    df = dpl.readers(str(p))
+    out = capsys.readouterr().out
+    assert df.attrs["dplpy_dropped"] == 0
+    assert "unreadable" not in out                           # clause omitted when nothing was dropped

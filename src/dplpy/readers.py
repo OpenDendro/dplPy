@@ -177,8 +177,10 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
     salvage_report = series_data.attrs.get("dplpy_salvage", [])
     hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
     meta = series_data.attrs.get("dplpy_metadata", None)
+    dropped = series_data.attrs.get("dplpy_dropped", 0)
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
+    series_data.attrs["dplpy_dropped"] = dropped
     if hdr_skipped is not None:
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
     if meta is not None:
@@ -211,6 +213,9 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
     if hdr_skipped:
         summary += (" (auto-detected " + str(hdr_skipped) + " header line"
                     + ("s" if hdr_skipped != 1 else "") + ")")
+    if dropped:
+        summary += (", with " + str(dropped) + " unreadable value"
+                    + ("s" if dropped != 1 else "") + " set to NaN")
     print(summary)
     return series_data
 
@@ -273,7 +278,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     parsed = read_rwl(clean_lines, on_error=on_error)
     if parsed is None:
         return None
-    rwl_data, precision, order, report = parsed
+    rwl_data, precision, order, report, dropped = parsed
 
     # 4. Assemble the dataframe. The index spans the first to last year with
     #    data; years with no row stay NaN (a deliberate departure from dplR,
@@ -282,6 +287,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if df is None:
         return None
     df.attrs["dplpy_salvage"] = report
+    df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
     if on_error == "warn" and report:
@@ -871,7 +877,7 @@ def read_rwl(lines, on_error="raise"):
     rwl_data = {}
     order = []
     neg_hits = []       # (series, year) for anomalous negatives -> NaN
-    nonint_hits = 0
+    nonint_cells = []   # (series, year, token) for non-integer tokens -> NaN
     identical_dups = 0  # cells duplicated with an identical value (copy-paste)
     year_src = {}       # sid -> {year: start-year of the row that wrote it}
     overlaps = []       # (sid, year, first_row_start, second_row_start)
@@ -908,7 +914,7 @@ def read_rwl(lines, on_error="raise"):
             try:
                 v = int(s)
             except ValueError:
-                nonint_hits += 1         # non-integer token: skip -> NaN
+                nonint_cells.append((sid, y, s))   # non-integer token -> NaN
                 continue
             if v < 0:
                 # Anomalous negative (not a stop marker): treat as missing.
@@ -1029,8 +1035,23 @@ def read_rwl(lines, on_error="raise"):
             "(a row or the file appears to have been duplicated, e.g. by copy-paste)"
         )
 
-    if nonint_hits:
-        warnings.warn(str(nonint_hits) + " non-integer value(s) could not be read and were set to NaN")
+    if nonint_cells:
+        # Distinguish the recognizable "space-split" case -- a large ring width
+        # (>= 1000, i.e. >= 10 mm) whose digits are separated by spaces inside its
+        # fixed-width field, e.g. '1  065' meaning 1065. dplPy does not guess these
+        # (neither does dplR, whose as.numeric() also returns NA), but names them so
+        # the loss is actionable rather than an opaque count.
+        split = [(sid, y, tok) for sid, y, tok in nonint_cells
+                 if " " in tok.strip() and re.sub(r"\s+", "", tok).lstrip("-").isdigit()]
+        msg = (str(len(nonint_cells)) + " non-integer value(s) could not be read "
+               "and were set to NaN")
+        if split:
+            ex = "; ".join(str(sid) + "@" + str(y) + " '" + tok + "'="
+                           + re.sub(r"\s+", "", tok) for sid, y, tok in split[:3])
+            more = " ..." if len(split) > 3 else ""
+            msg += ("; " + str(len(split)) + " look like space-split values whose digits "
+                    "are separated by spaces in the fixed-width field (e.g. " + ex + more + ")")
+        warnings.warn(msg)
 
     if neg_hits:
         preview = ", ".join(str(sid) + "@" + str(yr) for sid, yr in neg_hits[:5])
@@ -1049,4 +1070,5 @@ def read_rwl(lines, on_error="raise"):
     if len(order) == 0:
         return None
 
-    return rwl_data, precision, order, report
+    dropped = len(nonint_cells) + len(neg_hits)   # values the file had but couldn't be used
+    return rwl_data, precision, order, report, dropped
