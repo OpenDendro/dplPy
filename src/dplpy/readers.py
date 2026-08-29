@@ -238,6 +238,17 @@ def process_rwl_pandas(filename, skip_lines, header, on_error="raise"):
                                os.path.basename(filename))
 
 
+# A Tucson .rwl has at most 3 header/metadata lines before the first data row (the
+# ITRDB spec's site-name / region-species / investigators records; 0-2 also occur).
+# More than 3 means the file is not a clean Tucson .rwl: either a nonstandard file
+# (e.g. the fl0xx sites' accidentally doubled 3-line header) or an altogether
+# different format (most often a NOAA Template file -- a tab-delimited table under a
+# ~100-line "# ..." metadata header). Forcing those through the decadal grammar
+# yields silent garbage, so strict mode raises and salvage mode warns + returns None
+# when the header runs past this limit. A caller who is sure can pass header=False.
+_MAX_AUTO_HEADER = 3
+
+
 def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     """Shared pipeline for the file and URL readers: clean lines, resolve the
     header, parse, and assemble the Year-column dataframe (with salvage report on
@@ -270,6 +281,23 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
         start = 0
     else:
         start = _first_data_line_index(clean_lines)
+
+    # Guard: refuse a file whose header is too long to be a Tucson .rwl. This
+    # catches non-Tucson formats (e.g. NOAA Template files) before they are
+    # force-fit into the decadal grammar and returned as garbage. header=False
+    # (start forced to 0) bypasses the guard for a caller who is sure.
+    if start > _MAX_AUTO_HEADER:
+        msg = (source_name + " does not look like a Tucson .rwl file: " + str(start)
+               + " header/metadata lines precede the first data row (a Tucson .rwl "
+               "has at most 3). It may be a nonstandard file (e.g. a doubled header) "
+               "or a different format -- for example a NOAA Template file (a "
+               "tab-delimited table under a large '#' metadata header). If it really "
+               "is Tucson data, pass header=False to force the read.")
+        if on_error == "warn":
+            warnings.warn(msg + " Returning None.")
+            return None
+        raise ValueError(msg)
+
     header_block = clean_lines[:start]      # the lines auto-skipped as header
     clean_lines = clean_lines[start:]
     if len(clean_lines) == 0:
@@ -649,7 +677,12 @@ def _parse_fixed(line):
         idw, yrw = 8, 4                        # standard 8-char id + 4-char year
     series_id = line[:idw].strip()
     year = int(line[idw:idw + yrw])          # may raise ValueError
-    rest = line[idw + yrw:]
+    # The ITRDB decadal record holds exactly ten 6-char value fields (cols
+    # 13-72); cols 74-78 are an optional site ID and anything further is junk.
+    # Read only those ten fields so a nonstandard trailing column (e.g. a
+    # per-row value count) or a joined next record does not inflate the value
+    # count and force a fall back to whitespace parsing.
+    rest = line[idw + yrw:idw + yrw + 60]
     values = [rest[i:i + 6].strip() for i in range(0, len(rest), 6)]
     values = _trim_trailing_junk(values)
     return series_id, year, values
@@ -791,6 +824,40 @@ def _rename_overlapping_duplicates(rows):
     return rows, records
 
 
+def _looks_like_record(s):
+    """True if ``s`` begins a Tucson data record: an ID, a plausible year, a value."""
+    toks = s.split()
+    if len(toks) < 3:
+        return False
+    try:
+        yr = int(toks[1])
+    except ValueError:
+        return False
+    return -12000 <= yr <= 12000
+
+
+def _split_joined_records(line, _depth=0):
+    """Split a line where a stop marker is butted directly against a new core ID.
+
+    A missing line break in the file can join one series' terminal row to the
+    next series' first row, e.g. ``...   999FR-002  1660  ...``. Left alone this
+    collapses into a mis-tokenised row (the values of the second record land on
+    the first, inventing impossible years). We split at a stop marker (999 or
+    -9999) that sits at a field boundary (not inside a value) and is immediately
+    followed by a letter, but only when the remainder actually parses as a fresh
+    record -- so a normal trailing site ID or note is left untouched. Returns a
+    list of one or more lines.
+    """
+    if _depth >= 50:
+        return [line]
+    for m in re.finditer(r"(?<!\d)(?:999|-9999)(?=[A-Za-z])", line):
+        cut = m.end()
+        tail = line[cut:]
+        if _looks_like_record(tail):
+            return [line[:cut]] + _split_joined_records(tail, _depth + 1)
+    return [line]
+
+
 def read_rwl(lines, on_error="raise"):
     """Parse cleaned Tucson data lines into (rwl_data, precision, order, report).
 
@@ -810,6 +877,22 @@ def read_rwl(lines, on_error="raise"):
     """
     salvage = (on_error == "warn")
     report = []
+
+    # Repair joined records: a missing line break that butts a stop marker
+    # against the next series' ID (e.g. '...999FR-002  1660...') is split so both
+    # records parse independently instead of collapsing into a mis-tokenised line.
+    repaired = []
+    n_joined = 0
+    for ln in lines:
+        parts = _split_joined_records(ln)
+        n_joined += len(parts) - 1
+        repaired.extend(parts)
+    if n_joined:
+        warnings.warn(str(n_joined) + " joined record(s) split -- a stop marker was "
+                      "directly followed by a new series ID (a missing line break in "
+                      "the file)")
+    lines = repaired
+
     fixed_rows = _parse_all(lines, "fixed")
     if _rows_valid(fixed_rows):
         rows = fixed_rows

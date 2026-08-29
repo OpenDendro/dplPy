@@ -696,3 +696,95 @@ def test_clean_file_reports_no_unreadable_clause(tmp_path, capsys):
     out = capsys.readouterr().out
     assert df.attrs["dplpy_dropped"] == 0
     assert "unreadable" not in out                           # clause omitted when nothing was dropped
+
+
+# --- fixed-width value region capped at cols 13-72; joined-record splitting ----
+def _rwl_row(sid, year, vals):
+    return sid.ljust(8) + ("%4d" % year) + "".join("%6d" % v for v in vals)
+
+
+def test_trailing_count_column_ignored(tmp_path):
+    # a nonstandard per-row value-count past col 72 (as in germ012l) must not be
+    # read as an 11th value -- that used to force a whitespace fall-back and a
+    # spurious self-overlap.
+    lines = [
+        _rwl_row("SER1", 1900, [100, 110, 120, 130, 140, 150, 160, 170, 180, 190]) + "      10",
+        _rwl_row("SER1", 1910, [200, 999]),
+    ]
+    p = tmp_path / "count.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = dpl.readers(str(p), header=False, on_error="raise")   # no self-overlap raised
+    assert list(df.columns) == ["SER1"]
+    assert df["SER1"].loc[1900] == pytest.approx(1.00)             # 100 at 0.01 mm precision
+    assert int(df["SER1"].last_valid_index()) == 1910
+
+
+def test_joined_records_are_split(tmp_path):
+    # a missing line break joining SER1's terminal row to SER2's first row
+    joined = (_rwl_row("SER1", 1900, [100, 110, 120, 130, 140, 150, 160, 170, 180, 999])
+              + _rwl_row("SER2", 1910, [200, 210, 999]))
+    p = tmp_path / "joined.rwl"
+    p.write_text(joined + "\n")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        df = dpl.readers(str(p), header=False, on_error="raise")
+    assert set(df.columns) == {"SER1", "SER2"}
+    assert int(df["SER1"].last_valid_index()) == 1908             # 999 stop at 1909
+    assert int(df["SER2"].first_valid_index()) == 1910
+    assert any("joined record" in str(x.message) for x in w)
+
+
+def test_site_id_after_stop_is_not_split(tmp_path):
+    # a normal trailing site ID after the stop marker (no following year) must NOT
+    # be treated as a joined record
+    line = _rwl_row("SER1", 1900, [100, 110, 120, 130, 140, 150, 160, 170, 180, 999]) + "TRW1A"
+    p = tmp_path / "siteid.rwl"
+    p.write_text(line + "\n")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        df = dpl.readers(str(p), header=False, on_error="raise")
+    assert list(df.columns) == ["SER1"]
+    assert not any("joined record" in str(x.message) for x in w)
+
+
+# --- guard: refuse files with more than 3 header lines (not a Tucson .rwl) ------
+def test_over_long_header_is_refused(tmp_path):
+    # >3 metadata lines before data -> not a clean Tucson .rwl (a NOAA Template
+    # file has ~100; a doubled ITRDB header has 6). Strict raises, salvage -> None.
+    for n in (4, 10):
+        lines = ["metadata header line %d here" % i for i in range(1, n + 1)]
+        lines += [_rwl_row("SER1", 1900, [100, 110, 999])]
+        p = tmp_path / ("h%d.rwl" % n)
+        p.write_text("\n".join(lines) + "\n")
+        with pytest.raises(ValueError, match="does not look like a Tucson"):
+            dpl.readers(str(p))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            assert dpl.readers(str(p), on_error="warn") is None  # salvage -> None, not garbage
+
+
+def test_three_line_header_reads(tmp_path):
+    # the standard 3-line ITRDB header is the maximum and must still read
+    lines = ["metadata header line %d here" % i for i in range(1, 4)]     # 3 header lines
+    lines += [_rwl_row("SER1", 1900, [100, 110, 120, 999])]
+    p = tmp_path / "std_header.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    df = dpl.readers(str(p))
+    assert list(df.columns) == ["SER1"]
+    assert df.attrs["dplpy_header_lines_skipped"] == 3
+
+
+def test_header_false_bypasses_the_guard(tmp_path):
+    # header=False (caller is sure) must not trip the long-header guard
+    lines = ["metadata header line %d here" % i for i in range(1, 11)]
+    lines += [_rwl_row("SER1", 1900, [100, 110, 999])]
+    p = tmp_path / "forced.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            dpl.readers(str(p), header=False, on_error="warn")
+        except ValueError as e:
+            assert "does not look like a Tucson" not in str(e)     # guard not applied
