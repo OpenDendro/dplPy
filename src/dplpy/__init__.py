@@ -62,6 +62,7 @@ from .series_corr import series_corr
 from .interseries_corr import interseries_corr
 from .glk import glk, sgc
 from .read_ids import read_ids
+from .read_crn import read_crn
 from .tree_mean import tree_mean
 from .rwi_stats import rwi_stats, rwi_stats_running
 from .sensitivity import sens1, sens2
@@ -98,6 +99,7 @@ __all__ = [
     "glk",
     "sgc",
     "read_ids",
+    "read_crn",
     "tree_mean",
     "rwi_stats",
     "rwi_stats_running",
