@@ -788,3 +788,18 @@ def test_header_false_bypasses_the_guard(tmp_path):
             dpl.readers(str(p), header=False, on_error="warn")
         except ValueError as e:
             assert "does not look like a Tucson" not in str(e)     # guard not applied
+
+
+# --- '#' inside a series ID is data, not a comment (real ITRDB: SP#1, GFI..#H) --
+def test_hash_in_series_id_is_not_a_comment(tmp_path):
+    lines = [
+        "# a genuine comment line at the top",           # starts with '#' -> stripped
+        _rwl_row("SP#1", 1900, [100, 110, 999]),         # '#' inside the ID -> data, kept
+        _rwl_row("SP#2", 1900, [120, 130, 999]),
+    ]
+    p = tmp_path / "hashid.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    df = dpl.readers(str(p), on_error="warn")
+    assert "SP#1" in df.columns and "SP#2" in df.columns   # not dropped as comments
+    assert df.loc[1900, "SP#1"] == pytest.approx(1.00)
+    assert df.loc[1901, "SP#2"] == pytest.approx(1.30)

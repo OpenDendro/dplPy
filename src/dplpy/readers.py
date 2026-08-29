@@ -262,9 +262,9 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
         if len(line.strip()) == 0:
             warnings.warn("Empty line found at line " + str(lineno) + "\n")
             continue
-        hashpos = line.find("#")
-        if 0 <= hashpos <= 77:
-            continue  # comment line
+        if line.lstrip().startswith("#"):
+            continue  # comment line ('#' as the first non-blank char). A '#' inside
+                      # a series ID (e.g. 'SP#1', 'GFI48C#H') is data, not a comment.
         clean_lines.append(line)
 
     # 2. Honour an explicit skip_lines against the cleaned stream.
@@ -545,8 +545,7 @@ def _sniff_format(filename, is_url):
         ln = ln.rstrip("\r\n")
         if len(ln.strip()) == 0:
             continue
-        hashpos = ln.find("#")
-        if 0 <= hashpos <= 77:
+        if ln.lstrip().startswith("#"):        # comment line, not a '#' inside an ID
             continue
         sample.append(ln)
         if len(sample) >= 50:
