@@ -875,10 +875,16 @@ def _split_joined_records(line, _depth=0):
     followed by a letter, but only when the remainder actually parses as a fresh
     record -- so a normal trailing site ID or note is left untouched. Returns a
     list of one or more lines.
+
+    The stop marker must fall in the value region (column 12 onward): a '999'
+    inside a series ID (e.g. 'S999A') is not a stop marker, and splitting there
+    would wreck a perfectly good row (aus118/aus123's S999* cores).
     """
     if _depth >= 50:
         return [line]
     for m in re.finditer(r"(?<!\d)(?:999|-9999)(?=[A-Za-z])", line):
+        if m.start() < 12:                    # in the id/decade field, not a stop marker
+            continue
         cut = m.end()
         tail = line[cut:]
         if _looks_like_record(tail):
@@ -943,6 +949,45 @@ def read_rwl(lines, on_error="raise"):
     n_bad = sum(1 for r in rows if r is None)
     if n_bad:
         warnings.warn(str(n_bad) + " line(s) could not be parsed and were skipped")
+
+    # Column-misalignment guard (fixed-width). A value field that -- once stripped
+    # -- still contains an internal space means the decadal 6-char grid captured
+    # parts of two values: a shifted column (e.g. az606's '6  142', where 126 was
+    # truncated to 12 and 142 mis-captured) or a value written with embedded spaces
+    # (arge041's '1  065' = 1065). Either way the fixed-width record is corrupt and
+    # cannot be trusted. In a fixed-width format this is severe, so strict mode
+    # refuses the whole file; salvage NaNs the whole offending row (once the grid
+    # shifts, everything after the shift point is suspect) and keeps going. Checked
+    # BEFORE the overlap/duplicate analysis so it is reported as misalignment, not
+    # mislabelled as an overlap (which is how az606 used to fail).
+    def _row_misaligned(r):
+        return r is not None and any(" " in tok.strip() for tok in r[2])
+
+    misaligned = [r for r in rows if _row_misaligned(r)]
+    if misaligned:
+        def _bad_tok(r):
+            return next(t.strip() for t in r[2] if " " in t.strip())
+        ex = "; ".join("%s@%d '%s'" % (r[0], r[1], _bad_tok(r)) for r in misaligned[:3])
+        more = " ..." if len(misaligned) > 3 else ""
+        if not salvage:
+            raise ValueError(
+                "Cannot read file -- fixed-width column misalignment detected. A value "
+                "field contains embedded spaces, so the decadal columns are shifted and "
+                "the row cannot be reliably parsed: " + ex + more + ". This is a file "
+                "formatting defect (a value split across columns, or written with internal "
+                "spaces); dplPy will not guess it. Fix the file's column alignment and "
+                "read it again.")
+        # salvage: NaN the whole misaligned row(s); record once per affected series
+        seen = set()
+        for r in misaligned:
+            if r[0] not in seen:
+                seen.add(r[0])
+                report.append({"series": r[0], "issue": "column_misalignment",
+                               "action": "misaligned row(s) set to NaN",
+                               "detail": "a fixed-width value field held embedded spaces"})
+        rows = [None if _row_misaligned(r) else r for r in rows]
+        warnings.warn(str(len(misaligned)) + " misaligned fixed-width row(s) set to NaN "
+                      "(embedded spaces in a value field -- shifted columns): " + ex + more)
 
     # Salvage: rename the later block(s) of any duplicate series ID whose blocks
     # overlap in time (two cores sharing a code) so both are kept as distinct

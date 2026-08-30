@@ -643,12 +643,11 @@ def test_future_year_warns_and_continues_in_salvage_mode(tmp_path):
     assert any("future" in str(x.message) for x in w)
 
 
-# --- unreadable-value count in the success line + specific space-split warning ---
-# A fixed-width value like '1  065' is a space-split 1065 (a >=10 mm ring whose
-# digits are separated by spaces in its column). The reader cannot int-parse it,
-# so it sets the cell to NaN, counts it in the one-line success message, and warns
-# by name. It is warn-not-raise in BOTH modes (an isolated mangled cell is not a
-# structural failure).
+# --- fixed-width column misalignment ('1  065', shifted grids) ---------------
+# A value field that still holds a space once stripped (e.g. '1  065', or az606's
+# '6  142' where 126 was truncated to 12) means the fixed-width columns are shifted
+# and the row is corrupt. In a fixed-width format that is severe: strict refuses
+# the whole file, salvage NaNs the whole offending row and records it.
 _SPLIT_RWL = [
     "S1        1 TEST SITE                      TS",
     "S1        2 TESTLAND SPECIES     1000 M ...  1900 1911",
@@ -664,29 +663,29 @@ _CLEAN_RWL = [
 ]
 
 
-def test_space_split_value_counted_and_named(tmp_path, capsys):
+def test_embedded_space_value_raises_in_strict(tmp_path):
+    # a value with embedded spaces ('1  065') means a shifted/embedded fixed-width
+    # field -- a column misalignment. In a fixed-width format that is fatal, so
+    # strict mode refuses the whole file.
+    p = tmp_path / "split.rwl"
+    p.write_text("\n".join(_SPLIT_RWL) + "\n")
+    with pytest.raises(ValueError, match="misalignment"):
+        dpl.readers(str(p), on_error="raise")
+
+
+def test_embedded_space_value_is_nan_row_in_salvage(tmp_path):
+    # salvage NaNs the whole misaligned row (once the grid shifts, the rest is
+    # suspect), records it, and keeps the other decades / the rest of the batch.
     p = tmp_path / "split.rwl"
     p.write_text("\n".join(_SPLIT_RWL) + "\n")
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         df = dpl.readers(str(p), on_error="warn")
-    out = capsys.readouterr().out
-    assert df.attrs["dplpy_dropped"] == 1
-    assert "with 1 unreadable value set to NaN" in out       # singular, appended to success line
-    assert 1911 not in df["S1"].dropna().index               # the mangled cell became NaN
-    assert df["S1"].loc[1910] == pytest.approx(1.50)         # neighbours read fine
-    msgs = " ".join(str(x.message) for x in w)
-    assert "space-split" in msgs and "1065" in msgs          # warning names the pattern + recovery value
-
-
-def test_space_split_is_warn_not_raise(tmp_path):
-    # strict mode still reads the file -- an isolated non-integer cell is not fatal
-    p = tmp_path / "split.rwl"
-    p.write_text("\n".join(_SPLIT_RWL) + "\n")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        df = dpl.readers(str(p), on_error="raise")
-    assert df is not None and df.attrs["dplpy_dropped"] == 1
+    assert 1900 in df["S1"].dropna().index                    # the clean 1900 decade still read
+    assert 1910 not in df["S1"].dropna().index                # the misaligned 1910 row is gone
+    acts = [a for a in df.attrs["dplpy_salvage"] if a["issue"] == "column_misalignment"]
+    assert acts and acts[0]["series"] == "S1"
+    assert any("misaligned" in str(x.message) for x in w)
 
 
 def test_clean_file_reports_no_unreadable_clause(tmp_path, capsys):
@@ -818,3 +817,16 @@ def test_hash_marked_note_row_is_stripped_not_counted_as_header(tmp_path):
     df = dpl.readers(str(p))                                             # not guard-rejected
     assert list(df.columns) == ["SER1"]
     assert df.attrs["dplpy_header_lines_skipped"] == 3                   # note row not a header
+
+
+def test_999_inside_series_id_is_not_split(tmp_path):
+    # a series ID containing '999' (e.g. 'S999A', as in aus118/aus123's Huon pine
+    # cores) must NOT be split by the joined-record repair -- the '999' is in the
+    # ID field (column < 12), not a stop marker in the value region.
+    lines = ["metadata header line %d here" % i for i in range(1, 4)]
+    lines += [_rwl_row("S999A", 1900, [100, 110, 120, 999])]
+    p = tmp_path / "s999.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    df = dpl.readers(str(p))
+    assert "S999A" in df.columns and "S999" not in df.columns   # kept whole, not split
+    assert df.loc[1900, "S999A"] == pytest.approx(1.00)
