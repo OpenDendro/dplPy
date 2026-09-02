@@ -601,28 +601,34 @@ def _warn_salvage_summary(basename, report):
 
 
 def _looks_like_data(line):
-    """True if the line parses as a Tucson data row: an ID, an integer year, and
-    a numeric first measurement. Header/metadata lines fail because their first
-    field after the year is text (a site name, species, investigator, region).
-    Trailing notes on a data line are tolerated -- they are trimmed before the
-    first value is inspected -- which is why this is used (instead of the stricter
-    header heuristic) to find where the data begins."""
+    """True if the line parses as *fixed-width* Tucson data: an ID, an integer
+    year, and a numeric first measurement in the fixed value columns (13 on).
+
+    Classification is fixed-position ONLY -- we never fall back to whitespace
+    tokenising here. A genuine data row is fixed-width, so its measurements live
+    in the value columns; a header/metadata line has text there (a site name,
+    species, investigator), or nothing, even when a stray number sits in the
+    decade column (a street address, a distance -- e.g. '50km   1 54 km from
+    Ust...'). Whitespace tokenising used to turn that header line into a phantom
+    series ('50km', year 1, value 54); reading the value region by fixed position
+    instead keeps header lines out of the data. Trailing notes on a real data row
+    are tolerated: _trim_trailing_junk removes them before the first value is seen.
+    """
     if len(line) < 12:
         return False
-    for parser in (_parse_fixed, _parse_ws):
+    try:
+        _sid, _yr, vals = _parse_fixed(line)
+    except (ValueError, IndexError):
+        return False
+    for v in vals:
+        vs = v.strip()
+        if vs == "":
+            continue                 # skip leading blank (missing) fields
         try:
-            _sid, _yr, vals = parser(line)
-        except (ValueError, IndexError):
-            continue
-        for v in vals:
-            vs = v.strip()
-            if vs == "":
-                continue                 # skip leading blank (missing) fields
-            try:
-                int(vs)
-                return True              # first real measurement is numeric -> data
-            except ValueError:
-                return False             # first real field is text -> header/metadata
+            int(vs)
+            return True              # first real measurement is numeric -> data
+        except ValueError:
+            return False             # first real field is text -> header/metadata
     return False
 
 
@@ -663,14 +669,17 @@ def _parse_fixed(line):
     blanks holds its year position (dropping it would shift the rest of the
     decade); trailing blanks/notes are trimmed by _trim_trailing_junk.
 
-    A bunched 5-char negative year (a BC year < -999 written with no space
-    between ID and year, e.g. 'MNP262M-1262' = year -1262) is detected per line
-    -- a '-' in column 8 with column 12 filled -- and read as a 7-char ID + a
-    5-char year, the same handling dplR's `long` mode and read.tucson2 give the
-    long-chronology case. Without this the '-' lands in the ID field and the year
-    reads as +1262, which then trips the self-overlap check."""
-    if len(line) >= 12 and line[7] == '-' and line[11] != ' ':
-        idw, yrw = 7, 5                       # bunched 5-char BC year
+    A bunched negative (BC) year -- written with no space between the ID and the
+    year's minus sign, e.g. 'MNP262M-1262' (= -1262) or '600610 -990' (= -990) --
+    is detected per line by a '-' in column 8 followed by a digit, and read as a
+    7-char ID + a 5-char year field (cols 8-12), the same handling dplR's `long`
+    mode and read.tucson2 give the long-chronology case. Detecting it by width
+    alone (a full 5-char year that fills column 12) missed 4-char BC years like
+    '-990': the '-' then landed in the ID field ('600610 -') and the year read as
+    +990, silently splitting the series. int() strips the trailing space, so a
+    shorter year in the 5-char field (e.g. '-990 ') still parses correctly."""
+    if len(line) >= 9 and line[7] == '-' and line[8].isdigit():
+        idw, yrw = 7, 5                       # bunched BC year (any width)
     else:
         idw, yrw = 8, 4                        # standard 8-char id + 4-char year
     series_id = line[:idw].strip()
@@ -917,10 +926,19 @@ def read_rwl(lines, on_error="raise"):
     # records parse independently instead of collapsing into a mis-tokenised line.
     repaired = []
     n_joined = 0
+    joined_example = None
     for ln in lines:
         parts = _split_joined_records(ln)
+        if len(parts) > 1 and joined_example is None:
+            joined_example = ln.strip()[:60]
         n_joined += len(parts) - 1
         repaired.extend(parts)
+    if n_joined and not salvage:
+        raise ValueError(
+            "Cannot read file -- " + str(n_joined) + " joined record(s): a stop marker "
+            "is directly followed by a new series ID, i.e. a missing line break in the "
+            "file (e.g. '" + str(joined_example) + "'). Strict mode does not repair this; "
+            "fix the line break(s) or read with on_error='warn'.")
     if n_joined:
         warnings.warn(str(n_joined) + " joined record(s) split -- a stop marker was "
                       "directly followed by a new series ID (a missing line break in "
@@ -930,6 +948,24 @@ def read_rwl(lines, on_error="raise"):
     fixed_rows = _parse_all(lines, "fixed")
     if _rows_valid(fixed_rows):
         rows = fixed_rows
+    elif not salvage:
+        bad = [r for r in fixed_rows if r is not None
+               and len(r[2]) > (10 - (r[1] % 10)) + 1]
+        def _nfw_diag(r):
+            sid, yr, vals, k = r
+            shifted = any(" " in t.strip() for t in vals)
+            why = ("its values run together with embedded spaces, so the columns are "
+                   "shifted (often an ID that does not fill its 8 characters)") if shifted \
+                  else ("it carries more values than its decade allows, so the row is "
+                        "not decade-aligned")
+            return "series '%s' at year %d (%s)" % (sid, yr, why)
+        ex = "; ".join(_nfw_diag(r) for r in bad[:3]) if bad else "the columns are misaligned"
+        more = " ..." if len(bad) > 3 else ""
+        raise ValueError(
+            "Cannot read file -- the data does not parse as fixed-width Tucson columns: "
+            + ex + more + ". A valid .rwl is strictly fixed-width; strict mode does not "
+            "fall back to whitespace parsing to guess the values. Fix the column "
+            "alignment, or read with on_error='warn'.")
     else:
         ws_rows = _parse_all(lines, "ws")
         if _rows_valid(ws_rows):
@@ -960,23 +996,41 @@ def read_rwl(lines, on_error="raise"):
     # shifts, everything after the shift point is suspect) and keeps going. Checked
     # BEFORE the overlap/duplicate analysis so it is reported as misalignment, not
     # mislabelled as an overlap (which is how az606 used to fail).
+    # A row is misaligned if a value field, once stripped, still holds an internal
+    # space (two values captured in one 6-char cell -- az606/arge041), or if the ID
+    # or any value contains a TAB. A tab is a single character where the layout
+    # needs space padding, so it shifts the year and every value after it one column
+    # left; when it lands in the ID field the parsed ID keeps the tab (e.g. cana588
+    # 'moo07b<TAB>1', which then reads year 800 instead of 1800). Both mean the
+    # fixed-width grid is broken and the row cannot be trusted.
     def _row_misaligned(r):
-        return r is not None and any(" " in tok.strip() for tok in r[2])
+        if r is None:
+            return False
+        if "\t" in r[0]:                       # a TAB inside the ID field -> shifted columns
+            return True
+        return any(("\t" in tok) or (" " in tok.strip()) for tok in r[2])
 
     misaligned = [r for r in rows if _row_misaligned(r)]
     if misaligned:
-        def _bad_tok(r):
-            return next(t.strip() for t in r[2] if " " in t.strip())
-        ex = "; ".join("%s@%d '%s'" % (r[0], r[1], _bad_tok(r)) for r in misaligned[:3])
+        def _bad_detail(r):
+            sid, yr = r[0], r[1]
+            if "\t" in sid:
+                return "series '%s' at year %d (a TAB in the ID field)" % (
+                    sid.replace("\t", "<TAB>"), yr)
+            tok = next(t for t in r[2] if ("\t" in t) or (" " in t.strip()))
+            return "series '%s' at year %d (field '%s')" % (
+                sid, yr, tok.strip().replace("\t", "<TAB>"))
+        ex = "; ".join(_bad_detail(r) for r in misaligned[:3])
         more = " ..." if len(misaligned) > 3 else ""
         if not salvage:
             raise ValueError(
-                "Cannot read file -- fixed-width column misalignment detected. A value "
-                "field contains embedded spaces, so the decadal columns are shifted and "
-                "the row cannot be reliably parsed: " + ex + more + ". This is a file "
-                "formatting defect (a value split across columns, or written with internal "
-                "spaces); dplPy will not guess it. Fix the file's column alignment and "
-                "read it again.")
+                "Cannot read file -- fixed-width column misalignment detected. A field is "
+                "split across columns -- an embedded space in a value, or a TAB where the "
+                "layout needs space padding (a tab is one character, so it shifts the year "
+                "and every value after it) -- so the row cannot be reliably parsed: "
+                + ex + more + " (<TAB> marks a tab). This is a file formatting defect; "
+                "dplPy will not guess it. Fix the column alignment (replace any tabs with "
+                "spaces) and read it again.")
         # salvage: NaN the whole misaligned row(s); record once per affected series
         seen = set()
         for r in misaligned:
@@ -984,10 +1038,10 @@ def read_rwl(lines, on_error="raise"):
                 seen.add(r[0])
                 report.append({"series": r[0], "issue": "column_misalignment",
                                "action": "misaligned row(s) set to NaN",
-                               "detail": "a fixed-width value field held embedded spaces"})
+                               "detail": "a fixed-width field held an embedded space or TAB"})
         rows = [None if _row_misaligned(r) else r for r in rows]
         warnings.warn(str(len(misaligned)) + " misaligned fixed-width row(s) set to NaN "
-                      "(embedded spaces in a value field -- shifted columns): " + ex + more)
+                      "(embedded space or TAB -- shifted columns): " + ex + more)
 
     # Salvage: rename the later block(s) of any duplicate series ID whose blocks
     # overlap in time (two cores sharing a code) so both are kept as distinct
@@ -1168,22 +1222,36 @@ def read_rwl(lines, on_error="raise"):
                 "read it again."
             )
 
-    # Resolve precision for any series that never showed a stop marker: adopt
-    # the file's dominant precision (or 0.001 mm if the file has none at all),
-    # and warn so the assumption is visible.
+    # Resolve precision for any series that never showed a stop marker. Precision
+    # is encoded by the terminator (999 => 0.01 mm, -9999 => 0.001 mm), so a
+    # series missing its terminator has no precision of its own. The safety net:
+    # if OTHER series in the file are terminated, adopt the file's dominant
+    # precision for the missing one(s) and warn -- a safe inference, since a file
+    # is measured at one precision but for rare mixed-precision cases. Only when
+    # NO series in the whole file has a terminator is precision truly
+    # undeterminable; strict then refuses (naming the series) rather than guess.
     known = list(precision.values())
+    missing = [sid for sid in order if sid not in precision]
+    if missing and not known and not salvage:
+        ex = ", ".join(str(s) for s in missing[:5])
+        more = " ..." if len(missing) > 5 else ""
+        raise ValueError(
+            "Cannot read file -- no series has a stop marker (999 or -9999) anywhere in "
+            "the file, so the measurement precision cannot be determined for any series ("
+            + ex + more + "). Strict mode will not guess the precision with nothing to "
+            "infer it from; add the terminator(s) or read with on_error='warn'.")
     if known:
         dominant = Counter(known).most_common(1)[0][0]
     else:
         dominant = 1000
         warnings.warn("no stop markers found in file; assuming 0.001 mm precision")
-    for sid in order:
-        if sid not in precision:
-            precision[sid] = dominant
-            warnings.warn(
-                "series '" + str(sid) + "' has no stop marker; assuming "
-                + ("0.01" if dominant == 100 else "0.001") + " mm precision"
-            )
+    for sid in missing:
+        precision[sid] = dominant
+        warnings.warn(
+            "series '" + str(sid) + "' has no stop marker; assuming its precision is the "
+            "file's dominant " + ("0.01" if dominant == 100 else "0.001")
+            + " mm (inferred from the other series)"
+        )
 
     if identical_dups:
         warnings.warn(
@@ -1192,22 +1260,20 @@ def read_rwl(lines, on_error="raise"):
         )
 
     if nonint_cells:
-        # Distinguish the recognizable "space-split" case -- a large ring width
-        # (>= 1000, i.e. >= 10 mm) whose digits are separated by spaces inside its
-        # fixed-width field, e.g. '1  065' meaning 1065. dplPy does not guess these
-        # (neither does dplR, whose as.numeric() also returns NA), but names them so
-        # the loss is actionable rather than an opaque count.
-        split = [(sid, y, tok) for sid, y, tok in nonint_cells
-                 if " " in tok.strip() and re.sub(r"\s+", "", tok).lstrip("-").isdigit()]
-        msg = (str(len(nonint_cells)) + " non-integer value(s) could not be read "
-               "and were set to NaN")
-        if split:
-            ex = "; ".join(str(sid) + "@" + str(y) + " '" + tok + "'="
-                           + re.sub(r"\s+", "", tok) for sid, y, tok in split[:3])
-            more = " ..." if len(split) > 3 else ""
-            msg += ("; " + str(len(split)) + " look like space-split values whose digits "
-                    "are separated by spaces in the fixed-width field (e.g. " + ex + more + ")")
-        warnings.warn(msg)
+        # A measurement field that is not a whole number is a format violation (the
+        # series ID aside). Embedded-space tokens were already caught by the
+        # misalignment guard; anything left here is a genuinely non-numeric cell.
+        ex = "; ".join(str(sid) + "@" + str(y) + " '" + tok.strip() + "'"
+                       for sid, y, tok in nonint_cells[:3])
+        more = " ..." if len(nonint_cells) > 3 else ""
+        if not salvage:
+            raise ValueError(
+                "Cannot read file -- " + str(len(nonint_cells)) + " non-integer value(s) "
+                "in measurement fields (a ring measurement must be a whole number): "
+                + ex + more + ". Strict mode will not coerce these to NaN; correct the "
+                "file or read with on_error='warn'.")
+        warnings.warn(str(len(nonint_cells)) + " non-integer value(s) could not be read "
+                      "and were set to NaN: " + ex + more)
 
     if neg_hits:
         preview = ", ".join(str(sid) + "@" + str(yr) for sid, yr in neg_hits[:5])

@@ -720,15 +720,19 @@ def test_trailing_count_column_ignored(tmp_path):
     assert int(df["SER1"].last_valid_index()) == 1910
 
 
-def test_joined_records_are_split(tmp_path):
+def test_joined_records_raise_strict_split_salvage(tmp_path):
     # a missing line break joining SER1's terminal row to SER2's first row
     joined = (_rwl_row("SER1", 1900, [100, 110, 120, 130, 140, 150, 160, 170, 180, 999])
               + _rwl_row("SER2", 1910, [200, 210, 999]))
     p = tmp_path / "joined.rwl"
     p.write_text(joined + "\n")
+    # strict refuses: a missing line break is a file defect, not something to guess
+    with pytest.raises(ValueError, match="joined record"):
+        dpl.readers(str(p), header=False, on_error="raise")
+    # salvage splits both records apart and warns
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        df = dpl.readers(str(p), header=False, on_error="raise")
+        df = dpl.readers(str(p), header=False, on_error="warn")
     assert set(df.columns) == {"SER1", "SER2"}
     assert int(df["SER1"].last_valid_index()) == 1908             # 999 stop at 1909
     assert int(df["SER2"].first_valid_index()) == 1910
@@ -830,3 +834,101 @@ def test_999_inside_series_id_is_not_split(tmp_path):
     df = dpl.readers(str(p))
     assert "S999A" in df.columns and "S999" not in df.columns   # kept whole, not split
     assert df.loc[1900, "S999A"] == pytest.approx(1.00)
+
+
+# --- new strict/salvage behaviours (readers.py hardening, 2026-09) -------------
+
+def test_parse_fixed_bunched_bc_year_any_width():
+    # A bunched BC year must parse as negative whether it is 5 chars (-1000) or
+    # 4 chars (-990). The 4-char case used to mis-read as +990 (the '-' fell into
+    # the ID field), fragmenting long chronologies like turk029's Gordion series.
+    from dplpy.readers import _parse_fixed
+    sid, yr, _ = _parse_fixed("600610 -1000   150   160   170")
+    assert (sid, yr) == ("600610", -1000)
+    sid, yr, _ = _parse_fixed("600610 -990    150   160   170")
+    assert (sid, yr) == ("600610", -990)
+
+
+def test_header_line_with_leading_number_not_read_as_series(tmp_path):
+    # A 3-line ITRDB header whose line 1 carries a stray number in the decade
+    # column (a street address / distance) must be skipped, not read as a phantom
+    # series. Data/header classification is fixed-position only.
+    lines = [
+        "SITE   1 54 km from town                            SPP",
+        "SITE   2 Country      Species        100M 1234 5678  __   1900 2000",
+        "SITE   3 Investigator Name",
+        _rwl_row("SITE01", 1900, [100, 110, 999]),
+    ]
+    p = tmp_path / "hdr.rwl"
+    p.write_text("\n".join(lines) + "\n")
+    df = _read_quiet(str(p))
+    assert list(df.columns) == ["SITE01"]        # header line 1 is NOT a series
+
+
+def test_tab_in_id_raises_naming_series(tmp_path):
+    # A TAB after a 6-char ID shifts the columns (the parsed ID keeps the tab and
+    # the year mis-reads). Strict refuses and names the offending series.
+    rows = [
+        _rwl_row("moo07b", 1790, [100, 110, 120, 130, 140, 150, 160, 170, 180, 999]),
+        "moo07b\t1800" + "".join("%6d" % v for v in [200, 210, 999]),
+    ]
+    p = tmp_path / "tab.rwl"
+    p.write_text("\n".join(rows) + "\n")
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p), header=False, on_error="raise")
+    msg = str(e.value)
+    assert "TAB" in msg and "moo07b" in msg
+
+
+def test_disjoint_out_of_order_same_id_merges(tmp_path):
+    # The same ID in two disjoint blocks (later block earlier in time) is a
+    # legitimately segmented series -- merge it (as dplR does), do not raise.
+    rows = [
+        _rwl_row("AAA1", 1900, [100, 110, 999]),
+        _rwl_row("AAA1", 1850, [200, 210, 999]),
+    ]
+    p = tmp_path / "disjoint.rwl"
+    p.write_text("\n".join(rows) + "\n")
+    df = _read_quiet(str(p), header=False)
+    assert df.loc[1850, "AAA1"] == pytest.approx(2.00)   # 200 / 100 (999 => 0.01 mm)
+    assert df.loc[1900, "AAA1"] == pytest.approx(1.00)
+
+
+def test_missing_terminator_infers_precision_from_siblings(tmp_path):
+    # A series with no stop marker, when OTHER series in the file are terminated,
+    # adopts the file's dominant precision and warns -- it does not raise.
+    rows = [
+        _rwl_row("AAA1", 1900, [100, 110, -9999]),   # terminated -> 0.001 mm
+        _rwl_row("BBB1", 1900, [200, 210, 220]),     # no terminator
+    ]
+    p = tmp_path / "noterm.rwl"
+    p.write_text("\n".join(rows) + "\n")
+    with pytest.warns(UserWarning, match="no stop marker"):
+        df = dpl.readers(str(p), header=False, on_error="raise")
+    assert "BBB1" in df.columns
+    assert df.loc[1900, "BBB1"] == pytest.approx(0.200)  # 200 / 1000 (inferred)
+
+
+def test_no_terminators_anywhere_raises(tmp_path):
+    # When NO series has a stop marker, precision cannot be inferred -> strict
+    # refuses (naming the series).
+    rows = [
+        _rwl_row("AAA1", 1900, [100, 110, 120]),
+        _rwl_row("BBB1", 1900, [200, 210, 220]),
+    ]
+    p = tmp_path / "none.rwl"
+    p.write_text("\n".join(rows) + "\n")
+    with pytest.raises(ValueError, match="no series has a stop marker"):
+        dpl.readers(str(p), header=False, on_error="raise")
+
+
+def test_not_fixed_width_names_series(tmp_path):
+    # A row carrying more values than its decade allows (not decade-aligned) is
+    # refused with a message that names the offending series.
+    row = "AAA1    1693" + "".join("%6d" % v for v in range(10))   # decade 1693 + 10 vals
+    p = tmp_path / "nfw.rwl"
+    p.write_text(row + "\n")
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p), header=False, on_error="raise")
+    msg = str(e.value)
+    assert "fixed-width" in msg and "AAA1" in msg
