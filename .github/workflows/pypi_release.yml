@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.3.0
+      - v0.4.0
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.3.0
+          ref: v0.4.0
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,41 +37,58 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.3.0
-          release_name: v0.3.0
+          tag_name: v0.4.0
+          release_name: v0.4.0
           body: |
-            dplPy v0.3.0
-
-            This release contains major improvement to the Tucson (.rwl) reader,
-            validated against dplR 1.7.9 and the full ITRDB (9,300+ files, of
-            which ~99.8% read in strict mode and ~99.9% in salvage mode)
-
+            dplPy v0.4.0
+            
+            v0.4.0 brings standardization, chronology, crossdating, and agreement/
+            sensitivity tools up to dplR parity, and continues to enhance the reader.
+            
             New functionality:
-            - stict vs salvage readers mode implemented on_error="raise" or on_error="warn")
-            - readers(): automatic header detection -- no need to pass header=True;
-              the majority of ITRDB files now read with no extra arguments.
-            - readers(on_error="warn"): salvage mode -- recover partial data from a
-              malformed file instead of failing (drop a self-overlapping or
-              mixed-precision series, rename duplicated series IDs), with
-              a report on df.attrs["dplpy_salvage"]. Intended for batch processing
-            - readers() now accepts an http(s) URL directly (e.g. an ITRDB/NOAA
-              archive file); readers_url() is retained as a simple wrapper
-            - readers(format=...): read Tucson files with nonstandard suffixes
-              (.txt, etc.) via by determining content, or force you can the format
-            - metadata() and df.attrs["dplpy_metadata"] (prototype): extract site,
-              species, region, coordinates, year range and investigators from the
-              header, attempts a country-based hemisphere correction for coordinates
+            - Standardization: rcs() (regional curve standardization), ads()
+              (age-dependent spline; also fit="AgeDepSpline" in detrend), powt()
+              (power transformation), ssf() (simple signal-free), and CRUST-like
+              presets (preset="crust") for simple RCS/SSF.
+            - detrend(): dplR curve names (Spline, ModNegExp, ModHugershoff,
+              Mean, AgeDepSpline) with proper negexp->linear->mean fallback chain; a
+              ARSTAN-similar Hugershoff; allow fitting a list of curves (dplR); new
+              spline frequency response, return info, and verbose arguments;
+              method="ratio"/"difference" vocabulary fixed ("residual" now refers only
+              to the prewhitened residual chronology to avoid confusion).
+            - chron(): user-controllable AR order (max_lag, aic) when prewhitening;
+              unified std/res/ars/samp_depth column names across chron/chron_ars;
+              chron_stabilized() variance stabilization now has Briffa (MEANr) and
+              spline methods from ARSTAN.
+            - Crossdating: xdate() completely reworked to match dplR, with dplR-style
+              crossdating plots; interseries_corr()/series_corr() consolidated and
+              now much faster.
+            - Indices & tree-level: sens1()/sens2() (mean sensitivity), sorry Andy!
+              Gleichlaeufigkeit and synchronous growth changes, tree_mean()
+              (average cores to tree level first), sss() and rwi_stats() with a shared
+              common-interval helper, and pith offset helpers (po_to_wc/wc_to_po) from dplR
+            - fill_internal(): internal-NA infilling, including a direct port of Ed Cook's
+              ARSTAN method.
 
-            Robustness (all validated against dplR):
-            - Based heavily on Hung Nguyen's readers2.R improvements in dplR 
-            - Handles non-3-line headers, blank-field alignment, trailing notes,
-              exact-duplicate rows, and long negative (BCE) years
-            - Terminator-based precision detection fixes a silent bug that would
-              drop real 0.999 mm values. Mixed-precision series are detected now
-            - Duplicate series IDs are detected and, in strict mode, refused with
-              a specific message to the user
+            Input/Output:
+            - read_crn(): read Tucson chronology (.crn) files -- single, stacked
+              ARSTAN-like, and combined multi-site files
+            - writers(): substantial rewrite
 
-            Internal:
-            - readers_url folded into readers
+            Reader refinements (in addition to those in v0.3.0):
+            - Data/header classification is strict fixed-position (no whitespace
+              fallback), but a header line with a stray number no longer causes trouble
+              and a "#" inside a series ID is no longer read as a (Python) comment.
+            - Bunched negative (BCE) years of any width now parse correctly, so long
+              chronologies are now properly read.
+            - TAB characters and shifted columns are detected and, in strict mode,
+              refused with a message that names the offending series.
+            - Missing per-series precision is inferred from terminated siblings;
+              strict mode only refuses when no terminator exists anywhere in a file.
+            - Every strict-mode error now names the series and year responsible.
+
+            Other:
+            - Biweight robust mean (tbrm) and the correlation functions consolidated;
+              naming unified across dplPy; test suite expanded. 
           draft: false
           prerelease: true

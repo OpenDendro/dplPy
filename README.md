@@ -46,7 +46,7 @@ dplPy has been successfully tested thus far on Ubuntu 20, Ubuntu 22, macOS (Inte
 
 ## Current Version
 
-dplPy is currently at version `v0.3.0` - The project uses a development structure where all development will be on `main` (and therefore unstable) and pre/releases and updates to [Pypi](https://pypi.org/project/dplpy/) are first branched to a version number and then deployed (an action that is triggered by the creation of the branch).
+dplPy is currently at version `v0.4.0` - The project uses a development structure where all development will be on `main` (and therefore unstable) and pre/releases and updates to [Pypi](https://pypi.org/project/dplpy/) are first branched to a version number and then deployed (an action that is triggered by the creation of the branch).
 
 ## Installation
 
