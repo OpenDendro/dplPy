@@ -73,6 +73,7 @@ from .pith import po_to_wc, wc_to_po
 from .powt import powt
 from .rcs import rcs
 from .bai import bai_out, bai_in
+from .combine import combine_rwl
 from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
@@ -118,6 +119,7 @@ __all__ = [
     "rcs",
     "bai_out",
     "bai_in",
+    "combine_rwl",
     "ssf",
     "sss",
     "writers",
