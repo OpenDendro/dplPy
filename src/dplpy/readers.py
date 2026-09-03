@@ -175,11 +175,13 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         """.format(format=FORMAT)
         raise ValueError(errorMsg)
     salvage_report = series_data.attrs.get("dplpy_salvage", [])
+    combined = series_data.attrs.get("dplpy_combined", [])
     hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
     meta = series_data.attrs.get("dplpy_metadata", None)
     dropped = series_data.attrs.get("dplpy_dropped", 0)
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
+    series_data.attrs["dplpy_combined"] = combined
     series_data.attrs["dplpy_dropped"] = dropped
     if hdr_skipped is not None:
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
@@ -217,6 +219,16 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         summary += (", with " + str(dropped) + " unreadable value"
                     + ("s" if dropped != 1 else "") + " set to NaN")
     print(summary)
+
+    # Report any duplicate-ID series that were merged from more than one block
+    # (non-overlapping segments sharing a code), so the combining is visible.
+    if combined:
+        print("  " + str(len(combined)) + " series combined from non-overlapping "
+              "duplicate IDs (merged segments):")
+        for c in combined:
+            print("    " + str(c["series"]) + ": " + str(c["n_blocks"])
+                  + " segments spanning " + str(c["first_year"]) + " to "
+                  + str(c["last_year"]))
     return series_data
 
 
@@ -305,7 +317,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     parsed = read_rwl(clean_lines, on_error=on_error)
     if parsed is None:
         return None
-    rwl_data, precision, order, report, dropped = parsed
+    rwl_data, precision, order, report, dropped, combined = parsed
 
     # 4. Assemble the dataframe. The index spans the first to last year with
     #    data; years with no row stay NaN (a deliberate departure from dplR,
@@ -314,6 +326,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if df is None:
         return None
     df.attrs["dplpy_salvage"] = report
+    df.attrs["dplpy_combined"] = combined            # duplicate IDs merged from >1 block
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
@@ -1293,4 +1306,17 @@ def read_rwl(lines, on_error="raise"):
         return None
 
     dropped = len(nonint_cells) + len(neg_hits)   # values the file had but couldn't be used
-    return rwl_data, precision, order, report, dropped
+
+    # Combined series: a duplicate ID that appeared in more than one (contiguous)
+    # block and was merged into one series because the blocks do not conflict --
+    # disjoint years, or an identical repeat. (In strict mode a conflicting
+    # duplicate would already have raised above; in salvage mode a conflicting
+    # block was renamed, so anything still holding >1 block here was genuinely
+    # merged.) Reported on a successful read so the merge is not silent.
+    combined = []
+    for sid in order:
+        if block_count.get(sid, 1) >= 2 and rwl_data.get(sid):
+            yrs = rwl_data[sid].keys()
+            combined.append({"series": sid, "n_blocks": block_count[sid],
+                             "first_year": int(min(yrs)), "last_year": int(max(yrs))})
+    return rwl_data, precision, order, report, dropped, combined

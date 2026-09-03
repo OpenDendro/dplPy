@@ -106,3 +106,39 @@ def test_read_and_write_rwl_with_blanks(tmp_path):
         nm580_alt = dpl.readers(write_path + ".rwl")
 
     pd.testing.assert_frame_equal(nm580, nm580_alt)
+
+# --------------------------------------------------------------------------- #
+# Combined duplicate-ID series reporting: a series ID split into non-overlapping
+# blocks is merged into one series, and this is now reported on a successful read
+# (df.attrs['dplpy_combined']) rather than happening silently.
+# --------------------------------------------------------------------------- #
+import io
+import contextlib
+
+
+def test_combined_duplicate_series_reported_on_read():
+    # ca667 contains ST850A split into two disjoint segments that merge into one.
+    with contextlib.redirect_stdout(io.StringIO()):
+        df = dpl.readers("./tests/data/rwl/ca667.rwl")
+    combined = df.attrs.get("dplpy_combined", [])
+    assert any(c["series"] == "ST850A" and c["n_blocks"] == 2 for c in combined)
+    rec = [c for c in combined if c["series"] == "ST850A"][0]
+    # the reported span matches the merged column's actual extent
+    col = df["ST850A"].dropna()
+    assert rec["first_year"] == int(col.index.min())
+    assert rec["last_year"] == int(col.index.max())
+
+
+def test_normal_file_reports_no_combined_series():
+    with contextlib.redirect_stdout(io.StringIO()):
+        df = dpl.readers("./tests/data/rwl/co021.rwl")
+    assert df.attrs.get("dplpy_combined", []) == []
+
+
+def test_combined_series_printed_in_summary():
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        dpl.readers("./tests/data/rwl/ca667.rwl")
+    out = buf.getvalue()
+    assert "combined from non-overlapping duplicate IDs" in out
+    assert "ST850A" in out and "segments spanning" in out
