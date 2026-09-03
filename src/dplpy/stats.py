@@ -35,20 +35,13 @@ __license__ = "GNU GPLv3"
 
 # Create Summaries for Tucson (*rwl) files
 
-# Ignore the following comments:
-#Code to calculate ar1 when statsmodels can be imported
-#from statsmodels.tsa import stattools
-# x = 1-D array
-# Yield normalized autocorrelation function of number lags
-#autocorr = stattools.acf( x )
-
-# Get autocorrelation coefficient at lag = 1
-#autocorr_coeff = autocorr[1]
+# Note on ar1: dplR's rwl.stats reports the lag-1 autocorrelation (the acf
+# coefficient at lag 1), not an OLS AR(1) slope. We compute it directly (see
+# get_ar1 below), which matches dplR to machine precision.
 
 import pandas as pd
 from ._validate import _coerce_to_frame
 import numpy as np
-from statsmodels.tsa.ar_model import AutoReg
 
 def stats(inp: pd.DataFrame | str):
     """Generates summary statistics
@@ -94,7 +87,7 @@ def stats(inp: pd.DataFrame | str):
         stats["skew"].append(round(get_skew(data), 3))
         stats["kurtosis"].append(round(get_kurtosis(data), 3))
         stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
-        stats["ar1"].append(round(AutoReg(data.dropna().to_numpy(), 1).fit().params[1], 3))
+        stats["ar1"].append(round(get_ar1(data), 3))
 
 
     statistics = pd.DataFrame(stats)
@@ -122,3 +115,14 @@ def get_kurtosis(data_series):
     n = len(y)
     y2 = y - y.mean()
     return n * np.sum(y2 ** 4) / (np.sum(y2 ** 2) ** 2) * (1 - 1 / n) ** 2 - 3
+
+# gets lag-1 autocorrelation (acf coefficient at lag 1) for each series --
+# matches dplR rwl.stats' ar1. This is the (biased, mean-centred) autocorrelation
+#   r1 = sum_t(y2_t * y2_{t+1}) / sum_t(y2_t^2),   y2 = y - mean(y)
+# not an OLS AR(1) regression slope. The 1/n biased-estimator divisor cancels
+# between numerator and denominator, so this ratio *is* the acf at lag 1
+# (equivalently statsmodels.tsa.stattools.acf(y, nlags=1, adjusted=False)[1]).
+def get_ar1(data_series):
+    y = np.asarray(data_series.dropna(), dtype=float)
+    y2 = y - y.mean()
+    return np.sum(y2[1:] * y2[:-1]) / np.sum(y2 ** 2)

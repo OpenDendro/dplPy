@@ -2,14 +2,10 @@ import dplpy as dpl
 import pytest
 import pandas as pd
 from unittest.mock import patch, Mock
-from statsmodels.tsa.ar_model import AutoReg
 
 # Data being read:
 # SeriesA  1   10 30  50  70  90  110 130 150 999
 # SeriesB  1   20 40  60  80  100 120 140 160 999
-
-def mock_auto_reg_fit(self):
-    return Mock(**{"params":[1.0, 1.0]})
 
 def mock_readers_output(file_name):
     if file_name == "valid_file":
@@ -19,7 +15,6 @@ def mock_readers_output(file_name):
                                                     name="Year"))
 
 
-# Need to mock autoreg
 # Need to mock output of readers
 
 import importlib
@@ -27,7 +22,6 @@ _m_stats = importlib.import_module("dplpy.stats")
 _m_readers = importlib.import_module("dplpy.readers")
 
 @patch.object(_m_readers, 'readers')
-@patch.object(AutoReg, 'fit', new=mock_auto_reg_fit)
 def test_stats_with_inp_string(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
     
@@ -41,7 +35,7 @@ def test_stats_with_inp_string(mock_readers: Mock):
                                      "skew": [0.0, 0.0],
                                      "kurtosis": [-1.651, -1.651],
                                      "gini": [0.328, 0.292],
-                                     "ar1": [1.0, 1.0]
+                                     "ar1": [0.625, 0.625]
                                      },
                                 index=[1, 2])
     results = dpl.stats("valid_file")
@@ -51,7 +45,6 @@ def test_stats_with_inp_string(mock_readers: Mock):
 
 
 @patch.object(_m_readers, 'readers')
-@patch.object(AutoReg, 'fit', new=mock_auto_reg_fit)
 def test_stats_with_inp_df(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
     
@@ -65,7 +58,7 @@ def test_stats_with_inp_df(mock_readers: Mock):
                                      "skew": [0.0, 0.0],
                                      "kurtosis": [-1.651, -1.651],
                                      "gini": [0.328, 0.292],
-                                     "ar1": [1.0, 1.0]
+                                     "ar1": [0.625, 0.625]
                                      },
                                 index=[1, 2])
     
@@ -101,3 +94,18 @@ def test_get_kurtosis_matches_dplR_formula():
     y = x.to_numpy(); n = len(y); y2 = y - y.mean()
     expected = n * np.sum(y2**4) / (np.sum(y2**2)**2) * (1 - 1/n)**2 - 3
     assert get_kurtosis(x) == pytest.approx(expected)
+
+
+def test_get_ar1_is_lag1_autocorrelation():
+    # dplR rwl.stats' ar1 is the acf at lag 1 (biased, mean-centred), NOT an OLS
+    # AR(1) slope:  r1 = sum(y2_t*y2_{t+1}) / sum(y2_t^2),  y2 = y - mean(y)
+    import numpy as np
+    from dplpy.stats import get_ar1
+    x = pd.Series([0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    y = x.to_numpy(); y2 = y - y.mean()
+    expected = np.sum(y2[1:] * y2[:-1]) / np.sum(y2**2)
+    assert get_ar1(x) == pytest.approx(expected)
+    assert round(get_ar1(x), 3) == 0.625
+    # matches statsmodels' acf(adjusted=False) at lag 1
+    from statsmodels.tsa.stattools import acf
+    assert get_ar1(x) == pytest.approx(acf(y, nlags=1, adjusted=False, fft=False)[1])
