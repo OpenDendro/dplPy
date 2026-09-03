@@ -11,7 +11,7 @@ def _ca533():
 def test_stats_shape():
     st = dpl.stats(_ca533())
     assert list(st.columns) == ["series", "first", "last", "year", "mean",
-                                "median", "stdev", "skew", "gini", "ar1"]
+                                "median", "stdev", "skew", "kurtosis", "gini", "ar1"]
     assert len(st) == 34                                  # one row per series
 
 

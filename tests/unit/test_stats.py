@@ -1,4 +1,5 @@
 import dplpy as dpl
+import pytest
 import pandas as pd
 from unittest.mock import patch, Mock
 from statsmodels.tsa.ar_model import AutoReg
@@ -38,6 +39,7 @@ def test_stats_with_inp_string(mock_readers: Mock):
                                      "median": [0.8, 0.9],
                                      "stdev": [0.49, 0.49],
                                      "skew": [0.0, 0.0],
+                                     "kurtosis": [-1.651, -1.651],
                                      "gini": [0.328, 0.292],
                                      "ar1": [1.0, 1.0]
                                      },
@@ -61,6 +63,7 @@ def test_stats_with_inp_df(mock_readers: Mock):
                                      "median": [0.8, 0.9],
                                      "stdev": [0.49, 0.49],
                                      "skew": [0.0, 0.0],
+                                     "kurtosis": [-1.651, -1.651],
                                      "gini": [0.328, 0.292],
                                      "ar1": [1.0, 1.0]
                                      },
@@ -74,3 +77,27 @@ def test_stats_with_inp_df(mock_readers: Mock):
     results = dpl.stats(input_df)
     mock_readers.assert_not_called()
     pd.testing.assert_frame_equal(results, expected_df)
+
+
+def test_stats_median_3dp_and_kurtosis_present():
+    # median must round to 3 dp (a 2-dp round would turn 0.285 into 0.28/0.29),
+    # and kurtosis is now reported (matching dplR rwl.stats), between skew and gini.
+    import warnings
+    df = pd.DataFrame({"S": [0.10, 0.20, 0.28, 0.29, 0.40, 0.50]},
+                      index=pd.Index([1, 2, 3, 4, 5, 6], name="Year"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = dpl.stats(df)
+    assert list(res.columns).index("kurtosis") == list(res.columns).index("skew") + 1
+    assert list(res.columns).index("kurtosis") == list(res.columns).index("gini") - 1
+    assert res["median"].iloc[0] == pytest.approx(0.285)   # 3-dp, not 0.28/0.29
+
+
+def test_get_kurtosis_matches_dplR_formula():
+    # excess kurtosis: n*sum(y2^4)/(sum(y2^2)^2)*(1-1/n)^2 - 3   (dplR rwl.stats kurt)
+    import numpy as np
+    from dplpy.stats import get_kurtosis
+    x = pd.Series([0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    y = x.to_numpy(); n = len(y); y2 = y - y.mean()
+    expected = n * np.sum(y2**4) / (np.sum(y2**2)**2) * (1 - 1/n)**2 - 3
+    assert get_kurtosis(x) == pytest.approx(expected)

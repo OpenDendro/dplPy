@@ -56,8 +56,8 @@ def stats(inp: pd.DataFrame | str):
     Extended Summary
     ----------------
     Generates summary statistics for .RWL and .CSV format files. 
-    It outputs a dataframe with 'first', 'last', 'year', 'mean', 'median', 'stdev', 
-    'skew', 'gini', 'ar1' for each series in data file.
+    It outputs a dataframe with 'first', 'last', 'year', 'mean', 'median', 'stdev',
+    'skew', 'kurtosis', 'gini', 'ar1' for each series in data file.
     
     Parameters
     ----------
@@ -81,7 +81,7 @@ def stats(inp: pd.DataFrame | str):
     series_data = _coerce_to_frame(inp)
 
         
-    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "gini":[], "ar1":[]}
+    stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "kurtosis":[], "gini":[], "ar1":[]}
 
     for series_name, data in series_data.items():
         stats["series"].append(series_name)
@@ -89,9 +89,10 @@ def stats(inp: pd.DataFrame | str):
         stats["last"].append(data.last_valid_index())
         stats["year"].append(stats["last"][-1] - stats["first"][-1] + 1)
         stats["mean"].append(round(data.mean(), 3))
-        stats["median"].append(round(data.median(), 2))
+        stats["median"].append(round(data.median(), 3))
         stats["stdev"].append(round(data.std(), 3))
         stats["skew"].append(round(get_skew(data), 3))
+        stats["kurtosis"].append(round(get_kurtosis(data), 3))
         stats["gini"].append(round(get_gini(data.dropna().to_numpy()), 3))
         stats["ar1"].append(round(AutoReg(data.dropna().to_numpy(), 1).fit().params[1], 3))
 
@@ -113,3 +114,11 @@ def get_gini(data_array):
 # gets skew values for each series
 def get_skew(data_series):
     return (((data_series - data_series.mean()) / data_series.std()) ** 3).mean()
+
+# gets (excess) kurtosis for each series -- matches dplR rwl.stats' kurt():
+#   n * sum(y2^4) / (sum(y2^2)^2) * (1 - 1/n)^2 - 3,  y2 = y - mean(y)
+def get_kurtosis(data_series):
+    y = np.asarray(data_series.dropna(), dtype=float)
+    n = len(y)
+    y2 = y - y.mean()
+    return n * np.sum(y2 ** 4) / (np.sum(y2 ** 2) ** 2) * (1 - 1 / n) ** 2 - 3
