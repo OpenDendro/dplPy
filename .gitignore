@@ -118,3 +118,6 @@ dmypy.json
 
 # Local working docs (reviews, plans) -- kept with the code, never published
 /dev/
+
+# dplR comparison notebooks (require R + dplR + rpy2; kept local for now)
+/notebooks/dplR_comparison/

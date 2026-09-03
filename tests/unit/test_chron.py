@@ -6,7 +6,7 @@ from unittest.mock import patch, Mock
 def mock_tbrm_out(inp):
     return sum(inp)
 
-def mock_ar_func_out(inp_series, max_lag=5, aic=True):
+def mock_ar_func_out(inp_series, max_lag=10, aic=True, method="yw", first_aic_min=False):
     inp_series += 0.01
     return inp_series
 

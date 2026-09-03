@@ -32,6 +32,8 @@ def test_chron_prewhiten_no_biweight():
 def test_chron_prewhiten_with_biweight():
     res = dpl.chron(_ca533(), biweight=True, prewhiten=True, plot=False)
     assert list(res.columns) == ["std", "res", "samp_depth"]
-    assert res["res"].iloc[-1] == pytest.approx(0.459053, abs=1e-5)
+    # dplR-validated: chron() prewhitens with Yule-Walker (order.max=10), matching
+    # dplR chron(prewhiten=TRUE, method="yule-walker", order.max=10) to <1e-6.
+    assert res["res"].iloc[-1] == pytest.approx(0.466448, abs=1e-5)
     # the residual chronology's first p values are NaN (AR warm-up)
     assert res["res"].notna().sum() > 0

@@ -43,7 +43,7 @@ from .autoreg import ar_func
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
-          max_lag=5, aic=True):
+          max_lag=10, aic=True, ar_method="yw", first_aic_min=False):
     """Creates a mean value chronology for a dataset of tree-ring widths.
 
     Extended Summary
@@ -67,13 +67,26 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
         chronology
     plot : boolean, default True
         plot the results
-    max_lag : int, default 5
-        when ``prewhiten`` is True, the maximum AR order considered (dplR's
-        ar() order.max). Note dplR's own default is floor(10*log10(n)); dplPy
-        keeps 5 for backward compatibility.
+    max_lag : int, default 10
+        when ``prewhiten`` is True, the maximum AR order considered. The default
+        of 10 follows ARSTAN's convention (and matches chron_ars). dplR's own
+        chron() instead forwards to ar() whose default order.max is
+        floor(10*log10(n)) (~27 for a 500-yr series), so to reproduce dplR's
+        chron() exactly, pass max_lag=floor(10*log10(n)).
     aic : boolean, default True
         when ``prewhiten`` is True, select the AR order by AIC up to ``max_lag``
         (dplR's ar() aic=TRUE). If False, fit a fixed AR of order ``max_lag``.
+    ar_method : {"yw", "ols"}, default "yw"
+        AR estimator used for prewhitening. "yw" (Yule-Walker) matches R's ar()
+        default and reproduces dplR's residual chronology to machine precision at
+        the same order; "ols" (statsmodels AutoReg, conditional least squares)
+        matches R's ar(method="ols"). chron_ars() also uses Yule-Walker.
+    first_aic_min : boolean, default False
+        AR order-selection rule when ``aic`` is True. False takes the global AIC
+        minimum (R's ar() behaviour, so chron() reproduces dplR's chron()); True
+        takes the first local AIC minimum -- ARSTAN's rule, shared with
+        chron_ars() -- which is more parsimonious (it rarely selects an order
+        above ~7, so ``max_lag`` seldom binds) at the cost of a little AIC.
 
     Returns
     -------
@@ -115,7 +128,8 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
 
     if prewhiten:
         whitened_means = get_whitened_chron_info(rwi_data, chron_data, biweight,
-                                                 max_lag, aic)
+                                                 max_lag, aic, method=ar_method,
+                                                 first_aic_min=first_aic_min)
         chron_res = pd.concat([chron_res, pd.Series(data=whitened_means, name="res")], axis=1)
     else:
         whitened_means = None
@@ -147,13 +161,15 @@ def get_chron_info(chron_data, biweight):
 
 # Does the work of creating a chronology when the data has to be fit to an AR model
 # first (i.e. prewhitened).
-def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=5, aic=True):
+def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=10, aic=True,
+                            method="yw", first_aic_min=False):
     whitened_data = {}
     ar_fit_data = {}
 
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
-        ar_fit_data[series] = ar_func(series_data, max_lag=max_lag, aic=aic)
+        ar_fit_data[series] = ar_func(series_data, max_lag=max_lag, aic=aic,
+                                      method=method, first_aic_min=first_aic_min)
 
         for year, value in ar_fit_data[series].items():
             if year not in whitened_data:

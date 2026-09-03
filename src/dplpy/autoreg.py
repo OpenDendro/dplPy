@@ -33,7 +33,7 @@ import pandas as pd
 import numpy as np
 import warnings
 
-def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True) -> (pd.DataFrame | pd.Series):
+def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=False) -> (pd.DataFrame | pd.Series):
     """Auto Regressive (AR) functions 
       
     Extended Summary
@@ -70,20 +70,20 @@ def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True) -> (pd.DataFram
         start_df = pd.DataFrame(index=pd.Index(data.index))
         to_concat = [start_df]
         for column in data.columns:
-            to_concat.append(ar_func_series(data[column], max_lag, aic))
+            to_concat.append(ar_func_series(data[column], max_lag, aic, method=method, first_aic_min=first_aic_min))
         res = pd.concat(to_concat, axis=1)
         return res
     elif isinstance(data, pd.Series):
-        res = ar_func_series(data, max_lag, aic)
+        res = ar_func_series(data, max_lag, aic, method=method, first_aic_min=first_aic_min)
         return res
     else:
         raise TypeError("Data argument should be either pandas dataframe or pandas series.")
 
 # This function returns residuals plus mean of the best fit AR
 # model of the data.
-def ar_func_series(data: pd.Series, max_lag, aic=True) -> pd.Series:
+def ar_func_series(data: pd.Series, max_lag, aic=True, method="ols", first_aic_min=False) -> pd.Series:
     nullremoved_data = data.dropna()
-    pars = autoreg(nullremoved_data, max_lag, aic)
+    pars = autoreg(nullremoved_data, max_lag, aic, method=method, first_aic_min=first_aic_min)
     
     y = nullremoved_data
     
@@ -99,7 +99,7 @@ def ar_func_series(data: pd.Series, max_lag, aic=True) -> pd.Series:
     return res
 
 
-def autoreg(data: pd.Series, max_lag=5, aic=True):
+def autoreg(data: pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=False):
     """ Auto Regressive (AR) functions
     
     Extended Summary
@@ -135,11 +135,22 @@ def autoreg(data: pd.Series, max_lag=5, aic=True):
     if not isinstance(data, pd.Series):
         raise TypeError("Data argument should be pandas series. Received " + str(type(data)) + " instead.")
 
-    
+    if method not in ("ols", "yw"):
+        raise ValueError("method must be 'ols' or 'yw', got '" + str(method) + "'")
+
     max_allowable_lag = len(data.dropna())//2 - 1
     max_lag_used = max_lag if max_lag <= max_allowable_lag else max_allowable_lag
 
-    # Need to change this to only ignore specific warnings instead of all
+    # Yule-Walker path -- matches R's ar(method="yule-walker") (dplR's default,
+    # and what chron() uses so its residual chronology matches dplR). Returned in
+    # the same [intercept, phi_1..phi_p] layout as the OLS path so fitted_values()
+    # and the residual+mean convention downstream are unchanged.
+    if method == "yw":
+        return _yw_params_aic(data.dropna().to_numpy(dtype=float), max_lag_used, aic,
+                              first_aic_min=first_aic_min)
+
+    # OLS path -- matches R's ar(method="ols"). statsmodels AutoReg is conditional
+    # least squares; ar_select_order picks the order by AIC up to max_lag.
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         if aic:
@@ -150,6 +161,70 @@ def autoreg(data: pd.Series, max_lag=5, aic=True):
             # fit a fixed AR of order max_lag (dplR ar(aic=FALSE, order.max=...))
             results = AutoReg(data.dropna(), lags=max(max_lag_used, 1)).fit()
     return results.params
+
+
+def _yw_params_aic(x, max_lag, aic=True, first_aic_min=False):
+    """Yule-Walker AR fit matching R's ar(method="yule-walker").
+
+    Uses the Levinson-Durbin recursion on the biased (divisor-n) autocovariances,
+    selecting the order by AIC (n*log(var_p) + 2p, R's criterion) up to ``max_lag``
+    when ``aic`` is True, else a fixed order ``max_lag``. Verified against R to
+    ~1e-15 in both the selected order and the coefficients. Returns parameters as
+    ``[intercept, phi_1, ..., phi_p]`` where intercept = mean*(1 - sum(phi)), so
+    the array plugs straight into fitted_values() like the OLS coefficients.
+
+    When ``aic`` is True, ``first_aic_min`` chooses between two order-selection
+    rules: False (default) takes the GLOBAL AIC minimum -- R's ar() behaviour, so
+    chron() reproduces dplR's chron(); True takes the FIRST LOCAL AIC minimum (the
+    first order after which AIC turns back up), which is ARSTAN's rule (and what
+    chron_ars uses via firstAICmin). The first-local rule is more parsimonious --
+    on real collections it rarely selects an order above ~7 -- at the cost of a
+    little AIC. The two agree whenever the AIC minimum is not a late, shallow one.
+    """
+    x = x[~np.isnan(x)]
+    n = len(x)
+    m = float(np.mean(x)) if n else 0.0
+    xd = x - m
+    ml = int(min(max_lag, n - 1)) if n > 1 else 0
+    if ml < 1 or xd @ xd == 0:
+        return np.array([m])                       # order 0: intercept only
+    # biased autocovariances r[0..ml]
+    r = np.array([np.dot(xd[:n - k], xd[k:]) / n for k in range(ml + 1)])
+    # Levinson-Durbin, tracking AIC and coefficients at each order
+    aics = [n * np.log(r[0])]
+    phis = [np.zeros(0)]
+    v = r[0]
+    phi = np.zeros(0)
+    for k in range(1, ml + 1):
+        acc = r[k] - (np.dot(phi, r[k - 1:0:-1]) if k > 1 else 0.0)
+        refl = acc / v
+        phin = np.empty(k)
+        if k > 1:
+            phin[:k - 1] = phi - refl * phi[::-1]
+        phin[k - 1] = refl
+        v = v * (1.0 - refl * refl)
+        phi = phin
+        aics.append(n * np.log(v) + 2 * k)
+        phis.append(phi.copy())
+    if not aic:
+        p = ml
+    elif first_aic_min:
+        p = _first_aic_min(aics)                    # ARSTAN rule (as chron_ars)
+    else:
+        p = int(np.argmin(aics))                    # global AIC min (R's ar())
+    phi_p = phis[p]
+    return np.concatenate(([m * (1.0 - float(np.sum(phi_p)))], phi_p))
+
+
+def _first_aic_min(aics):
+    """Order of the first local AIC minimum: the first order after which AIC turns
+    back up (or order 0 if AIC already rises from 0). Mirrors chron_ars/dplR's
+    firstAICmin. If AIC never turns up within max_lag (monotone decreasing), fall
+    back to the last (highest) order -- there is no earlier local minimum."""
+    for k in range(len(aics) - 1):
+        if aics[k] < aics[k + 1]:
+            return k
+    return len(aics) - 1
 
 # This function calculates the in-sample predicted values of a series,
 # given an array containing the original data and the parameters for
