@@ -29,6 +29,12 @@ dependencies=[
     "scipy>=1.13.0"
 ]
 
+# Optional extras. LiPD import/export is built on `pylipd`, which most dplPy
+# users don't need, so it is not a core dependency. Install it with:
+#     pip install "dplpy[lipd]"
+[project.optional-dependencies]
+lipd = ["pylipd>=1.5,<2"]
+
 # Console entry point: installs a `dplpy` command that calls dplpy.cli:main.
 # dplPy is primarily a library (`import dplpy as dpl`); this is a small
 # convenience CLI (version / help / open the manual).

@@ -45,6 +45,7 @@ __license__ = "GNU GPLv3"
 import pandas as pd
 import numpy as np
 from ._validate import _require_dataframe
+from .site_metadata import SiteMetadata
 
 def writers(data: pd.DataFrame, label: str, format: str, header=None,
             chronology_type="standard", column="std", prec=0.001, gaps=-99,
@@ -255,8 +256,9 @@ def write_crn(chron_data, file, header=None, chronology_type="standard", column=
     column (``column``, default 'std') and a 'samp_depth' column, indexed by
     year. Index values are written as integers = round(index, 3) * 1000 (so 1000
     is mean growth), with the sample depth alongside, in the ITRDB decadal layout;
-    the missing-value code is 9990. ``header`` (a dict of site metadata) is
-    required, and populates the three ITRDB header records.
+    the missing-value code is 9990. ``header`` populates the three ITRDB header
+    records; it may be a plain dict (keys below) or a ``SiteMetadata`` object
+    (e.g. ``dpl.SiteMetadata.from_rwl(rwl)``), which is rendered to that dict.
     """
     if column not in chron_data.columns:
         raise ValueError("chronology column '" + str(column) + "' not found; "
@@ -264,9 +266,14 @@ def write_crn(chron_data, file, header=None, chronology_type="standard", column=
     if "samp_depth" not in chron_data.columns:
         raise ValueError("chronology must have a 'samp_depth' column -- pass the "
                          "output of dpl.chron().")
+    # Accept a SiteMetadata (the shared metadata object) as well as a plain dict.
+    # A SiteMetadata is rendered to the .crn header dict; a dict is used as-is.
+    if isinstance(header, SiteMetadata):
+        header = header.to_crn_header()
     if not isinstance(header, dict):
-        raise ValueError("writing a .crn file requires a 'header' dict of site "
-                         "metadata with keys: " + ", ".join(_CRN_HEADER_KEYS))
+        raise ValueError("writing a .crn file requires a 'header' dict (or a "
+                         "SiteMetadata) of site metadata with keys: "
+                         + ", ".join(_CRN_HEADER_KEYS))
     missing = [k for k in _CRN_HEADER_KEYS if k not in header]
     if missing:
         raise ValueError("header is missing required key(s): " + ", ".join(missing))

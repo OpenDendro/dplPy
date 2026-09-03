@@ -74,6 +74,7 @@ from .rcs import rcs
 from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
+from .site_metadata import SiteMetadata
 from .cli import help, readme
 
 __all__ = [
@@ -114,6 +115,7 @@ __all__ = [
     "ssf",
     "sss",
     "writers",
+    "SiteMetadata",
     "help",
     "readme",
 ]
