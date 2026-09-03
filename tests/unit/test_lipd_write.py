@@ -119,3 +119,54 @@ def test_bad_column_raises(tmp_path):
 
 def test_to_lipd_is_exported():
     assert hasattr(dpl, "to_lipd")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2: multiple chronologies, running stats, publication, provenance
+# --------------------------------------------------------------------------- #
+def _chron_ars(rwl_path="tests/data/rwl/ca533.rwl"):
+    rwl = _quiet(dpl.readers, rwl_path)
+    rwi = _quiet(dpl.detrend, rwl.copy(), fit="Spline", method="ratio")
+    ars = _quiet(dpl.chron_ars, rwi)
+    stab = _quiet(dpl.chron_stabilized, rwi, running_rbar=True)
+    return rwl, ars, stab
+
+
+def test_multiple_chronologies_all(tmp_path):
+    rwl, ars, _ = _chron_ars()
+    out = _quiet(dpl.to_lipd, ars, str(tmp_path / "ca533"), rwl=rwl, chronologies="all")
+    meta = _read_meta(out)
+    mts = meta["paleoData"][0]["measurementTable"]
+    # 3 chronologies + 1 raw-width table
+    assert len(mts) == 4
+    trsgi_tables = [t for t in mts if any(c.get("variableName") == "trsgi" for c in t["columns"])]
+    assert len(trsgi_tables) == 3
+    # exactly one is primary
+    prim = [c for t in mts for c in t["columns"]
+            if c.get("variableName") == "trsgi" and c.get("isPrimary") in (True, "True")]
+    assert len(prim) == 1
+
+
+def test_running_stats_on_primary(tmp_path):
+    rwl, ars, stab = _chron_ars()
+    out = _quiet(dpl.to_lipd, ars, str(tmp_path / "ca533"), rwl=rwl,
+                 chronologies="all", stats=stab)
+    meta = _read_meta(out)
+    prim = meta["paleoData"][0]["measurementTable"][0]["columns"]
+    names = {c.get("variableName") for c in prim}
+    assert "RBAR" in names and "EPS" in names       # running stats added to the primary
+
+
+def test_publication_and_provenance(tmp_path):
+    rwl, ars, _ = _chron_ars()
+    out = _quiet(dpl.to_lipd, ars, str(tmp_path / "ca533"), rwl=rwl,
+                 provenance="spline detrend; biweight mean",
+                 publication={"authors": "Lamarche, V.C.; Graybill, D.A.",
+                              "year": 1991, "doi": "10.0/demo"})
+    meta = _read_meta(out)
+    pubs = meta.get("pub", [])
+    assert pubs and str(pubs[0].get("year")) == "1991"
+    assert pubs[0].get("doi") == "10.0/demo"
+    trsgi = [c for c in meta["paleoData"][0]["measurementTable"][0]["columns"]
+             if c.get("variableName") == "trsgi"][0]
+    assert "spline detrend" in (trsgi.get("description") or "")

@@ -75,7 +75,7 @@ from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
 from .site_metadata import SiteMetadata
-from .lipd import to_lipd
+from .lipd import to_lipd, from_lipd, lipd_metadata
 from .cli import help, readme
 
 __all__ = [
@@ -118,6 +118,8 @@ __all__ = [
     "writers",
     "SiteMetadata",
     "to_lipd",
+    "from_lipd",
+    "lipd_metadata",
     "help",
     "readme",
 ]
