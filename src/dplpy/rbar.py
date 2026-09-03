@@ -52,19 +52,29 @@ def pairwise_corr_mean(data, method="pearson", min_overlap=None, strict=False):
     overlapping (both-present) years passes the threshold -- strictly greater
     (``strict=True``, ARSTAN's Briffa n>20) or at least (``strict=False``, the
     moving-window rbar). This is the single home for the correlation-matrix ->
-    overlap-mask -> mean-of-means step shared by the rbar variants.
+    overlap-mask -> mean step shared by the rbar variants.
+
+    The average is a FLAT mean over every valid off-diagonal entry of the
+    (symmetric) matrix -- i.e. every retained series pair weighted equally --
+    matching dplR's ``mean(corMat, na.rm = TRUE)`` in chron.stabilized(). It must
+    NOT be a mean-of-column-means: the two coincide only when every series has the
+    same number of retained partners, but once the overlap mask drops pairs
+    unevenly across series (interior windows), a mean-of-column-means weights each
+    series equally instead of each pair and drifts from dplR by ~1e-4 on a handful
+    of windows. The flat mean reproduces dplR to machine precision.
     """
     # corr.to_numpy() can be a read-only view under numpy 2 / copy-on-write, so
     # fill_diagonal needs an explicit writable copy, not the view pandas hands back.
     corr = data.corr(method)
     arr = corr.to_numpy(copy=True)
     np.fill_diagonal(arr, np.nan)
-    corr = pd.DataFrame(arr, index=corr.index, columns=corr.columns)
     if min_overlap is not None:
         presence = data.notnull().astype("int")
-        overlap = presence.transpose() @ presence
-        corr = corr.where(overlap > min_overlap if strict else overlap >= min_overlap)
-    return corr.mean().mean()
+        overlap = (presence.transpose() @ presence).to_numpy()
+        keep = overlap > min_overlap if strict else overlap >= min_overlap
+        arr = np.where(keep, arr, np.nan)
+    finite = arr[~np.isnan(arr)]
+    return float(finite.mean()) if finite.size else np.nan
 
 
 def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio, apply_mask=True):

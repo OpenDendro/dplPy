@@ -154,3 +154,38 @@ def test_chron_stabilized_short_winlen(mock_mean_series_corr: Mock, mock_chron: 
     with pytest.warns(UserWarning, match=re.escape(expected_msg)) as warning_record:
         dpl.chron_stabilized(input_df, win_length=25)
     assert len(warning_record) == 1
+
+
+def test_rbar_uses_flat_mean_not_column_means():
+    # dplR's chron.stabilized averages the windowed correlation matrix with a FLAT
+    # mean -- mean(corMat, na.rm=TRUE), every retained pair weighted equally. A
+    # mean-of-column-means drifts from dplR (~1e-4 on some windows) once the overlap
+    # mask drops pairs unevenly across series. Build such a case (C and D never
+    # overlap, so the mask is uneven) and confirm pairwise_corr_mean returns the
+    # flat mean, not the column-means mean.
+    import numpy as np
+    import pandas as pd
+    from dplpy.rbar import pairwise_corr_mean
+    rng = np.random.default_rng(0)
+    n = 40
+    base = rng.standard_normal(n)
+    df = pd.DataFrame({
+        "A": base + 0.10 * rng.standard_normal(n),
+        "B": base + 0.50 * rng.standard_normal(n),
+        "C": base + 0.90 * rng.standard_normal(n),
+        "D": -base + 0.30 * rng.standard_normal(n),
+    })
+    df.loc[:19, "C"] = np.nan      # C present years 20..39
+    df.loc[20:, "D"] = np.nan      # D present years 0..19 -> C and D never overlap
+    corr = df.corr()
+    arr = corr.to_numpy(copy=True)
+    np.fill_diagonal(arr, np.nan)
+    pres = df.notnull().astype(int)
+    overlap = (pres.T @ pres).to_numpy()
+    masked = np.where(overlap >= 10, arr, np.nan)
+    flat = np.nanmean(masked)
+    col_means = np.nanmean(np.nanmean(masked, axis=0))
+
+    impl = pairwise_corr_mean(df, "pearson", min_overlap=10, strict=False)
+    assert abs(impl - flat) < 1e-12            # matches dplR's flat mean
+    assert abs(flat - col_means) > 1e-3        # and the case is meaningful (they differ)
