@@ -36,6 +36,7 @@ __license__ = "GNU GPLv3"
 import matplotlib.pyplot as plt
 import pandas as pd
 from ._validate import _require_dataframe
+from ._plot_style import style_axes, ACCENT
 import numpy as np
 from .tbrm import tbrm
 from .autoreg import ar_func
@@ -189,9 +190,17 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=10, aic=True
     return whitened_means
 
 # Plots the data created by the chronology
-def plot_chron(years, depths, means, whitened_means):
-    # create figure and axis objects with subplots()
-    fig,ax = plt.subplots()
+def plot_chron(years, depths, means, whitened_means, ax=None, show=True):
+    """Plot a mean chronology with its sample depth on a twin axis.
+
+    Uses the shared dplPy look (no global style side effects). Pass an existing
+    ``ax`` to draw into it, and ``show=False`` to keep the figure for saving;
+    the figure and axes are returned either way.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 5))
+    else:
+        fig = ax.figure
 
     # When prewhitening is on, chron() plots the residual (res) chronology rather
     # than the standard (std) one; make that explicit in the title and y-axis so
@@ -200,21 +209,33 @@ def plot_chron(years, depths, means, whitened_means):
         y_val = whitened_means
         y_label = "res"
         title = "Residual (prewhitened) chronology"
+        ref = 0.0                    # residual index oscillates about 0
     else:
         y_val = means
         y_label = "std"
         title = "Standard chronology"
+        ref = 1.0                    # standard index oscillates about 1
 
-    # make plot of RWI means
-    ax.plot(years, y_val, "k-")
-    ax.set_title(title, fontsize=14)
-    ax.set_xlabel("Year", fontsize = 14)
-    ax.set_ylabel(y_label, fontsize=14)
+    # sample depth first, on a twin axis, sitting BEHIND the chronology line
+    ax2 = ax.twinx()
+    ax2.fill_between(years, depths, color="0.6", alpha=0.28, linewidth=0,
+                     zorder=1)
+    ax2.set_ylabel("Sample depth")
+    ax2.set_ylim(bottom=0)
+    ax2.spines["top"].set_visible(False)
+    # let the (transparent) chronology axis sit above the depth fill
+    ax.set_zorder(ax2.get_zorder() + 1)
+    ax.patch.set_visible(False)
 
-    # twin object for two different y-axis on the sample plot
-    ax2=ax.twinx()
-    # make plot of sample depths
-    ax2.fill_between(years, depths, color=((0.2, 0.6, 0.9, 0.3)))
-    ax2.set_ylabel("samp_depth",fontsize=14)
-    fig.set_size_inches(14, 8)
-    plt.show()
+    # reference line at the chronology's expected level, then the chronology
+    ax.axhline(ref, color="0.8", linewidth=0.8, zorder=2)
+    ax.plot(years, y_val, color=ACCENT, linewidth=0.9, zorder=3)
+    ax.set_title(title, fontsize=11)
+    ax.set_xlabel("Year")
+    ax.set_ylabel(y_label)
+    style_axes(ax, xgrid=True, hide_spines=("top",))
+
+    fig.tight_layout()
+    if show:
+        plt.show()
+    return fig, ax
