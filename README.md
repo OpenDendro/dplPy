@@ -139,7 +139,7 @@ This will load the package and its functions, allowing them to be accessed with 
 - Description: reads data from supported file types (`csv` and `rwl`) and stores them in a year-indexed dataframe (one column per series).
 - Options:
     - `header`: whether the `rwl` file has header lines. Default is `None`, which **auto-detects** the number of header lines; pass `header=True`/`False` to force it, or `skip_lines=N` to skip a known number of lines.
-    - `on_error`: `"raise"` (default) stops on a malformed record; `"warn"` salvages what it can and reports problems.
+    - `on_error`: `"raise"` (default) stops on a malformed record; `"warn"` salvages what it can and reports problems.  Users should be very careful using salvage mode. 
 - Usage examples:
     ```
     >>> data = dpl.readers("/path/to/file.csv")
