@@ -254,6 +254,76 @@ def test_rwl_self_overlap_reported_not_as_duplicate(tmp_path):
     assert "Duplicate series ID" not in msg  # NOT mislabelled as a duplicate
 
 
+# Two blocks of one ID stacked back-to-back with no separating line: the year
+# jumps backward (1820 -> 1805), the tell-tale of a second core sharing the code.
+# The second block is on an offset decade grid and overlaps the first.
+_OFFSET_DUP = (
+    "SYN01A  1800   100   110   120   130   140   150   160   170   180   190\n"
+    "SYN01A  1810   200   210   220   230   240   250   260   270   280   290\n"
+    "SYN01A  1820   300   310   320   999\n"
+    "SYN01A  1805   500   510   520   530   540   550   560   570   580   590\n"
+    "SYN01A  1815   600   610   620   630   640   650   660   670   680   690\n"
+    "SYN01A  1825   700   710   720   999\n"
+)
+
+
+def test_rwl_offset_duplicate_reported_as_duplicate(tmp_path):
+    # A back-to-back offset duplicate must be diagnosed as a DUPLICATE ID -- not a
+    # self-overlap (there really are two blocks, found via the backward-year reset)
+    # and NOT the misleading "does not parse as fixed-width columns" error: the
+    # columns parse cleanly, only the decade is offset.
+    p = tmp_path / "offsetdup.rwl"
+    p.write_text(_OFFSET_DUP)
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p))
+    msg = str(e.value)
+    assert "Duplicate series ID" in msg
+    assert "SYN01A" in msg
+    assert "overlaps itself" not in msg               # not a self-overlap
+    assert "does not parse as fixed-width" not in msg  # not mislabelled
+
+
+def test_out_of_order_row_is_one_series_not_a_duplicate(tmp_path):
+    # A single core whose rows are written OUT OF ORDER (a decade placed before an
+    # earlier one -- as in wy002's 283012 and nm604's 101401) has a backward year
+    # jump, but its blocks are DISJOINT (they fill each other's gaps, nothing
+    # overlaps). It must read as ONE merged series over the full span, and must NOT
+    # be mislabelled a merged duplicate in the combined-series report (the backward
+    # jump alone is not a duplicate -- only an overlap, or a separate reappearance,
+    # is).
+    p = tmp_path / "outoforder.rwl"
+    p.write_text(
+        "AAA01   1820    10    11    12    13    14    15    16    17    18    19\n"
+        "AAA01   1800    20    21    22    23    24    25    26    27    28    29\n"
+        "AAA01   1810    30    31    32    33    34    35    36    37    38    39\n"
+        "AAA01   1830    40    41    42    43    44    45    46   999\n"
+    )
+    with pytest.warns(UserWarning, match="AAA01 had rows out of year order"):
+        d = dpl.readers(str(p))
+    assert list(d.columns) == ["AAA01"]                  # one series, not two
+    assert int(d.index.min()) == 1800 and int(d.index.max()) == 1836
+    assert d.loc[1800, "AAA01"] == pytest.approx(0.20)   # 1800 row placed at 1800
+    assert d.loc[1820, "AAA01"] == pytest.approx(0.10)   # out-of-order row placed right
+    assert not np.isnan(d.loc[1829, "AAA01"])            # no gap where 1820 block sits
+    combined = d.attrs.get("dplpy_combined", [])
+    assert combined == []                                # NOT reported as a duplicate merge
+
+
+def test_salvage_offset_duplicate_renames_and_keeps_both(tmp_path):
+    # Salvage keeps both stacked blocks: the second (offset) block is renamed
+    # SYN01A2 rather than dropped as a self-overlap.
+    p = tmp_path / "offsetdup.rwl"
+    p.write_text(_OFFSET_DUP)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), on_error="warn")
+    assert "SYN01A" in d.columns and "SYN01A2" in d.columns
+    assert d.loc[1800, "SYN01A"] == pytest.approx(1.00)    # first block, original ID
+    assert d.loc[1805, "SYN01A2"] == pytest.approx(5.00)   # second block, renamed
+    assert d.loc[1827, "SYN01A2"] == pytest.approx(7.20)   # offset block spans 1805-1827
+    assert np.isnan(d.loc[1827, "SYN01A"])                 # first block ended at 1822
+
+
 def test_rwl_999_is_real_value_in_thousandths_series(tmp_path):
     # In a 0.001 mm series (terminated by -9999), the token 999 is a real
     # 0.999 mm ring, NOT a stop marker. Precision is taken from the series
@@ -669,7 +739,7 @@ def test_embedded_space_value_raises_in_strict(tmp_path):
     # strict mode refuses the whole file.
     p = tmp_path / "split.rwl"
     p.write_text("\n".join(_SPLIT_RWL) + "\n")
-    with pytest.raises(ValueError, match="misalignment"):
+    with pytest.raises(ValueError, match="misaligned"):
         dpl.readers(str(p), on_error="raise")
 
 
@@ -727,7 +797,7 @@ def test_joined_records_raise_strict_split_salvage(tmp_path):
     p = tmp_path / "joined.rwl"
     p.write_text(joined + "\n")
     # strict refuses: a missing line break is a file defect, not something to guess
-    with pytest.raises(ValueError, match="joined record"):
+    with pytest.raises(ValueError, match="missing line break"):
         dpl.readers(str(p), header=False, on_error="raise")
     # salvage splits both records apart and warns
     with warnings.catch_warnings(record=True) as w:
@@ -736,7 +806,7 @@ def test_joined_records_raise_strict_split_salvage(tmp_path):
     assert set(df.columns) == {"SER1", "SER2"}
     assert int(df["SER1"].last_valid_index()) == 1908             # 999 stop at 1909
     assert int(df["SER2"].first_valid_index()) == 1910
-    assert any("joined record" in str(x.message) for x in w)
+    assert any("missing line break" in str(x.message) for x in w)
 
 
 def test_site_id_after_stop_is_not_split(tmp_path):
@@ -749,7 +819,7 @@ def test_site_id_after_stop_is_not_split(tmp_path):
         warnings.simplefilter("always")
         df = dpl.readers(str(p), header=False, on_error="raise")
     assert list(df.columns) == ["SER1"]
-    assert not any("joined record" in str(x.message) for x in w)
+    assert not any("missing line break" in str(x.message) for x in w)
 
 
 # --- guard: refuse files with more than 3 header lines (not a Tucson .rwl) ------
@@ -918,17 +988,21 @@ def test_no_terminators_anywhere_raises(tmp_path):
     ]
     p = tmp_path / "none.rwl"
     p.write_text("\n".join(rows) + "\n")
-    with pytest.raises(ValueError, match="no series has a stop marker"):
+    with pytest.raises(ValueError, match="no stop marker"):
         dpl.readers(str(p), header=False, on_error="raise")
 
 
-def test_not_fixed_width_names_series(tmp_path):
-    # A row carrying more values than its decade allows (not decade-aligned) is
-    # refused with a message that names the offending series.
-    row = "AAA1    1693" + "".join("%6d" % v for v in range(10))   # decade 1693 + 10 vals
+def test_decade_misaligned_names_series(tmp_path):
+    # A row carrying more values than fit before its next decade boundary is a
+    # decade-alignment fault, not a fixed-width/column fault (the columns parse
+    # cleanly). It is refused with a concise message that names the offending
+    # series/year and does NOT mislabel it as a fixed-width column problem.
+    row = "AAA1    1693" + "".join("%6d" % v for v in range(10))   # year 1693 + 10 vals
     p = tmp_path / "nfw.rwl"
     p.write_text(row + "\n")
     with pytest.raises(ValueError) as e:
         dpl.readers(str(p), header=False, on_error="raise")
     msg = str(e.value)
-    assert "fixed-width" in msg and "AAA1" in msg
+    assert "too many values" in msg and "AAA1" in msg
+    assert "1693" in msg                       # names the offending row's year
+    assert "does not parse as fixed-width" not in msg   # no longer mislabelled

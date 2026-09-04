@@ -141,9 +141,8 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         fmt = _sniff_format(filename, is_url)
         if fmt is None:
             raise ValueError(
-                "Could not determine the file format from its suffix or its content. "
-                "If this is a ring-width file, pass format='tucson' (or 'csv'). "
-                "Recognized suffixes are .csv, .rwl and .raw."
+                "Could not determine the file format; pass format='tucson' or 'csv' "
+                "(suffixes: .csv, .rwl, .raw)."
             )
         warnings.warn("File suffix '" + FORMAT + "' not recognized; inferred "
                       + fmt + " format from the file contents.")
@@ -808,28 +807,58 @@ def _block_year_values(rows, row_indices):
     return yv
 
 
-def _rename_overlapping_duplicates(rows):
-    """Salvage helper. When a series ID appears in more than one contiguous block
-    and those blocks actually share years (two cores sharing a code), rename the
-    second and later blocks (ID2, ID3, ...) so both are kept as distinct series.
-    A single ID split into disjoint segments (a gap, e.g. dplR's BT006 case) is
-    left untouched so it still merges. Mutates and returns `rows`, plus a list of
-    {series, issue, action, detail} records for the report."""
-    # Contiguous blocks, in file order, as lists of row indices.
+def _row_misaligned(r):
+    """True if a fixed-width row's grid is broken: a value field that -- once
+    stripped -- still holds an internal space (two values captured in one 6-char
+    cell, e.g. az606's '6  142' / arge041's '1  065'), or a TAB in the ID or a
+    value (a tab is one character where the layout needs space padding, so it
+    shifts the year and every value after it, e.g. cana588 'moo07b<TAB>1'). Either
+    way the fixed-width record is corrupt and cannot be trusted."""
+    if r is None:
+        return False
+    if "\t" in r[0]:                       # a TAB inside the ID field -> shifted columns
+        return True
+    return any(("\t" in tok) or (" " in tok.strip()) for tok in r[2])
+
+
+def _segment_blocks(rows):
+    """Segment parsed rows into blocks, in file order, as {sid, rows:[indices]}.
+
+    A new block starts when the series ID changes OR when the year fails to
+    advance for the same ID (a backward -- or repeated -- year). Within one core
+    the row years strictly increase (each row is the next decade), so a year that
+    goes backward is the tell-tale of a SECOND block stacked under the same code
+    with no separating line -- e.g. two cores mistakenly sharing an ID. Splitting
+    on that reset (not just on an ID change) is what lets a back-to-back duplicate
+    ID be recognised as a duplicate rather than mislabelled a self-overlap."""
     blocks = []
     cur = None
     for i, r in enumerate(rows):
         if r is None:
             continue
-        sid = r[0]
-        if cur is not None and cur["sid"] == sid:
+        sid, yr = r[0], r[1]
+        if cur is not None and cur["sid"] == sid and yr > cur["last_year"]:
             cur["rows"].append(i)
+            cur["last_year"] = yr
         else:
             if cur is not None:
                 blocks.append(cur)
-            cur = {"sid": sid, "rows": [i]}
+            cur = {"sid": sid, "rows": [i], "last_year": yr}
     if cur is not None:
         blocks.append(cur)
+    return blocks
+
+
+def _rename_overlapping_duplicates(rows):
+    """Salvage helper. When a series ID appears in more than one block and those
+    blocks actually share years (two cores sharing a code), rename the second and
+    later blocks (ID2, ID3, ...) so both are kept as distinct series. A single ID
+    split into disjoint segments (a gap, e.g. dplR's BT006 case) is left untouched
+    so it still merges. Mutates and returns `rows`, plus a list of
+    {series, issue, action, detail} records for the report."""
+    # Blocks in file order (split on an ID change or a backward-year reset), as
+    # lists of row indices.
+    blocks = [{"sid": b["sid"], "rows": b["rows"]} for b in _segment_blocks(rows)]
 
     by_sid = {}
     for b in blocks:
@@ -948,52 +977,52 @@ def read_rwl(lines, on_error="raise"):
         repaired.extend(parts)
     if n_joined and not salvage:
         raise ValueError(
-            "Cannot read file -- " + str(n_joined) + " joined record(s): a stop marker "
-            "is directly followed by a new series ID, i.e. a missing line break in the "
-            "file (e.g. '" + str(joined_example) + "'). Strict mode does not repair this; "
-            "fix the line break(s) or read with on_error='warn'.")
+            "Cannot read file -- " + str(n_joined) + " missing line break(s): a stop "
+            "marker runs into the next series ID (e.g. '" + str(joined_example) + "').")
     if n_joined:
-        warnings.warn(str(n_joined) + " joined record(s) split -- a stop marker was "
-                      "directly followed by a new series ID (a missing line break in "
-                      "the file)")
+        warnings.warn(str(n_joined) + " missing line break(s) split (a stop marker ran "
+                      "into the next series ID)")
     lines = repaired
 
     fixed_rows = _parse_all(lines, "fixed")
+    # Rows carrying more values than fit before their next decade boundary. In a
+    # FIXED parse (a rigid 6-char grid that cannot merge columns) this is never a
+    # tokenisation failure -- it means a decade-MISALIGNED row: an offset duplicate
+    # block, or a mistyped start year. We keep the list so the accurate downstream
+    # guards (duplicate/overlap, then the decade guard) can name the real problem,
+    # instead of mislabelling it a fixed-width/column failure the way it reads.
+    decade_overrun = [r for r in fixed_rows if r is not None
+                      and len(r[2]) > (10 - (r[1] % 10)) + 1]
     if _rows_valid(fixed_rows):
         rows = fixed_rows
     elif not salvage:
-        bad = [r for r in fixed_rows if r is not None
-               and len(r[2]) > (10 - (r[1] % 10)) + 1]
-        def _nfw_diag(r):
-            sid, yr, vals, k = r
-            shifted = any(" " in t.strip() for t in vals)
-            why = ("its values run together with embedded spaces, so the columns are "
-                   "shifted (often an ID that does not fill its 8 characters)") if shifted \
-                  else ("it carries more values than its decade allows, so the row is "
-                        "not decade-aligned")
-            return "series '%s' at year %d (%s)" % (sid, yr, why)
-        ex = "; ".join(_nfw_diag(r) for r in bad[:3]) if bad else "the columns are misaligned"
-        more = " ..." if len(bad) > 3 else ""
-        raise ValueError(
-            "Cannot read file -- the data does not parse as fixed-width Tucson columns: "
-            + ex + more + ". A valid .rwl is strictly fixed-width; strict mode does not "
-            "fall back to whitespace parsing to guess the values. Fix the column "
-            "alignment, or read with on_error='warn'.")
+        # Clean grid, just decade-misaligned: accept the fixed parse and let the
+        # duplicate/overlap analysis and the decade guard below produce the precise
+        # error. (A genuinely broken grid -- an embedded space / TAB -- is caught
+        # by the misalignment guard just below and reported as such.)
+        rows = fixed_rows
     else:
-        ws_rows = _parse_all(lines, "ws")
-        if _rows_valid(ws_rows):
-            warnings.warn("fixed-width parse failed; re-read with variable (whitespace) columns")
-            rows = ws_rows
+        # Salvage. If the fixed grid is clean (only decade-misaligned), keep it so
+        # the duplicate renamer can split an offset stacked block; only a broken
+        # grid falls back to a whitespace re-parse.
+        grid_clean = not any(_row_misaligned(r) for r in fixed_rows)
+        if grid_clean:
+            rows = fixed_rows
         else:
-            # Neither validated cleanly. Keep the parse that recovered the most
-            # rows so a single malformed file still yields as much data as
-            # possible, and tell the user the read may be incomplete.
-            n_fixed = sum(1 for r in fixed_rows if r is not None)
-            n_ws = sum(1 for r in ws_rows if r is not None)
-            if max(n_fixed, n_ws) == 0:
-                return None
-            warnings.warn("file has formatting problems; read may be incomplete")
-            rows = fixed_rows if n_fixed >= n_ws else ws_rows
+            ws_rows = _parse_all(lines, "ws")
+            if _rows_valid(ws_rows):
+                warnings.warn("fixed-width parse failed; re-read with variable (whitespace) columns")
+                rows = ws_rows
+            else:
+                # Neither validated cleanly. Keep the parse that recovered the most
+                # rows so a single malformed file still yields as much data as
+                # possible, and tell the user the read may be incomplete.
+                n_fixed = sum(1 for r in fixed_rows if r is not None)
+                n_ws = sum(1 for r in ws_rows if r is not None)
+                if max(n_fixed, n_ws) == 0:
+                    return None
+                warnings.warn("file has formatting problems; read may be incomplete")
+                rows = fixed_rows if n_fixed >= n_ws else ws_rows
 
     n_bad = sum(1 for r in rows if r is None)
     if n_bad:
@@ -1015,14 +1044,8 @@ def read_rwl(lines, on_error="raise"):
     # needs space padding, so it shifts the year and every value after it one column
     # left; when it lands in the ID field the parsed ID keeps the tab (e.g. cana588
     # 'moo07b<TAB>1', which then reads year 800 instead of 1800). Both mean the
-    # fixed-width grid is broken and the row cannot be trusted.
-    def _row_misaligned(r):
-        if r is None:
-            return False
-        if "\t" in r[0]:                       # a TAB inside the ID field -> shifted columns
-            return True
-        return any(("\t" in tok) or (" " in tok.strip()) for tok in r[2])
-
+    # fixed-width grid is broken and the row cannot be trusted. (_row_misaligned is
+    # a module-level helper so the parse gate above can use it too.)
     misaligned = [r for r in rows if _row_misaligned(r)]
     if misaligned:
         def _bad_detail(r):
@@ -1037,13 +1060,8 @@ def read_rwl(lines, on_error="raise"):
         more = " ..." if len(misaligned) > 3 else ""
         if not salvage:
             raise ValueError(
-                "Cannot read file -- fixed-width column misalignment detected. A field is "
-                "split across columns -- an embedded space in a value, or a TAB where the "
-                "layout needs space padding (a tab is one character, so it shifts the year "
-                "and every value after it) -- so the row cannot be reliably parsed: "
-                + ex + more + " (<TAB> marks a tab). This is a file formatting defect; "
-                "dplPy will not guess it. Fix the column alignment (replace any tabs with "
-                "spaces) and read it again.")
+                "Cannot read file -- misaligned fixed-width columns (an embedded space or "
+                "TAB in a field): " + ex + more + " (<TAB> marks a tab).")
         # salvage: NaN the whole misaligned row(s); record once per affected series
         seen = set()
         for r in misaligned:
@@ -1053,8 +1071,8 @@ def read_rwl(lines, on_error="raise"):
                                "action": "misaligned row(s) set to NaN",
                                "detail": "a fixed-width field held an embedded space or TAB"})
         rows = [None if _row_misaligned(r) else r for r in rows]
-        warnings.warn(str(len(misaligned)) + " misaligned fixed-width row(s) set to NaN "
-                      "(embedded space or TAB -- shifted columns): " + ex + more)
+        warnings.warn(str(len(misaligned)) + " misaligned row(s) (embedded space/TAB) "
+                      "set to NaN: " + ex + more)
 
     # Salvage: rename the later block(s) of any duplicate series ID whose blocks
     # overlap in time (two cores sharing a code) so both are kept as distinct
@@ -1065,17 +1083,32 @@ def read_rwl(lines, on_error="raise"):
         rows, rename_recs = _rename_overlapping_duplicates(rows)
         report.extend(rename_recs)
 
-    # Count contiguous blocks per series, so we can later tell a genuine
-    # duplicate ID (the same code used by two separate blocks -- two cores)
-    # from a single series that overlaps *itself* because a row is malformed.
+    # Two per-series block counts, used for two different jobs:
+    #
+    #  * block_count -- segments split on an ID change OR a backward-year reset.
+    #    Used only to tell a genuine duplicate ID (two blocks of the same code that
+    #    OVERLAP, e.g. a stacked offset duplicate) from a single series that
+    #    overlaps *itself* because one row is malformed. It is consulted only where
+    #    an overlap has already been found, so a backward reset there means a
+    #    second core, not a misplaced row.
+    #
+    #  * appearances -- maximal CONTIGUOUS runs of an ID (split on ID change only).
+    #    Used for the "combined" report of disjoint duplicate blocks that were
+    #    merged. A single series with a row written out of order (a backward jump
+    #    WITHIN one contiguous run -- e.g. wy002's 283012, nm604's 101401) is still
+    #    one appearance, so it is NOT mislabelled a merged duplicate; only an ID
+    #    that truly recurs in a separate place in the file (>1 run) is reported.
     block_count = {}
+    for b in _segment_blocks(rows):
+        block_count[b["sid"]] = block_count.get(b["sid"], 0) + 1
+    appearances = {}
     prev = None
     for r in rows:
         if r is None:
             continue
         sid = r[0]
         if sid != prev:
-            block_count[sid] = block_count.get(sid, 0) + 1
+            appearances[sid] = appearances.get(sid, 0) + 1
             prev = sid
 
     # Determine each series' measurement precision from its TERMINATOR -- the
@@ -1175,32 +1208,45 @@ def read_rwl(lines, on_error="raise"):
             if block_count.get(sid, 1) > 1:
                 # Same ID in two separate blocks: a genuine duplicate series ID.
                 problems.append(
-                    "Duplicate series ID '" + str(sid) + "': this ID is used by more "
-                    "than one series in the file (they overlap at year " + str(y)
-                    + ") -- most often two cores mistakenly given the same code. "
-                    "Rename or remove the duplicate."
+                    "Duplicate series ID '" + str(sid) + "' (two blocks overlap at year "
+                    + str(y) + ") -- rename or remove the duplicate."
                 )
             else:
                 # One contiguous block that runs into itself: a malformed row.
                 allowed = 10 - (first_start % 10) if first_start is not None else None
                 next_dec = first_start - (first_start % 10) + 10 if first_start is not None else None
-                detail = (
-                    "Series '" + str(sid) + "' overlaps itself at year " + str(y) + ": the "
-                    "row beginning " + str(first_start) + " supplies a value for " + str(y)
-                    + ", but another row begins at " + str(second_start) + "."
-                )
                 if allowed is not None:
-                    detail += (
-                        " A row beginning at " + str(first_start) + " can hold only "
-                        + str(allowed) + " value(s) before the next decade (" + str(next_dec)
-                        + "), so that row appears to have one value too many, a misplaced "
-                        "value, or a mistyped start year. Please check that row."
+                    problems.append(
+                        "Series '" + str(sid) + "' overlaps itself at year " + str(y)
+                        + ": the row beginning " + str(first_start) + " has one value too "
+                        "many (only " + str(allowed) + " fit before " + str(next_dec)
+                        + ") -- a misplaced value or mistyped start year."
                     )
-                problems.append(detail)
+                else:
+                    problems.append(
+                        "Series '" + str(sid) + "' overlaps itself at year " + str(y)
+                        + " (a misplaced value or mistyped start year)."
+                    )
         raise ValueError(
-            "Cannot read file -- overlapping data detected; dplPy will not guess how "
-            "to resolve it.\n  " + "\n  ".join(problems)
-            + "\nPlease correct the file and read it again."
+            "Cannot read file -- overlapping data:\n  " + "\n  ".join(problems)
+        )
+
+    # Decade-alignment guard. A row carrying more values than fit before its next
+    # decade boundary is malformed Tucson (dplR: "rows have too many values"). If
+    # such a row created a duplicate/self overlap, that more specific error was
+    # already raised above; anything still here is a genuinely mis-decaded row with
+    # no overlap to key on (most often a mistyped start year, or a stray extra
+    # value). Strict mode rejects it with an accurate message -- NOT the old
+    # "does not parse as fixed-width columns" wording, since the columns parse
+    # fine; the fault is the decade/year, not the fixed-width grid. Salvage keeps
+    # whatever parsed (the offset row's values simply land at its stated years).
+    if decade_overrun and not salvage:
+        ex = "; ".join("series '%s' at year %d" % (r[0], r[1])
+                       for r in decade_overrun[:3])
+        more = " ..." if len(decade_overrun) > 3 else ""
+        raise ValueError(
+            "Cannot read file -- row(s) with too many values or mistyped start year: "
+            + ex + more + "."
         )
 
     # Fail on a measurement-precision shift within a single series (a 0.01 mm
@@ -1220,19 +1266,9 @@ def read_rwl(lines, on_error="raise"):
                                "action": "dropped",
                                "detail": "stray -9999 near year " + str(yy)})
         else:
-            where = "; ".join(
-                str(sid) + " (stray -9999 near year "
-                + str(min(y for s, y in prec_shift if s == sid)) + ")"
-                for sid in affected
-            )
+            where = ", ".join(str(sid) for sid in affected)
             raise ValueError(
-                "Cannot read file -- measurement-precision shift detected. These series "
-                "end with a 0.01 mm stop marker (999) but also contain a -9999 (the "
-                "0.001 mm stop marker) mid-series, so the series was measured at two "
-                "different precisions: " + where + ".\ndplPy will not guess the boundary, "
-                "because reading such a series at a single precision makes part of it 10x "
-                "wrong. Please split the series by precision (or correct the markers) and "
-                "read it again."
+                "Cannot read file -- mixed precision: series: " + where + "."
             )
 
     # Resolve precision for any series that never showed a stop marker. Precision
@@ -1246,13 +1282,8 @@ def read_rwl(lines, on_error="raise"):
     known = list(precision.values())
     missing = [sid for sid in order if sid not in precision]
     if missing and not known and not salvage:
-        ex = ", ".join(str(s) for s in missing[:5])
-        more = " ..." if len(missing) > 5 else ""
         raise ValueError(
-            "Cannot read file -- no series has a stop marker (999 or -9999) anywhere in "
-            "the file, so the measurement precision cannot be determined for any series ("
-            + ex + more + "). Strict mode will not guess the precision with nothing to "
-            "infer it from; add the terminator(s) or read with on_error='warn'.")
+            "Cannot read file -- no stop marker (999/-9999) and precision is unknown.")
     if known:
         dominant = Counter(known).most_common(1)[0][0]
     else:
@@ -1261,15 +1292,13 @@ def read_rwl(lines, on_error="raise"):
     for sid in missing:
         precision[sid] = dominant
         warnings.warn(
-            "series '" + str(sid) + "' has no stop marker; assuming its precision is the "
-            "file's dominant " + ("0.01" if dominant == 100 else "0.001")
-            + " mm (inferred from the other series)"
+            "series '" + str(sid) + "': no stop marker; assuming the file's dominant "
+            + ("0.01" if dominant == 100 else "0.001") + " mm precision."
         )
 
     if identical_dups:
         warnings.warn(
-            str(identical_dups) + " identical duplicate value(s) were ignored "
-            "(a row or the file appears to have been duplicated, e.g. by copy-paste)"
+            str(identical_dups) + " identical duplicate value(s) ignored (looks copy-pasted)"
         )
 
     if nonint_cells:
@@ -1281,10 +1310,8 @@ def read_rwl(lines, on_error="raise"):
         more = " ..." if len(nonint_cells) > 3 else ""
         if not salvage:
             raise ValueError(
-                "Cannot read file -- " + str(len(nonint_cells)) + " non-integer value(s) "
-                "in measurement fields (a ring measurement must be a whole number): "
-                + ex + more + ". Strict mode will not coerce these to NaN; correct the "
-                "file or read with on_error='warn'.")
+                "Cannot read file -- " + str(len(nonint_cells)) + " non-integer "
+                "measurement value(s): " + ex + more + ".")
         warnings.warn(str(len(nonint_cells)) + " non-integer value(s) could not be read "
                       "and were set to NaN: " + ex + more)
 
@@ -1307,16 +1334,45 @@ def read_rwl(lines, on_error="raise"):
 
     dropped = len(nonint_cells) + len(neg_hits)   # values the file had but couldn't be used
 
-    # Combined series: a duplicate ID that appeared in more than one (contiguous)
-    # block and was merged into one series because the blocks do not conflict --
-    # disjoint years, or an identical repeat. (In strict mode a conflicting
-    # duplicate would already have raised above; in salvage mode a conflicting
-    # block was renamed, so anything still holding >1 block here was genuinely
-    # merged.) Reported on a successful read so the merge is not silent.
+    # Combined series: a duplicate ID that RECURRED in a separate place in the
+    # file (more than one contiguous run) and was merged into one series because
+    # the runs do not conflict -- disjoint years, or an identical repeat. (In
+    # strict mode a conflicting duplicate would already have raised above; in
+    # salvage mode a conflicting block was renamed, so anything still recurring
+    # here was genuinely merged.) A single series with a row written out of order
+    # is one contiguous run, so it is not reported. Reported on a successful read
+    # so a real merge is not silent.
     combined = []
     for sid in order:
-        if block_count.get(sid, 1) >= 2 and rwl_data.get(sid):
+        if appearances.get(sid, 1) >= 2 and rwl_data.get(sid):
             yrs = rwl_data[sid].keys()
-            combined.append({"series": sid, "n_blocks": block_count[sid],
+            combined.append({"series": sid, "n_blocks": appearances[sid],
                              "first_year": int(min(yrs)), "last_year": int(max(yrs))})
+
+    # Out-of-order rows: a surviving series whose row years step backward in file
+    # order (a decade written before an earlier one -- wy002's 283012, nm604's
+    # 101401). The data still reads correctly (rows are placed by year), but the
+    # file was untidy, so warn once per series. Series reported as combined
+    # duplicates (a genuine re-appearance) are already explained, so skip them.
+    combined_ids = {c["series"] for c in combined}
+    out_of_order = []
+    max_year_seen = {}
+    for r in rows:
+        if r is None:
+            continue
+        sid, yr = r[0], r[1]
+        if sid in max_year_seen and yr < max_year_seen[sid] and sid not in out_of_order:
+            out_of_order.append(sid)
+        max_year_seen[sid] = max(max_year_seen.get(sid, yr), yr)
+    out_of_order = [s for s in out_of_order
+                    if s in rwl_data and s not in combined_ids]
+    if out_of_order:
+        if len(out_of_order) == 1:
+            warnings.warn("Series " + str(out_of_order[0]) + " had rows out of year "
+                          "order (read correctly by placing each row at its year).")
+        else:
+            warnings.warn(str(len(out_of_order)) + " series had rows out of year order "
+                          "(read correctly by placing each row at its year): "
+                          + ", ".join(str(s) for s in out_of_order))
+
     return rwl_data, precision, order, report, dropped, combined
