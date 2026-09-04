@@ -884,6 +884,25 @@ def _rename_overlapping_duplicates(rows):
                     accum.setdefault(y, v)
         if not any(rename_flags):
             continue
+        # A conflicting duplicate ID with a decade-misaligned (corrupt) block cannot
+        # be rationally salvaged: its second block is not a real core but malformed
+        # structure (e.g. an offset grid), and there is no telling which block is the
+        # true series. Rather than rename a garbage block into a fabricated series,
+        # drop the whole ID and record it. (Two valid, decade-aligned cores sharing a
+        # code -- the ordinary duplicate -- are still renamed and kept, below.)
+        misaligned = any(
+            len(rows[ri][2]) > (10 - (rows[ri][1] % 10)) + 1
+            for b in bl for ri in b["rows"]
+        )
+        if misaligned:
+            for b in bl:
+                for ri in b["rows"]:
+                    rows[ri] = None
+            records.append({"series": sid, "issue": "duplicate_id",
+                            "action": "dropped",
+                            "detail": "unsalvageable duplicate ID (a block is "
+                                      "decade-misaligned)"})
+            continue
         suffix = 2
         for b, needs_rename in zip(bl, rename_flags):
             if not needs_rename:
@@ -1234,20 +1253,32 @@ def read_rwl(lines, on_error="raise"):
     # Decade-alignment guard. A row carrying more values than fit before its next
     # decade boundary is malformed Tucson (dplR: "rows have too many values"). If
     # such a row created a duplicate/self overlap, that more specific error was
-    # already raised above; anything still here is a genuinely mis-decaded row with
-    # no overlap to key on (most often a mistyped start year, or a stray extra
-    # value). Strict mode rejects it with an accurate message -- NOT the old
-    # "does not parse as fixed-width columns" wording, since the columns parse
-    # fine; the fault is the decade/year, not the fixed-width grid. Salvage keeps
-    # whatever parsed (the offset row's values simply land at its stated years).
-    if decade_overrun and not salvage:
-        ex = "; ".join("series '%s' at year %d" % (r[0], r[1])
-                       for r in decade_overrun[:3])
-        more = " ..." if len(decade_overrun) > 3 else ""
-        raise ValueError(
-            "Cannot read file -- row(s) with too many values or mistyped start year: "
-            + ex + more + "."
-        )
+    # already raised (or the series dropped) above; anything still here is a
+    # genuinely mis-decaded row with no overlap to key on (most often a mistyped
+    # start year, or a stray extra value). The columns parse fine; the fault is the
+    # decade/year. Strict rejects the file; salvage drops the whole affected
+    # series and informs -- a decade-misaligned row is corrupt structure, not
+    # something to place at guessed years.
+    if decade_overrun:
+        if not salvage:
+            ex = "; ".join("series '%s' at year %d" % (r[0], r[1])
+                           for r in decade_overrun[:3])
+            more = " ..." if len(decade_overrun) > 3 else ""
+            raise ValueError(
+                "Cannot read file -- row(s) with too many values or mistyped start "
+                "year: " + ex + more + "."
+            )
+        # Salvage: drop each affected series (skip any already dropped/renamed as a
+        # duplicate, or dropped as a self-overlap) and record it so the drop is not
+        # silent.
+        for sid in dict.fromkeys(r[0] for r in decade_overrun):
+            if sid in rwl_data and sid not in drop_series:
+                drop_series.add(sid)
+                yy = min(r[1] for r in decade_overrun if r[0] == sid)
+                report.append({"series": sid, "issue": "too_many_values",
+                               "action": "dropped",
+                               "detail": "row with too many values / mistyped start "
+                                         "year near " + str(yy)})
 
     # Fail on a measurement-precision shift within a single series (a 0.01 mm
     # series that also carries a -9999). Reading such a series at one precision

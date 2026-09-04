@@ -264,6 +264,8 @@ _OFFSET_DUP = (
     "SYN01A  1805   500   510   520   530   540   550   560   570   580   590\n"
     "SYN01A  1815   600   610   620   630   640   650   660   670   680   690\n"
     "SYN01A  1825   700   710   720   999\n"
+    "SYN02A  1800    50    60    70    80    90   100   110   120   130   140\n"
+    "SYN02A  1810   150   160   170   999\n"
 )
 
 
@@ -309,19 +311,51 @@ def test_out_of_order_row_is_one_series_not_a_duplicate(tmp_path):
     assert combined == []                                # NOT reported as a duplicate merge
 
 
-def test_salvage_offset_duplicate_renames_and_keeps_both(tmp_path):
-    # Salvage keeps both stacked blocks: the second (offset) block is renamed
-    # SYN01A2 rather than dropped as a self-overlap.
+def test_salvage_offset_duplicate_drops_whole_series(tmp_path):
+    # An offset duplicate cannot be rationally salvaged: the second block is on a
+    # 5-year-offset grid (corrupt structure, not a real second core), so there is
+    # no telling which block is the true SYN01A. Salvage drops the WHOLE series
+    # (both blocks) rather than fabricate a renamed SYN01A2, and keeps SYN02A.
     p = tmp_path / "offsetdup.rwl"
     p.write_text(_OFFSET_DUP)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         d = dpl.readers(str(p), on_error="warn")
-    assert "SYN01A" in d.columns and "SYN01A2" in d.columns
-    assert d.loc[1800, "SYN01A"] == pytest.approx(1.00)    # first block, original ID
-    assert d.loc[1805, "SYN01A2"] == pytest.approx(5.00)   # second block, renamed
-    assert d.loc[1827, "SYN01A2"] == pytest.approx(7.20)   # offset block spans 1805-1827
-    assert np.isnan(d.loc[1827, "SYN01A"])                 # first block ended at 1822
+    assert "SYN02A" in d.columns                       # the clean series survives
+    assert "SYN01A" not in d.columns                   # dropped, not kept
+    assert "SYN01A2" not in d.columns                  # and NOT fabricated
+    dropped = [r for r in d.attrs["dplpy_salvage"]
+               if r["series"] == "SYN01A" and r["action"] == "dropped"]
+    assert dropped and dropped[0]["issue"] == "duplicate_id"
+
+
+def test_salvage_lone_decade_overrun_drops_series(tmp_path):
+    # A decade-misaligned row with no overlap/duplicate to key on is corrupt
+    # structure. Salvage drops the whole affected series (and records it) rather
+    # than silently placing its values at guessed years; a clean series alongside
+    # it survives.
+    p = tmp_path / "overrun.rwl"
+    p.write_text(
+        "AAA1    1693" + "".join("%6d" % v for v in range(1, 11)) + "\n"  # 10 vals @1693
+        "BBB1    1900   100   110   120   999\n"                          # clean
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), header=False, on_error="warn")
+    assert list(d.columns) == ["BBB1"]                 # clean series kept
+    assert "AAA1" not in d.columns                      # offset series dropped
+    dropped = [r for r in d.attrs["dplpy_salvage"]
+               if r["series"] == "AAA1" and r["action"] == "dropped"]
+    assert dropped and dropped[0]["issue"] == "too_many_values"
+
+
+def test_salvage_aligned_duplicate_still_renames_and_keeps_both():
+    # The ordinary duplicate -- two VALID decade-aligned cores sharing a code
+    # (viet001's BDF02A) -- is still rename-and-kept, not dropped.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(RWL + "viet001.rwl", on_error="warn")
+    assert "BDF02A" in d.columns and "BDF02A2" in d.columns
 
 
 def test_rwl_999_is_real_value_in_thousandths_series(tmp_path):
