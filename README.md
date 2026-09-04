@@ -30,7 +30,18 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
     - [Autoregressive (AR) modeling](#autoregressive-ar-modeling)
     - [Build a chronology with `chron`](#build-a-chronology-with-chron)
     - [Build a variance stabilized chronology with `chron_stabilized`](#build-a-variance-stabilized-chronology-with-chron_stabilized)
+    - [Build an AR-based chronology with `chron_ars`](#build-an-ar-based-chronology-with-chron_ars)
     - [Crossdate with `xdate`](#crossdate-with-xdate)
+    - [Date a floating series with `xdate_floater`](#date-a-floating-series-with-xdate_floater)
+    - [Regional Curve Standardization with `rcs`](#regional-curve-standardization-with-rcs)
+    - [Read chronology files with `read_crn`](#read-chronology-files-with-read_crn)
+    - [Agreement statistics: `glk` and `sgc`](#agreement-statistics-glk-and-sgc)
+    - [Mean sensitivity: `sens1` and `sens2`](#mean-sensitivity-sens1-and-sens2)
+    - [Average cores to trees with `tree_mean`](#average-cores-to-trees-with-tree_mean)
+    - [Basal area increment with `bai_out` and `bai_in`](#basal-area-increment-with-bai_out-and-bai_in)
+    - [Combine datasets with `combine_rwl`](#combine-datasets-with-combine_rwl)
+    - [Export and import LiPD with `to_lipd` and `from_lipd`](#export-and-import-lipd-with-to_lipd-and-from_lipd)
+    - [Other functions](#other-functions)
     - [Output data to files using `writers`](#output-data-to-files-using-writers)
 
 ---
@@ -40,7 +51,7 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
 - Python (>=3.10)
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html)), or [Pip](https://pip.pypa.io/en/stable/installation/)
 
-Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`.
+Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`. LiPD import/export (`to_lipd`/`from_lipd`) additionally requires the optional [`pylipd`](https://pypi.org/project/pylipd/) package (`pip install pylipd`); it is not needed for any other functionality.
 
 dplPy has been successfully tested thus far on Ubuntu 20, Ubuntu 22, macOS (Intel and M2). Other operating systems may experience unexpected errors or conflicts.  Please let the developers know. 
 
@@ -125,14 +136,18 @@ This will load the package and its functions, allowing them to be accessed with 
 
 ### Loading data using  `readers`
 
-- Description: reads data from supported file types (`csv` and `rwl`) and stores them in a dataframe.
-- Options: 
-    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
+- Description: reads data from supported file types (`csv` and `rwl`) and stores them in a year-indexed dataframe (one column per series).
+- Options:
+    - `header`: whether the `rwl` file has header lines. Default is `None`, which **auto-detects** the number of header lines; pass `header=True`/`False` to force it, or `skip_lines=N` to skip a known number of lines.
+    - `on_error`: `"raise"` (default) stops on a malformed record; `"warn"` salvages what it can and reports problems.
 - Usage examples:
     ```
     >>> data = dpl.readers("/path/to/file.csv")
-    # or
+    # or (header lines auto-detected)
+    >>> data = dpl.readers("/path/to/file.rwl")
+    # force header handling, or salvage a messy file
     >>> data = dpl.readers("/path/to/file.rwl", header=True)
+    >>> data = dpl.readers("/path/to/file.rwl", on_error="warn")
     ```
 
 ### Loading data from online sources using  `readers_url`
@@ -179,45 +194,53 @@ This will load the package and its functions, allowing them to be accessed with 
 
 ### Plotting raw data with `plot`
 
-- Description: generates plots of tree ring with data from dataframes. Currently capable of generating `line`, `spag` (spaghetti) and `seg` (segment, default) plots.
+- Description: generates plots of tree-ring data from dataframes. Capable of `seg` (segment, the default), `spag` (spaghetti) and `line` plots.
 - Options:
-    - `type="line"`: creates a line plot (default)
-    - `type="spag"`: creates a spaghetti plot
-    - `type="seg"`: creates a segment plot
+    - `type="seg"`: segment/coverage plot, one bar per series (default)
+    - `type="spag"`: spaghetti plot; `color=` takes a colormap name (e.g. `"viridis"`, `"turbo"`) to shade series by first year, or any single colour (default `"black"`)
+    - `type="line"`: overplot every series against year
+    - `ax=`: draw into an existing matplotlib Axes; `show=False`: return the figure without displaying it (so you can save it). `plot()` returns `(fig, ax)`.
 - Usage Example:
     ```
-    >>> dpl.report("/path/to/file.rwl")
-    # or 
-    >>> dpl.plot(data)
+    >>> dpl.plot(data)                     # segment plot (default)
+    >>> dpl.plot(data, type="spag")        # spaghetti (black)
+    >>> dpl.plot(data, type="spag", color="viridis")   # shade by first year
 
-    # User is able to select specific series of interests.
-    # In the example below, the user selects SERIES_1, SERIES_2, SERIES_3 
-    # from the "data" dataset and generates a spaghetti plot
-    >>> dpl.plot(data[[SERIES_1, SERIES_2, SERIES_3]], type="spag")
+    # Select specific series of interest (SERIES_1, SERIES_2, SERIES_3):
+    >>> dpl.plot(data[["SERIES_1", "SERIES_2", "SERIES_3"]], type="spag")
+
+    # Keep the figure to save it:
+    >>> fig, ax = dpl.plot(data, type="seg", show=False)
+    >>> fig.savefig("segments.png", dpi=300)
     ```
 
 ### Detrending using `detrend`
- 
-- Description: Detrends a given series or data frame, first by fitting data to curve(s), and then by calculating residuals or differences compared to the original data.
+
+- Description: Detrends a given series or dataframe, first by fitting a growth curve (`fit`), then by forming the ring-width index as a ratio or difference of the data to the curve (`method`).
+- **`fit` chooses the CURVE, `method` chooses the ARITHMETIC** (this differs from dplR, where `method` selects the curve). Names are case-insensitive; the canonical spellings are dplR's.
 - Options:
-    - `fit="spline"`: default detrending method.
-    - `fit="ModNegEx"`: detrending using negative exponent method.
-    - `fit="Hugershoff"`: detrending using the Hugenshoff method.
-    - `fit="linear"`: detrending using the linear method.
-    - `fit="horizontal"`: detrending using the horizontal method.
-    - `method="residual"`: calculates residuals vs original data (default).
-    - `method="difference"`: calculates differences vs original data.
-    - `plot=True|False`: whether or not to plot results, default is `True`.
+    - `fit=` (the growth curve), one of:
+        - `"Spline"` — smoothing spline (default)
+        - `"AgeDepSpline"` — age-dependent smoothing spline
+        - `"ModNegExp"` — modified negative exponential (with a linear→mean fallback)
+        - `"ModHugershoff"` — Hugershoff curve (nonlinear least squares, dplR-style)
+        - `"Hugershoff"` — Hugershoff curve (Cook/ARSTAN log-linearised closed form)
+        - `"Linear"` — best-fit straight line
+        - `"Mean"` — horizontal line at the series mean
+        - `fit` may also be a **list** of curves (e.g. `["Spline", "ModNegExp"]`) to compare them.
+    - `method="ratio"`: ring-width index = data ÷ curve (default; `"division"` is a synonym)
+    - `method="difference"`: ring-width index = data − curve
+    - `plot=True|False`: whether to plot results, default `True`.
 - Usage Example:
     ```
-    # detrend with default options
-    >>> dpl.detrend(data)
-    
-    # specify fit to hugershoff curve and detrend with difference
-    >>> dpl.detrend(data, fit="Hugershoff", method="difference")
+    # detrend with default options (Spline fit, ratio index)
+    >>> rwi = dpl.detrend(data)
+
+    # fit a Hugershoff curve and form the index by difference
+    >>> dpl.detrend(data, fit="ModHugershoff", method="difference")
 
     # detrend only SERIES_1, SERIES_2 and SERIES_3
-    >>> dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
+    >>> dpl.detrend(data[["SERIES_1", "SERIES_2", "SERIES_3"]], fit="ModNegExp")
     ```
 
 
@@ -286,6 +309,7 @@ This will load the package and its functions, allowing them to be accessed with 
     - `bin_floor`: default `100`, determines the minimum bin year. The minimum bin year is calculated as $ \lceil (min\_yr/bin\_floor)\rceil*bin.floor $ where `min_yr` is the first year in the dataset.
     - `p_val`: default `0.05`, determines the critical value below which interseries correlations are flagged.
     - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
+    - `make_plot`: default `False`; when `True`, also draws the dplR-style crossdating overview (`corr.rwl.seg` / `plot.crs`).
 - Usage examples:
     ```
     >>> ca533_rwi = dpl.detrend(ca533, plot=False)
@@ -293,10 +317,126 @@ This will load the package and its functions, allowing them to be accessed with 
     # Crossdating of detrended data with default args
     >>> dpl.xdate(ca533_rwi)
 
-    # Crossdating with Pearson correlation and show flags 
+    # Crossdating with Pearson correlation, plus the overview plot
     # (other options set to defaults when not specified).
-    >>> dpl.xdate(ca533_rwi, corr="Pearson" show_flags=True)
+    >>> dpl.xdate(ca533_rwi, corr="Pearson", make_plot=True)
     ```
+- Related: `dpl.xdate_plot(rwi)` draws the crossdating overview on its own; `dpl.series_corr(rwi, "SERIES_1")` gives the per-series moving-correlation and cross-correlation diagnostics; `dpl.interseries_corr(rwi)` returns the mean interseries correlation.
+
+### Build an AR-based chronology with `chron_ars`
+
+- Description: builds ARSTAN-style chronologies from **detrended** ring-width indices — the standard mean chronology, the residual (AR-prewhitened) chronology, and the rescaled "ARSTAN" chronology that adds the pooled autoregression back onto the residual chronology.
+- Usage Example:
+    ```
+    >>> rwi = dpl.detrend(data, plot=False)
+    >>> dpl.chron_ars(rwi)                 # standard + residual + ARSTAN chronologies
+    ```
+
+### Date a floating series with `xdate_floater`
+
+- Description: finds the best calendar placement for an **undated (floating)** ring-width series against a dated master collection, reporting a t-value, autocorrelation-adjusted degrees of freedom, Bonferroni-adjusted p-value and isolation factor for each candidate position (after Wilson 2026).
+- Key arguments: `data` (the dated master collection), `series` (the undated series), `min_overlap` (default `50`), `make_plot=True` for the Wilson-style dating figure.
+- Usage Example:
+    ```
+    # 'master' is a dated rwl/rwi collection; 'floater' is an undated series
+    >>> result = dpl.xdate_floater(master, floater, series_name="UNK01", make_plot=True)
+    >>> result["best"]["max_year"], result["best"]["t"]   # best end year and its t-value
+    ```
+
+### Regional Curve Standardization with `rcs`
+
+- Description: detrends by the Regional Curve method — aligning all series by cambial age, fitting one common growth curve, and dividing each series by it (preserves low-frequency/long-timescale variance that per-series detrending removes).
+- Options: `po` (a pith-offset table aligning series to cambial age), `nyrs`/`f` (curve stiffness), `make_plot` (default `True`).
+- Usage Example:
+    ```
+    >>> rwi = dpl.rcs(data, po=pith_offsets)     # po: DataFrame of series -> years-to-pith
+    ```
+
+### Read chronology files with `read_crn`
+
+- Description: reads Tucson `.crn` chronology files into a dataframe (the read side of `writers(..., format="crn")`).
+- Usage Example:
+    ```
+    >>> crn = dpl.read_crn("/path/to/file.crn")
+    ```
+
+### Agreement statistics: `glk` and `sgc`
+
+- Description: `glk` computes Gleichläufigkeit (the sign-agreement / parallel-run statistic) between series; `sgc` computes synchronous growth changes. Both return the pairwise matrix (and, by default, its significance).
+- Usage Example:
+    ```
+    >>> dpl.glk(data)      # Gleichläufigkeit
+    >>> dpl.sgc(data)      # synchronous growth changes
+    ```
+
+### Mean sensitivity: `sens1` and `sens2`
+
+- Description: `sens1` is the classic mean sensitivity of each series; `sens2` is the alternative (Bunn/dplR) formulation.
+- Usage Example:
+    ```
+    >>> dpl.sens1(data)
+    >>> dpl.sens2(data)
+    ```
+
+### Average cores to trees with `tree_mean`
+
+- Description: averages multiple cores from the same tree into per-tree series (dplR `treeMean`), given an ID mapping (see `read_ids`).
+- Usage Example:
+    ```
+    >>> ids = dpl.read_ids(data)
+    >>> trees = dpl.tree_mean(data, ids)
+    ```
+
+### Basal area increment with `bai_out` and `bai_in`
+
+- Description: converts ring widths to basal area increment, the annual cross-sectional area of wood added. `bai_out` works from the outside (bark) in; `bai_in` works from the pith out.
+- Options: `diam` (per-series stem diameters) for `bai_out`; `d2pith` (distance-to-pith offsets) for `bai_in`.
+- Usage Example:
+    ```
+    >>> bai = dpl.bai_out(data)                    # radius = summed ring widths
+    >>> bai = dpl.bai_out(data, diam=diam_table)   # measured stem diameters
+    >>> bai = dpl.bai_in(data, d2pith=d2pith_table)
+    ```
+
+### Combine datasets with `combine_rwl`
+
+- Description: merges several ring-width datasets onto the union of their years (a thin wrapper over `pandas`, matching dplR's `combine.rwl`).
+- Usage Example:
+    ```
+    >>> both = dpl.combine_rwl([site_a, site_b])   # or dpl.combine_rwl(site_a, site_b)
+    ```
+
+### Export and import LiPD with `to_lipd` and `from_lipd`
+
+- Description: writes a completed chronology (and, optionally, the underlying ring widths, running statistics, site metadata and publication info) to a LiPD file, and reads dplPy/ITRDB LiPD files back in. Requires the optional `pylipd` dependency (`pip install pylipd`).
+- Usage Example:
+    ```
+    >>> rwl = dpl.readers("co021.rwl")
+    >>> rwi = dpl.detrend(rwl, plot=False)
+    >>> crn = dpl.chron(rwi, plot=False)
+    >>> dpl.to_lipd(crn, "co021", rwl=rwl)         # writes co021.lpd
+    >>> back = dpl.from_lipd("co021.lpd")          # dict: chronology, rwl, metadata, ...
+    ```
+
+### Other functions
+
+These are also available; see each function's docstring (`help(dpl.<name>)`) for details.
+
+| Function | Purpose |
+|---|---|
+| `series_corr` | per-series crossdating diagnostics (moving correlation + cross-correlation) |
+| `interseries_corr` | mean interseries correlation (rbar) for a dataset |
+| `rwi_stats` / `rwi_stats_running` | chronology signal statistics (rbar, EPS, SNR), overall or in a running window |
+| `sss` | subsample signal strength |
+| `samp_stats` | sample-depth statistics through time |
+| `common_interval` | find (and optionally plot) the common overlap interval of a dataset |
+| `ssf` | simple signal-free standardization |
+| `powt` | power transformation of ring widths (Cook & Peters) |
+| `ads` | standalone age-dependent smoothing spline |
+| `fill_internal` | fill internal missing (NA) values within series |
+| `read_ids` | parse tree/core IDs from series names |
+| `po_to_wc` / `wc_to_po` | convert between pith offsets and years-to-pith |
+| `SiteMetadata` | container for site metadata (used by the LiPD and `.crn` writers) |
 
 ### Output data to files using  `writers`
 
