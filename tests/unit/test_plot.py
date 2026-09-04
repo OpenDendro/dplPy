@@ -32,3 +32,60 @@ def test_plot_from_filepath_spag_and_seg():
 def test_plot_bad_type_raises():
     with pytest.raises(ValueError):
         dpl.plot(_ca533(), type="bogus")
+
+
+def test_plot_returns_fig_and_ax():
+    # redesign: plot() now returns (fig, ax) so callers can save/restyle
+    plt.close("all")
+    for t in ("line", "spag", "seg"):
+        out = dpl.plot(_ca533(), type=t, show=False)
+        assert isinstance(out, tuple) and len(out) == 2
+        fig, ax = out
+        assert isinstance(fig, plt.Figure) and isinstance(ax, plt.Axes)
+    plt.close("all")
+
+
+def test_plot_draws_into_supplied_ax():
+    # passing ax= must draw into that axes, not create a new figure
+    plt.close("all")
+    fig, ax = plt.subplots()
+    before = len(plt.get_fignums())
+    _, used = dpl.plot(_ca533(), type="seg", ax=ax, show=False)
+    assert used is ax
+    assert len(plt.get_fignums()) == before      # no extra figure created
+    plt.close("all")
+
+
+def test_spag_color_accepts_colormap_and_single_color():
+    # spaghetti coloring is selectable: a colormap name shades by first year,
+    # a single color draws every series that one color
+    from dplpy.plot import _resolve_series_colors
+    grad = _resolve_series_colors("turbo", 5)
+    assert len(grad) == 5 and len({tuple(c) for c in grad}) == 5   # 5 distinct
+    mono = _resolve_series_colors("black", 5)
+    assert len(mono) == 5 and len({tuple(c) for c in mono}) == 1   # all identical
+    # both drive dpl.plot without error
+    plt.close("all")
+    for c in ("viridis", "turbo", "black", "#3b6ea5"):
+        dpl.plot(_ca533(), type="spag", color=c, show=False)
+    plt.close("all")
+
+
+def test_spag_bad_color_raises():
+    with pytest.raises(ValueError):
+        dpl.plot(_ca533(), type="spag", color="definitely_not_a_color", show=False)
+
+
+def test_plot_does_not_pollute_global_style():
+    # regression: the old code called plt.style.use('seaborn-v0_8-darkgrid'),
+    # which permanently mutated global rcParams (background, grid, fonts...) for
+    # every later figure. The redesign styles each Axes it owns instead.
+    plt.close("all")
+    watched = ("axes.facecolor", "axes.edgecolor", "figure.facecolor",
+               "axes.grid", "font.family")
+    before = {k: plt.rcParams[k] for k in watched}
+    for t in ("line", "spag", "seg"):
+        dpl.plot(_ca533(), type=t, show=False)
+    after = {k: plt.rcParams[k] for k in watched}
+    assert before == after, "dpl.plot mutated global matplotlib rcParams"
+    plt.close("all")

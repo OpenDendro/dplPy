@@ -36,6 +36,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from ._plot_style import style_axes, ACCENT, ACCENT_WARM, NEUTRAL
 from .smoothingspline import spline, get_period
 from .agedepspline import ads
 from . import curvefit
@@ -290,20 +291,31 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
         detrended_data = difference(y, yi)
     
     if plot:
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(7,3))
-    
-        axes[0].plot(x, y, "k-", x, yi, "r-", linewidth=2)
-        axes[0].set_xlabel('Year')
-        axes[0].set_ylabel('Ring Width')
-        axes[0].set_title(series_name + " curve fit to " + fit)
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(9, 3.2))
 
-        axes[1].plot(x, detrended_data, 'k-')
-        axes[1].set_xlabel('Year')
-        axes[1].set_ylabel('Index')
-        axes[1].set_title(series_name + " detrended by " + method)
+        # left: raw ring width (grey) with the fitted growth curve (warm)
+        axes[0].plot(x, y, color=NEUTRAL, linewidth=0.9, label="ring width")
+        axes[0].plot(x, yi, color=ACCENT_WARM, linewidth=2.0,
+                     label=fit + " fit")
+        axes[0].set_xlabel("Year")
+        axes[0].set_ylabel("Ring width")
+        axes[0].set_title(str(series_name) + " — curve fit", fontsize=10)
+        axes[0].legend(frameon=False, fontsize=8)
 
+        # right: the detrended index; a ratio index oscillates about 1, a
+        # difference index about 0 -- mark the relevant reference line
+        axes[1].axhline(1.0 if method == "ratio" else 0.0,
+                        color="0.8", linewidth=0.8)
+        axes[1].plot(x, detrended_data, color=ACCENT, linewidth=0.9)
+        axes[1].set_xlabel("Year")
+        axes[1].set_ylabel("Index")
+        axes[1].set_title(str(series_name) + " — detrended by " + method,
+                          fontsize=10)
+
+        for a in axes:
+            style_axes(a, xgrid=True, ygrid=True)
         fig.tight_layout()
-    
+
         plt.show()
 
     rwi = pd.Series(detrended_data, index=pd.Index(data=x, name="Year"),
