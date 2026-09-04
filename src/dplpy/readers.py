@@ -259,11 +259,44 @@ def process_rwl_pandas(filename, skip_lines, header, on_error="raise"):
 # when the header runs past this limit. A caller who is sure can pass header=False.
 _MAX_AUTO_HEADER = 3
 
+# Header phrases unique to a NOAA Template file (a tab-delimited data table under a
+# large '#' metadata header, e.g. ITRDB's '*-noaa.rwl'). These live in the '#'
+# lines, which are stripped as comments before the header-length guard runs, so a
+# NOAA file must be recognised from the RAW lines up front -- otherwise its tab
+# header is force-fit through the Tucson grammar and reported as a misaligned row.
+_NOAA_TEMPLATE_MARKERS = (
+    "world data service for paleoclimatology",
+    "noaa paleoclimatology program",
+    "noaa template",
+    "template version",
+)
+
+
+def _is_noaa_template(raw_lines):
+    """True if the file is a NOAA Template file rather than a Tucson .rwl, judged
+    by the NOAA template banner in its metadata header (checked on the raw lines,
+    before '#' comments are stripped)."""
+    for line in raw_lines[:60]:
+        low = line.lower()
+        if any(m in low for m in _NOAA_TEMPLATE_MARKERS):
+            return True
+    return False
+
 
 def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     """Shared pipeline for the file and URL readers: clean lines, resolve the
     header, parse, and assemble the Year-column dataframe (with salvage report on
     ``df.attrs['dplpy_salvage']``). Returns None if nothing usable is present."""
+    # 0. Reject a NOAA Template file up front (its '#' markers are stripped as
+    #    comments below, and its tab-delimited table is not Tucson data). A caller
+    #    who is sure the file really is Tucson can bypass this with header=False.
+    if header is not False and _is_noaa_template(raw_lines):
+        msg = (source_name + " is a NOAA Template file, not a Tucson .rwl; use the "
+               "Tucson decadal file (the same name without '-noaa').")
+        if on_error == "warn":
+            warnings.warn(msg + " Returning None.")
+            return None
+        raise ValueError("Cannot read file -- " + msg)
     # 1. Drop blank lines (warning about them, as earlier dplPy did) and comment
     #    lines (a '#' anywhere in the first 78 columns). Line numbers in the
     #    warning are 1-indexed against the original input.

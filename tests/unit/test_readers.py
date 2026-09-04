@@ -897,6 +897,39 @@ def test_header_false_bypasses_the_guard(tmp_path):
             assert "does not look like a Tucson" not in str(e)     # guard not applied
 
 
+# A minimal NOAA Template file: the WDS/NOAA banner and 'Template Version' in the
+# '#' header, a '##' variable block, then a TAB-delimited data table (age_CE +
+# series columns). This is a different format from a Tucson .rwl.
+_NOAA_TEMPLATE = (
+    "# World Data Service for Paleoclimatology, Boulder\n"
+    "#     and NOAA Paleoclimatology Program\n"
+    "# Template Version 3.0\n"
+    "# Title\n"
+    "#   Study_Name: Test Site\n"
+    "## age_CE age,,,year Common Era,,tree ring,,,N,\n"
+    "## 111011_raw ring width,,,mm,,tree ring,,,N,\n"
+    "age_CE\t111011_raw\t111012_raw\n"
+    "1900\t123\tNaN\n"
+    "1901\t118\t130\n"
+)
+
+
+def test_noaa_template_file_rejected_with_clear_message(tmp_path):
+    # A NOAA Template file (tab-delimited under a NOAA header) must be recognised
+    # as such -- NOT reported as a misaligned Tucson row. Strict raises a clear
+    # message; salvage warns it and returns None.
+    p = tmp_path / "site-noaa.rwl"
+    p.write_text(_NOAA_TEMPLATE)
+    with pytest.raises(ValueError, match="NOAA Template file"):
+        dpl.readers(str(p))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        r = dpl.readers(str(p), on_error="warn")
+    assert r is None
+    assert any("NOAA Template file" in str(x.message) for x in w)
+    assert not any("misaligned" in str(x.message) for x in w)   # not the old confusing msg
+
+
 # --- '#' inside a series ID is data, not a comment (real ITRDB: SP#1, GFI..#H) --
 def test_hash_in_series_id_is_not_a_comment(tmp_path):
     lines = [
