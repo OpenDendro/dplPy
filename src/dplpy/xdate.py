@@ -559,6 +559,8 @@ def _plot_crs(seg_corr, seg_pval, rwi, bins, bin_bounds, pcrit,
     ax.legend(handles, labels, loc="upper left", fontsize=11,
               framealpha=0.95, edgecolor="black")
     fig.tight_layout(rect=(0, 0.02, 1, 1))
+    from ._plot_style import finalize_font
+    finalize_font(fig)
     plt.show()
     return ax
 

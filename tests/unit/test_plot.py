@@ -34,6 +34,22 @@ def test_plot_bad_type_raises():
         dpl.plot(_ca533(), type="bogus")
 
 
+def test_plot_uses_dplpy_font_without_global_change():
+    # every plot's text (title + tick labels) is stamped with dplPy's resolved
+    # font, applied per-figure so global rcParams stay untouched.
+    import matplotlib.font_manager as fm
+    from dplpy._plot_style import FONT_STACK
+    expected = fm.FontProperties(
+        fname=fm.findfont(fm.FontProperties(family=FONT_STACK))).get_name()
+    before = list(plt.rcParams["font.family"])
+    plt.close("all")
+    fig, ax = dpl.plot(_ca533(), type="seg", show=False)
+    assert ax.title.get_fontfamily() == [expected]
+    assert ax.get_xticklabels()[0].get_fontfamily() == [expected]
+    assert plt.rcParams["font.family"] == before      # no global mutation
+    plt.close("all")
+
+
 def test_plot_returns_fig_and_ax():
     # redesign: plot() now returns (fig, ax) so callers can save/restyle
     plt.close("all")
