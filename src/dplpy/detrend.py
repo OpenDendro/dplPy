@@ -36,7 +36,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from ._plot_style import style_axes, ACCENT, ACCENT_WARM, NEUTRAL
+from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM, NEUTRAL
 from .smoothingspline import spline, get_period
 from .agedepspline import ads
 from . import curvefit
@@ -315,6 +315,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
         for a in axes:
             style_axes(a, xgrid=True, ygrid=True)
         fig.tight_layout()
+        finalize_font(fig)
 
         plt.show()
 

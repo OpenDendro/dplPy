@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
 import matplotlib.pyplot as plt
+from ._plot_style import style_axes, finalize_font, ACCENT, NEUTRAL
 from .agedepspline import ads, _ads_curve
 from .smoothingspline import _smooth_csaps
 from .xdate import _row_biweight
@@ -258,19 +259,19 @@ def _plot_rcs(rwca, ca_m, rc, ncol):
     """Regional-curve figure: each series and the regional curve vs cambial age
     (mirrors dplR's rcs plot), base-R style."""
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.set_facecolor("white")
     x = np.arange(1, rwca.shape[0] + 1)
     alpha = min(0.15, 5.0 / ncol)
     for i in range(ncol):
-        ax.plot(x, rwca[:, i], color="grey", lw=1, alpha=alpha, zorder=1)
-    ax.plot(x, ca_m, color="0.3", lw=1, zorder=2, label="Mean")
-    ax.plot(x, rc, color="steelblue", lw=2.5, zorder=3, label="Regional Curve")
-    ax.plot([], [], color="grey", lw=1, label="Series")
-    ax.set_xlabel("Cambial Age (Years)", fontsize=12)
-    ax.set_ylabel("mm", fontsize=12)
-    ax.legend(frameon=False, loc="upper right")
-    for spine in ax.spines.values():
-        spine.set_color("black")
+        ax.plot(x, rwca[:, i], color="0.6", lw=1, alpha=alpha, zorder=1)
+    ax.plot(x, ca_m, color=NEUTRAL, lw=1, zorder=2, label="Mean")
+    ax.plot(x, rc, color=ACCENT, lw=2.5, zorder=3, label="Regional curve")
+    ax.plot([], [], color="0.6", lw=1, label="Series")
+    ax.set_xlabel("Cambial age (years)")
+    ax.set_ylabel("Ring width (mm)")
+    ax.set_title("Regional curve standardization", fontsize=11)
+    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    style_axes(ax, xgrid=True, ygrid=True)
     fig.tight_layout()
+    finalize_font(fig)
     plt.show()
     return ax

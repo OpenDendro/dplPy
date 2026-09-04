@@ -36,6 +36,14 @@ NEUTRAL = "0.35"          # grey  -- raw ring width under a fitted curve
 GRID = "0.9"              # hairline gridlines
 SPAG_CMAP = "viridis"     # sequential map for the spaghetti plot (by first year)
 
+# Font stack for every dplPy plot: Helvetica first, then Arial, then their
+# metric-compatible clones (so Linux / CI still render in a Helvetica-like face),
+# ending in DejaVu Sans + the generic 'sans-serif'. Because DejaVu Sans is always
+# installed with matplotlib, the fallback always resolves -- so there are no
+# "findfont: Font family not found" warnings when Helvetica is absent.
+FONT_STACK = ["Helvetica", "Arial", "Nimbus Sans", "Liberation Sans",
+              "DejaVu Sans", "sans-serif"]
+
 
 def style_axes(ax, xgrid=True, ygrid=False, hide_spines=("top", "right"),
                hide_yticks=False):
@@ -68,3 +76,51 @@ def style_axes(ax, xgrid=True, ygrid=False, hide_spines=("top", "right"),
 def clamp(value, lo, hi):
     """Constrain a value to [lo, hi] -- used to keep auto-sized figures sane."""
     return max(lo, min(hi, value))
+
+
+def finalize_font(fig, stack=FONT_STACK):
+    """Set the dplPy font on every text element of a finished figure.
+
+    This is applied per-figure, on the text objects themselves, rather than by
+    changing matplotlib's global rcParams -- so it never alters the font of the
+    user's own (non-dplPy) plots. matplotlib resolves an unset font lazily from
+    rcParams at draw time, so we first draw once to materialise the automatic
+    tick labels, then stamp the family explicitly; that also makes the choice
+    survive a later ``fig.savefig()`` on a figure returned with ``show=False``.
+    Call it once, last, just before showing/returning the figure.
+    """
+    import logging
+    import matplotlib.font_manager as fm
+
+    # Resolve the preference list to ONE concrete installed font, once, with the
+    # font_manager logger hushed so the 'Font family not found' notices for the
+    # (expected) missing entries on Helvetica-less machines don't spam the log.
+    # Stamping the resolved name (rather than the list) also means later redraws
+    # don't re-trigger that lookup.
+    flog = logging.getLogger("matplotlib.font_manager")
+    prev_level = flog.level
+    try:
+        flog.setLevel(logging.ERROR)
+        resolved = fm.FontProperties(
+            fname=fm.findfont(fm.FontProperties(family=stack))).get_name()
+    except Exception:                # pragma: no cover - fall back to the list
+        resolved = stack
+    finally:
+        flog.setLevel(prev_level)
+
+    try:
+        fig.canvas.draw()            # materialise auto tick labels
+    except Exception:                # pragma: no cover - headless edge cases
+        pass
+    for ax in fig.get_axes():        # includes twin / secondary axes
+        items = [ax.title, ax.xaxis.label, ax.yaxis.label]
+        items += list(ax.get_xticklabels()) + list(ax.get_yticklabels())
+        legend = ax.get_legend()
+        if legend is not None:
+            items += list(legend.get_texts())
+        items += list(ax.texts)
+        for t in items:
+            t.set_fontfamily(resolved)
+    for t in fig.texts:              # figure-level suptitle / fig.text()
+        t.set_fontfamily(resolved)
+    return fig

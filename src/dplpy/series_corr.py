@@ -41,10 +41,13 @@ import pandas as pd
 from ._validate import _require_dataframe, _normalize_corr
 import numpy as np
 import matplotlib.pyplot as plt
+from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
 
-# RColorBrewer-ish stem colours dplR's ccf plot uses: positive vs negative r.
-_CCF_POS = ("darkred", "lightsalmon")     # (stem/edge, dot fill)
-_CCF_NEG = ("darkblue", "lightblue")
+# Sign-coded stem colours (house palette): positive r warm, negative r blue.
+# The red/blue distinction is semantic (sign of correlation), kept from dplR's
+# ccf plot but recoloured to match the rest of dplPy's figures.
+_CCF_POS = (ACCENT_WARM, "#e8b0a6")       # (stem/edge, dot fill) -- positive r
+_CCF_NEG = (ACCENT, "#adc3db")            #                          negative r
 
 
 def _dplR_ccf(x, y, lag_max):
@@ -238,32 +241,32 @@ def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
     top_ticks = _thin([lo for lo, hi in active[1::2]])
 
     fig, ax = plt.subplots(figsize=(max((xhi - xlo) / 45, 9), 5))
-    ax.set_facecolor("white")
     for lo, hi in active:
-        ax.axvline(lo, color="grey", lw=0.4, ls=":", zorder=1)
+        ax.axvline(lo, color="0.85", lw=0.4, ls=":", zorder=1)
     if len(moving_corr):
         ax.plot(moving_corr.index.to_numpy(), moving_corr.to_numpy(),
-                color="black", lw=1.5, zorder=3)
+                color=ACCENT, lw=1.3, zorder=3)
     for (lo, hi), blabel in zip(bin_bounds, seg_corr.index):
         v = seg_corr.get(blabel, np.nan)
         if not np.isnan(v):
-            ax.plot([lo, hi], [v, v], color="black", lw=3, zorder=4)
-    ax.axhline(sig, ls="--", color="black", lw=1.2, zorder=2)
+            ax.plot([lo, hi], [v, v], color="0.25", lw=3, zorder=4)
+    ax.axhline(sig, ls="--", color="0.55", lw=1.1, zorder=2)
 
     ax.set_xlim(xlo - (xhi - xlo) * 0.02, xhi + (xhi - xlo) * 0.02)
     ax.set_xticks(bot_ticks)
-    ax.tick_params(axis="both", labelsize=13, length=4, color="black")
+    ax.tick_params(axis="both", length=4)
     axt = ax.secondary_xaxis("top")
     axt.set_xticks(top_ticks)
-    axt.tick_params(axis="x", labelsize=13, length=4, color="black")
-    ax.set_xlabel("Year", fontsize=15)
-    ax.set_ylabel("Correlation", fontsize=15)
-    ax.set_title(name, fontsize=15)
+    axt.tick_params(axis="x", length=4)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Correlation")
+    ax.set_title(name, fontsize=11)
     fig.text(0.5, 0.005, "Segments: length=%d, lag=%d" % (seg_length, seg_length // 2),
-             ha="center", fontsize=12)
-    for spine in ax.spines.values():
-        spine.set_color("black")
+             ha="center", fontsize=9, color="0.4")
+    # keep the top spine (the secondary year axis lives there); trim the right
+    style_axes(ax, xgrid=False, hide_spines=("right",))
     fig.tight_layout(rect=(0, 0.02, 1, 1))
+    finalize_font(fig)
 
 
 def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
@@ -286,16 +289,15 @@ def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
                              squeeze=False)
     for j, blabel in enumerate(segs):
         ax = axes[j // cols][j % cols]
-        ax.set_facecolor("white")
         vals = ccf_table[blabel].to_numpy()
         for gy in np.arange(-1, 1.0001, 0.1):
-            ax.axhline(gy, color="lightgrey", lw=0.5, zorder=0)
+            ax.axhline(gy, color="0.9", lw=0.5, zorder=0)
         for lg in lag_vec:
-            ax.axvline(lg, color="lightgrey", lw=0.5, zorder=0)
-        ax.axhline(0, color="black", lw=1.3, zorder=2)
-        ax.axvline(0, color="black", lw=1.3, zorder=2)
-        ax.axhline(sig, ls="--", color="black", lw=1.1, zorder=2)
-        ax.axhline(-sig, ls="--", color="black", lw=1.1, zorder=2)
+            ax.axvline(lg, color="0.9", lw=0.5, zorder=0)
+        ax.axhline(0, color="0.3", lw=1.1, zorder=2)
+        ax.axvline(0, color="0.3", lw=1.1, zorder=2)
+        ax.axhline(sig, ls="--", color="0.55", lw=1.0, zorder=2)
+        ax.axhline(-sig, ls="--", color="0.55", lw=1.0, zorder=2)
         for lg, v in zip(lag_vec, vals):
             if np.isnan(v):
                 continue
@@ -303,20 +305,23 @@ def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
             ax.plot([lg, lg], [0, v], color=stem_c, lw=2, zorder=3)
             ax.plot([lg], [v], marker="o", ms=6, markerfacecolor=dot_c,
                     markeredgecolor=stem_c, zorder=4)
-        ax.set_title(blabel, fontsize=11)
+        ax.set_title(blabel, fontsize=9)
         ax.set_xlim(min(lag_vec) - 0.5, max(lag_vec) + 0.5)
         ax.set_ylim(lo, hi)
         ax.set_xticks(lag_vec[::2])
-        ax.tick_params(labelsize=10)
+        ax.tick_params(labelsize=8)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
         if j % cols == 0:
-            ax.set_ylabel("Correlation", fontsize=12)
+            ax.set_ylabel("Correlation", fontsize=10)
         if j // cols == rows - 1:
-            ax.set_xlabel("Lag", fontsize=12)
+            ax.set_xlabel("Lag", fontsize=10)
     for j in range(len(segs), rows * cols):
         axes[j // cols][j % cols].set_axis_off()
-    fig.suptitle(name, fontsize=15, y=1.0)
-    fig.text(0.5, 0.002, note, ha="center", fontsize=11)
+    fig.suptitle(name, fontsize=12, y=1.0)
+    fig.text(0.5, 0.002, note, ha="center", fontsize=9, color="0.4")
     fig.tight_layout(rect=(0, 0.02, 1, 0.99))
+    finalize_font(fig)
 
 
 def scipy_norm_ppf(q):

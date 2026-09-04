@@ -312,6 +312,7 @@ def _plot_floater(result, show=True):
     Returns the matplotlib Figure."""
     import matplotlib.pyplot as plt
     from matplotlib.ticker import LogLocator
+    from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
 
     stats = result["floater_cor_stats"]
     best = result["best"]
@@ -324,7 +325,9 @@ def _plot_floater(result, show=True):
     all_t = all_t[np.isfinite(all_t)]
     thr = 4.0 * np.nanstd(all_t)
 
-    teal, blue, red, grey = "#458B74", "#1f4fd8", "#d62728", "#999999"
+    # House palette: data in accent blue, best-match highlight in brick (so it
+    # contrasts with the data), significance/threshold lines as neutral guides.
+    data_c, best_c, ref_c, thr_c = ACCENT, ACCENT_WARM, "0.55", "0.6"
     # display caps, matching Wilson's convention
     IF = best["isolation_factor"]
     if_disp = ">1000" if (np.isfinite(IF) and IF > 1000) else (
@@ -335,9 +338,9 @@ def _plot_floater(result, show=True):
 
     def _titles(ax, main, sub):
         ax.text(0.0, 1.16, main, transform=ax.transAxes, ha="left", va="bottom",
-                fontweight="bold", fontsize=11)
+                fontsize=11)
         ax.text(0.0, 1.02, sub, transform=ax.transAxes, ha="left", va="bottom",
-                color=blue, fontweight="bold", fontsize=9.5)
+                color="0.4", fontsize=9)
 
     fig = plt.figure(figsize=(15, 6.6))
     gs = fig.add_gridspec(2, 2, width_ratios=[2.4, 1], height_ratios=[1, 1],
@@ -348,46 +351,50 @@ def _plot_floater(result, show=True):
     ax_h = fig.add_subplot(gs[:, 1])
 
     # --- (1) sliding t-values ---
-    ax_t.axhline(0, ls="--", lw=0.5, color="black")
-    ax_t.axhline(thr, ls="--", lw=0.5, color=grey)
+    ax_t.axhline(0, ls="--", lw=0.5, color="0.7")
+    ax_t.axhline(thr, ls="--", lw=0.5, color=thr_c)
     ax_t.text(yr.min(), thr, " 4 STDEVs", va="bottom", ha="left",
-              fontsize=8, color=grey, fontweight="bold")
-    ax_t.plot(yr, tval, lw=0.4, color=teal)
-    ax_t.plot([best["max_year"]], [best["t"]], "o", color=blue, ms=7, zorder=5)
-    ax_t.set_ylabel("T-Value")
+              fontsize=8, color=thr_c)
+    ax_t.plot(yr, tval, lw=0.4, color=data_c)
+    ax_t.plot([best["max_year"]], [best["t"]], "o", color=best_c, ms=7, zorder=5)
+    ax_t.set_ylabel("T-value")
+    style_axes(ax_t, xgrid=True, ygrid=True)
     _titles(ax_t, "Sliding T values",
-            "Strongest Candidate Outer Year Date = %d CE    T = %.2f"
+            "Strongest candidate outer-year date = %d CE    T = %.2f"
             % (best["max_year"], best["t"]))
 
     # --- (2) sliding Bonferroni-adjusted p-values (reversed log) ---
     pv = np.clip(pval, 1e-300, 1.0)
-    ax_p.plot(yr, pv, lw=0.4, color="black")
+    ax_p.plot(yr, pv, lw=0.4, color=data_c)
     ax_p.set_yscale("log")
     ax_p.set_ylim(1.0, max(pv.min(), 1e-300) * 0.2)   # inverted: small p at top
     ax_p.yaxis.set_major_locator(LogLocator(base=10, numticks=12))
     for ref, lab in ((0.05, "p = 0.05"), (1e-4, "p = 0.0001")):
-        ax_p.axhline(ref, ls="--", lw=0.5, color=red)
+        ax_p.axhline(ref, ls="--", lw=0.7, color=ref_c)
         ax_p.text(yr.min(), ref, " " + lab, va="bottom", ha="left",
-                  fontsize=7, color=red)
-    ax_p.set_ylabel("adjusted P values")
-    ax_p.set_xlabel("Calendar Years CE")
-    _titles(ax_p, "Sliding Bonferroni adjusted p values",
+                  fontsize=7, color=ref_c)
+    ax_p.set_ylabel("Adjusted p values")
+    ax_p.set_xlabel("Calendar years CE")
+    style_axes(ax_p, xgrid=True, ygrid=False)
+    _titles(ax_p, "Sliding Bonferroni-adjusted p values",
             "p = %s    1/p = %s    IF = %s" % (p_disp, oop_disp, if_disp))
 
     # --- (3) distribution of all t-values, best marked ---
-    ax_h.hist(all_t, bins=40, density=True, color=teal, edgecolor="black",
+    ax_h.hist(all_t, bins=40, density=True, color=data_c, edgecolor="white",
               linewidth=0.3)
-    ax_h.axvline(best["t"], ls="--", lw=1.2, color=blue)
+    ax_h.axvline(best["t"], ls="--", lw=1.2, color=best_c)
     ax_h.annotate("", xy=(best["t"], ax_h.get_ylim()[1] * 0.55),
                   xytext=(best["t"] - 0.18 * (all_t.max() - all_t.min()),
                           ax_h.get_ylim()[1] * 0.55),
-                  arrowprops=dict(arrowstyle="->", color=blue, lw=1.2))
+                  arrowprops=dict(arrowstyle="->", color=best_c, lw=1.2))
     ax_h.set_xlabel("T-value")
     ax_h.set_ylabel("Density")
+    style_axes(ax_h, xgrid=False, ygrid=True)
     _titles(ax_h, "T-value density distribution",
             "%d CE    T = %.2f" % (best["max_year"], best["t"]))
 
-    fig.suptitle(name, color=red, fontweight="bold", fontsize=18, y=1.0)
+    fig.suptitle(name, color="0.15", fontweight="bold", fontsize=13, y=1.0)
+    finalize_font(fig)
     if show:
         plt.show()
     return fig

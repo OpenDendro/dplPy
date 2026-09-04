@@ -36,7 +36,7 @@ __license__ = "GNU GPLv3"
 import matplotlib.pyplot as plt
 import pandas as pd
 from ._validate import _require_dataframe
-from ._plot_style import style_axes, ACCENT
+from ._plot_style import style_axes, finalize_font, ACCENT
 import numpy as np
 from .tbrm import tbrm
 from .autoreg import ar_func
@@ -236,6 +236,7 @@ def plot_chron(years, depths, means, whitened_means, ax=None, show=True):
     style_axes(ax, xgrid=True, hide_spines=("top",))
 
     fig.tight_layout()
+    finalize_font(fig)
     if show:
         plt.show()
     return fig, ax

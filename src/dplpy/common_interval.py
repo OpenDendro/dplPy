@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
 import matplotlib.pyplot as plt
+from ._plot_style import style_axes, finalize_font, ACCENT
 
 _TYPES = ("series", "years", "both")
 
@@ -239,22 +240,23 @@ def _plot_common(rwl, notNA, keep_row_out, keep_col_out, type, ncol_out, nrow_ou
 
     fig, ax = plt.subplots(figsize=(max((yrs.max() - yrs.min()) / 90, 8),
                                     max(len(names) * 0.28, 4)))
-    ax.set_facecolor("white")
     for rank, k in enumerate(order, start=1):
         if np.isnan(first[k]):
             continue
-        ax.plot([first[k], last[k]], [rank, rank], color="grey", lw=2, zorder=1)
+        ax.plot([first[k], last[k]], [rank, rank], color="0.7", lw=2, zorder=1)
         if keep_col_out[k] and cfirst is not None:
-            ax.plot([cfirst, clast], [rank, rank], color="black", lw=2.5, zorder=2)
+            ax.plot([cfirst, clast], [rank, rank], color=ACCENT, lw=2.8, zorder=2)
     if cfirst is not None:
         for xv in (cfirst, clast + 1):
-            ax.axvline(xv, ls="--", color="black", lw=1)
+            ax.axvline(xv, ls="--", color="0.5", lw=1)
     ax.set_yticks(range(1, len(names) + 1))
-    ax.set_yticklabels([names[k] for k in order], fontsize=8)
-    ax.set_xlabel("Year", fontsize=12)
-    ax.set_title("Common interval (type='%s'): %d series x %d years = %d"
-                 % (type, ncol_out, nrow_out, ncol_out * nrow_out), fontsize=12)
-    for spine in ax.spines.values():
-        spine.set_color("black")
+    ax.set_yticklabels([names[k] for k in order], fontsize=7)
+    ax.set_ylim(0.3, len(names) + 0.7)
+    ax.set_xlabel("Year")
+    ax.set_title("Common interval (type='%s'): %d series × %d years = %d"
+                 % (type, ncol_out, nrow_out, ncol_out * nrow_out), fontsize=11)
+    style_axes(ax, xgrid=True, hide_spines=("top", "right", "left"),
+               hide_yticks=True)
     fig.tight_layout()
+    finalize_font(fig)
     plt.show()

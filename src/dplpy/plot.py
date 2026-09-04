@@ -48,7 +48,7 @@ import matplotlib.colors as mcolors
 
 from ._validate import _coerce_to_frame
 from .stats import stats
-from ._plot_style import (style_axes, clamp, ACCENT)
+from ._plot_style import (style_axes, clamp, finalize_font, ACCENT)
 
 
 def plot(inp: pd.DataFrame | str, type="seg", ax=None, show=True, **kwargs):
@@ -103,6 +103,7 @@ def plot(inp: pd.DataFrame | str, type="seg", ax=None, show=True, **kwargs):
                          "'seg')." % (type,))
 
     fig = ax.figure
+    finalize_font(fig)
     if show:
         plt.show()
     return fig, ax
