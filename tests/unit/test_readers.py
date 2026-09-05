@@ -535,8 +535,11 @@ def test_salvage_duplicate_id_renames_and_keeps_both():
                for r in d.attrs["dplpy_salvage"])
 
 
-def test_salvage_does_not_split_disjoint_segments(tmp_path):
-    # One ID entered as two disjoint segments (a gap) must MERGE, not be renamed.
+def test_salvage_disjoint_segments_merge_and_report(tmp_path):
+    # One ID written as two disjoint (non-overlapping) terminated blocks is joined
+    # into a single series -- never renamed/split. Because the blocks have the same
+    # ID with no shared years, salvage records the join in its report (and strict
+    # warns about it -- see the next test): a real merge is not silent.
     p = tmp_path / "seg.rwl"
     p.write_text(
         "AAA01   1900   100   200   300 -9999\n"
@@ -548,7 +551,49 @@ def test_salvage_does_not_split_disjoint_segments(tmp_path):
     assert "AAA01" in d.columns and "AAA012" not in d.columns   # merged, not split
     assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
     assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
-    assert d.attrs["dplpy_salvage"] == []
+    rep = d.attrs["dplpy_salvage"]
+    assert len(rep) == 1
+    assert rep[0]["series"] == "AAA01"
+    assert rep[0]["issue"] == "duplicate_id" and rep[0]["action"] == "joined"
+
+
+def test_strict_disjoint_duplicate_joins_and_warns(tmp_path):
+    # In strict (default) mode the same disjoint-duplicate ID is still joined into
+    # one series, but it WARNS rather than raising (the years do not conflict, so
+    # there is nothing to refuse) -- and it is NOT mislabelled a flipped-date
+    # "out of year order" row (that is a backward year within one block).
+    p = tmp_path / "seg.rwl"
+    p.write_text(
+        "AAA01   1900   100   200   300 -9999\n"
+        "AAA01   2000   400   500   600 -9999\n"
+    )
+    with pytest.warns(UserWarning, match="duplicate ID in separate blocks"):
+        d = dpl.readers(str(p))
+    assert list(d.columns) == ["AAA01"]            # one merged series
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+    assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
+
+
+def test_reverse_order_disjoint_duplicate_is_join_not_out_of_order(tmp_path):
+    # The ut542 CC1-2 / ut550 RCB183A shape: the same ID as two SEPARATELY
+    # TERMINATED blocks written OUT of chronological order (the older core second).
+    # The blocks do not share years, so they merge into one series. This must be
+    # recognised as a joined duplicate ID -- NOT the "out of year order" warning
+    # (that is a backward row WITHIN one block, e.g. a flipped date), and NOT a
+    # raise (there is no year conflict to refuse).
+    p = tmp_path / "revdup.rwl"
+    p.write_text(
+        "BBB1    1900   100   200   300 -9999\n"   # newer core, terminated
+        "BBB1    1800   400   500   600 -9999\n"   # older core, terminated (reverse)
+    )
+    with pytest.warns(UserWarning) as rec:
+        d = dpl.readers(str(p))
+    msgs = " || ".join(str(w.message) for w in rec)
+    assert "duplicate ID in separate blocks" in msgs
+    assert "out of year order" not in msgs         # not mislabelled a flipped date
+    assert list(d.columns) == ["BBB1"]             # one merged series
+    assert d.loc[1800, "BBB1"] == pytest.approx(0.4)   # older block placed by year
+    assert d.loc[1900, "BBB1"] == pytest.approx(0.1)   # newer block placed by year
 
 
 def test_salvage_identical_overlap_not_renamed(tmp_path):

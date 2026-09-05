@@ -882,6 +882,93 @@ def _segment_blocks(rows):
     return blocks
 
 
+def _is_terminator_row(r, precision=None):
+    """True if a parsed row ends with a Tucson stop marker -- the marker that
+    terminates a series. ``-9999`` is always the 0.001 mm marker (it is never a real
+    value). ``999`` terminates only a 0.01 mm series; in a 0.001 mm series ``999`` is
+    a real 0.999 mm measurement, so without a known precision (or a 0.001 mm one) a
+    trailing 999 is NOT treated as a terminator. Used to segment a file into
+    terminator-delimited blocks, so a backward year AFTER a terminator (the same code
+    reappearing as a second core) is told apart from a backward year WITHIN a block
+    (one series with a row out of order -- a flipped or mistyped decade)."""
+    if r is None or not r[2]:
+        return False
+    last = r[2][-1].strip()
+    if last == "-9999":
+        return True
+    if last == "999":
+        return precision is not None and precision.get(r[0]) == 100
+    return False
+
+
+def _terminated_blocks(rows, precision=None):
+    """Segment parsed rows into blocks that each end at a stop-marker terminator (or
+    where the ID changes), in file order, as [{sid, rows, min_year, max_year}].
+
+    Unlike ``_segment_blocks`` (which splits on any backward year), a backward year
+    *within* a block does NOT start a new block here -- so an out-of-order row (a
+    flipped date: wy002's 283012, nm604's 101401) stays inside its single block,
+    while the same ID reappearing AFTER its terminator (a second core stacked under
+    one code: ut542's CC1-2, ut550's RCB183A) becomes a separate block. That is the
+    distinction the duplicate-vs-flipped-date logic keys on. ``precision`` (sid ->
+    100/1000) makes the terminator test exact for a trailing 999 (see
+    ``_is_terminator_row``)."""
+    blocks = []
+    cur = None
+    prev_term = False
+    for i, r in enumerate(rows):
+        if r is None:
+            continue
+        sid = r[0]
+        if cur is None or cur["sid"] != sid or prev_term:
+            if cur is not None:
+                blocks.append(cur)
+            cur = {"sid": sid, "rows": [i]}
+        else:
+            cur["rows"].append(i)
+        prev_term = _is_terminator_row(r, precision)
+    if cur is not None:
+        blocks.append(cur)
+    for b in blocks:
+        yrs = [rows[ri][1] for ri in b["rows"]]
+        b["min_year"], b["max_year"] = min(yrs), max(yrs)
+    return blocks
+
+
+def _disjoint_duplicate_ids(rows, present, precision=None):
+    """IDs that appear as two or more terminator-delimited blocks whose years are
+    disjoint (they do not share any year). These are the same code written as, or
+    stacked from, separate blocks -- a series split into forward pieces (dplR's
+    BT006) or two cores stacked under one code out of order (ut542 CC1-2, ut550
+    RCB183A). Either way their years do not clash, so they merge into one series and
+    are reported/warned about (not silently merged, and not mistaken for a
+    flipped-date row within one block). An identical copy-paste over the same years
+    (a dedup) or an overlapping conflict (raised in strict / renamed in salvage
+    upstream) shares years, so it is excluded here. ``present`` limits the result to
+    IDs that survived to the final frame."""
+    by_sid = {}
+    for b in _terminated_blocks(rows, precision):
+        by_sid.setdefault(b["sid"], []).append(b)
+    dup = set()
+    for sid, bl in by_sid.items():
+        if len(bl) < 2 or sid not in present:
+            continue
+        # Blocks must be disjoint in their actual data years. Blocks that share a
+        # year are an identical copy-paste (dedup) or a conflict (handled upstream),
+        # not a disjoint join, so they are not reported here.
+        seen_years = set()
+        disjoint = True
+        for b in bl:
+            ys = set(_block_year_values(rows, b["rows"]).keys())
+            if seen_years & ys:
+                disjoint = False
+                break
+            seen_years |= ys
+        if disjoint:
+            dup.add(sid)
+    return dup
+
+
 def _rename_overlapping_duplicates(rows):
     """Salvage helper. When a series ID appears in more than one block and those
     blocks actually share years (two cores sharing a code), rename the second and
@@ -1398,26 +1485,63 @@ def read_rwl(lines, on_error="raise"):
 
     dropped = len(nonint_cells) + len(neg_hits)   # values the file had but couldn't be used
 
-    # Combined series: a duplicate ID that RECURRED in a separate place in the
-    # file (more than one contiguous run) and was merged into one series because
-    # the runs do not conflict -- disjoint years, or an identical repeat. (In
-    # strict mode a conflicting duplicate would already have raised above; in
-    # salvage mode a conflicting block was renamed, so anything still recurring
-    # here was genuinely merged.) A single series with a row written out of order
-    # is one contiguous run, so it is not reported. Reported on a successful read
-    # so a real merge is not silent.
+    # Duplicate IDs written as two or more terminator-delimited blocks with disjoint
+    # years -- a series split into forward pieces (dplR's BT006) or two cores stacked
+    # under one code out of order (ut542 CC1-2, ut550 RCB183A). Their years do not
+    # overlap (a conflict would have raised in strict / been renamed in salvage
+    # above), so they are joined into one series. This is reported (never a silent
+    # merge) and, in strict mode, warned about; it is not mistaken for a flipped-date
+    # row (which is a backward year WITHIN one block, handled below).
+    dup_joined = _disjoint_duplicate_ids(rows, set(order), precision)
+    tblock_count = {}
+    if dup_joined:
+        for b in _terminated_blocks(rows, precision):
+            tblock_count[b["sid"]] = tblock_count.get(b["sid"], 0) + 1
+
+    # Combined series: a duplicate ID merged into one series because its blocks do
+    # not conflict -- either a genuine re-appearance elsewhere in the file (more
+    # than one contiguous run) or the disjoint duplicate blocks just described.
+    # (In strict mode a conflicting duplicate would already have raised above; in
+    # salvage mode a conflicting block was renamed.) A single series with a row
+    # written out of order is one contiguous, in-place run, so it is not reported.
+    # Reported on a successful read so a real merge is not silent.
     combined = []
     for sid in order:
-        if appearances.get(sid, 1) >= 2 and rwl_data.get(sid):
+        if not rwl_data.get(sid):
+            continue
+        is_dup_joined = sid in dup_joined
+        if appearances.get(sid, 1) >= 2 or is_dup_joined:
+            n = tblock_count.get(sid, 1) if is_dup_joined else appearances.get(sid, 1)
             yrs = rwl_data[sid].keys()
-            combined.append({"series": sid, "n_blocks": appearances[sid],
+            combined.append({"series": sid, "n_blocks": n,
                              "first_year": int(min(yrs)), "last_year": int(max(yrs))})
+
+    # Surface the disjoint-duplicate join: strict warns; salvage records it in the
+    # report (its standard channel). Kept about as terse as the out-of-order warning.
+    if dup_joined:
+        dj = [s for s in order if s in dup_joined]
+        if salvage:
+            for sid in dj:
+                report.append({"series": sid, "issue": "duplicate_id", "action": "joined",
+                               "detail": "same ID in " + str(tblock_count.get(sid, 2))
+                                         + " separate blocks with no overlapping years, "
+                                           "joined into one series"})
+        else:
+            ids = ", ".join(str(s) for s in dj)
+            if len(dj) == 1:
+                warnings.warn("Series " + ids + " had a duplicate ID in separate blocks "
+                              "with no overlapping years (joined into one series).")
+            else:
+                warnings.warn(str(len(dj)) + " series had a duplicate ID in separate "
+                              "blocks with no overlapping years (joined into one series "
+                              "each): " + ids + ".")
 
     # Out-of-order rows: a surviving series whose row years step backward in file
     # order (a decade written before an earlier one -- wy002's 283012, nm604's
     # 101401). The data still reads correctly (rows are placed by year), but the
-    # file was untidy, so warn once per series. Series reported as combined
-    # duplicates (a genuine re-appearance) are already explained, so skip them.
+    # file was untidy, so warn once per series. Series explained as combined or as
+    # a joined duplicate are skipped (their reappearance, not a misplaced row within
+    # one block, is the cause).
     combined_ids = {c["series"] for c in combined}
     out_of_order = []
     max_year_seen = {}
@@ -1429,7 +1553,7 @@ def read_rwl(lines, on_error="raise"):
             out_of_order.append(sid)
         max_year_seen[sid] = max(max_year_seen.get(sid, yr), yr)
     out_of_order = [s for s in out_of_order
-                    if s in rwl_data and s not in combined_ids]
+                    if s in rwl_data and s not in combined_ids and s not in dup_joined]
     if out_of_order:
         if len(out_of_order) == 1:
             warnings.warn("Series " + str(out_of_order[0]) + " had rows out of year "
