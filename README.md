@@ -40,9 +40,9 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
     - [Average cores to trees with `tree_mean`](#average-cores-to-trees-with-tree_mean)
     - [Basal area increment with `bai_out` and `bai_in`](#basal-area-increment-with-bai_out-and-bai_in)
     - [Combine datasets with `combine_rwl`](#combine-datasets-with-combine_rwl)
+    - [Output data to files using `writers`](#output-data-to-files-using-writers)
     - [Export and import LiPD with `to_lipd` and `from_lipd`](#export-and-import-lipd-with-to_lipd-and-from_lipd)
     - [Other functions](#other-functions)
-    - [Output data to files using `writers`](#output-data-to-files-using-writers)
 
 ---
 
@@ -406,6 +406,23 @@ This will load the package and its functions, allowing them to be accessed with 
     >>> both = dpl.combine_rwl([site_a, site_b])   # or dpl.combine_rwl(site_a, site_b)
     ```
 
+### Output data to files using  `writers`
+
+- Description: writes data from dataframe to supported file types (`csv`, `rwl`, `crn`, `txt`).
+- Required parameters: 
+    - `data`: dataframe with ring widths (presumably one read from `readers` or `readers_url`)
+    - `label`: name (can include file path) to give to the created file. **should not include file extension**
+    - `format`: extension for file to be created. Can be `'csv'`, `'rwl'`, `'crn'` or `'txt'`.
+
+- Usage examples:
+    ```
+    # Write data to file_name.csv in current working directory.
+    >>> dpl.writers(data, "file_name", "csv")
+
+    # Write data to file_name.csv in ./path/to/ directory.
+    >>> dpl.writers(data, "./path/to/file_name", "csv")
+    ```
+    
 ### Export and import LiPD with `to_lipd` and `from_lipd`
 
 - Description: writes a completed chronology (and, optionally, the underlying ring widths, running statistics, site metadata and publication info) to a LiPD file, and reads dplPy/ITRDB LiPD files back in. Requires the optional `pylipd` dependency (`pip install pylipd`).
@@ -438,19 +455,3 @@ These are also available; see each function's docstring (`help(dpl.<name>)`) for
 | `po_to_wc` / `wc_to_po` | convert between pith offsets and years-to-pith |
 | `SiteMetadata` | container for site metadata (used by the LiPD and `.crn` writers) |
 
-### Output data to files using  `writers`
-
-- Description: writes data from dataframe to supported file types (`csv`, `rwl`, `crn`, `txt`).
-- Required parameters: 
-    - `data`: dataframe with ring widths (presumably one read from `readers` or `readers_url`)
-    - `label`: name (can include file path) to give to the created file. **should not include file extension**
-    - `format`: extension for file to be created. Can be `'csv'`, `'rwl'`, `'crn'` or `'txt'`.
-
-- Usage examples:
-    ```
-    # Write data to file_name.csv in current working directory.
-    >>> dpl.writers(data, "file_name", "csv")
-
-    # Write data to file_name.csv in ./path/to/ directory.
-    >>> dpl.writers(data, "./path/to/file_name", "csv")
-    ```
