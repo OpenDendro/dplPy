@@ -1200,3 +1200,33 @@ def test_orphan_after_stop_marker_salvage_drops_fragment(tmp_path):
     assert rpt and rpt[0]["issue"] == "post_marker_orphan"
     assert int(d["BBB"].dropna().index.min()) == 1910     # next series intact
     assert int(d["BBB"].dropna().index.max()) == 1912
+
+
+# --- join switch: merge vs keep-separate for disjoint same-ID blocks -----------
+_DISJOINT_DUP = (
+    "AAA01   1900   100   200   300 -9999\n"   # AAA01 block 1: 1900-1902
+    "AAA01   2000   400   500   600 -9999\n"   # AAA01 block 2: 2000-2002 (disjoint)
+)
+
+
+def test_join_true_merges_disjoint_blocks(tmp_path):
+    p = tmp_path / "j.rwl"
+    p.write_text(_DISJOINT_DUP)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), header=False)            # join=True default
+    assert list(d.columns) == ["AAA01"]                  # merged into one series
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+    assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
+
+
+def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
+    p = tmp_path / "j.rwl"
+    p.write_text(_DISJOINT_DUP)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d = dpl.readers(str(p), header=False, join=False)
+    assert list(d.columns) == ["AAA01", "AAA012"]        # kept as two separate series
+    assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
+    assert d.loc[2000, "AAA012"] == pytest.approx(0.4)
+    assert np.isnan(d.loc[2000, "AAA01"])                # not merged

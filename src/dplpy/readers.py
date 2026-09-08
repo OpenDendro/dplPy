@@ -59,7 +59,7 @@ import pandas as pd
 import numpy as np
 
 
-def readers(filename: str, skip_lines=0, header=None, strict=True, format=None):
+def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, join=True):
     """Imports a common ring width data file
 
     Extended Summary
@@ -97,6 +97,11 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None):
         renamed and kept, and a file with nothing usable returns ``None``. Every
         such action is warned about and recorded on ``df.attrs["dplpy_salvage"]``
         (a list of {series, issue, action, detail}).
+    join : bool, default True
+        ``True`` (matching dplR) merges a series written as two or more disjoint
+        same-ID blocks (e.g. 1651-1774 and 1800-1974) into one series. ``False``
+        keeps them as SEPARATE series, renaming the 2nd+ block to a unique ID --
+        the per-segment view a crossdating QA (COFECHA-style) needs.
 
     Returns
     -------
@@ -156,9 +161,9 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None):
         if is_url:
             raw_lines = _fetch_url_lines(filename)
             series_data = _lines_to_dataframe(raw_lines, skip_lines, header, strict,
-                                              os.path.basename(filename))
+                                              os.path.basename(filename), join=join)
         else:
-            series_data = process_rwl_pandas(filename, skip_lines, header, strict)
+            series_data = process_rwl_pandas(filename, skip_lines, header, strict, join=join)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
@@ -237,7 +242,7 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None):
 # .rwl (Tucson) reading
 # ---------------------------------------------------------------------------
 
-def process_rwl_pandas(filename, skip_lines, header, strict=True):
+def process_rwl_pandas(filename, skip_lines, header, strict=True, join=True):
     """Read a Tucson (.rwl/.raw) file into a Year-indexed dataframe.
 
     Returns a dataframe with a ``Year`` column (the public ``readers`` wrapper
@@ -248,7 +253,7 @@ def process_rwl_pandas(filename, skip_lines, header, strict=True):
     with open(filename, "r") as rwl_file:
         raw_lines = rwl_file.readlines()
     return _lines_to_dataframe(raw_lines, skip_lines, header, strict,
-                               os.path.basename(filename))
+                               os.path.basename(filename), join=join)
 
 
 # A Tucson .rwl has at most 3 header/metadata lines before the first data row (the
@@ -285,7 +290,7 @@ def _is_noaa_template(raw_lines):
     return False
 
 
-def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name):
+def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join=True):
     """Shared pipeline for the file and URL readers: clean lines, resolve the
     header, parse, and assemble the Year-column dataframe (with salvage report on
     ``df.attrs['dplpy_salvage']``). Returns None if nothing usable is present."""
@@ -348,7 +353,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name):
     if len(clean_lines) == 0:
         return None
 
-    parsed = read_rwl(clean_lines, strict=strict)
+    parsed = read_rwl(clean_lines, strict=strict, join=join)
     if parsed is None:
         return None
     rwl_data, precision, order, report, dropped, combined = parsed
@@ -1052,6 +1057,55 @@ def _rename_overlapping_duplicates(rows):
     return rows, records
 
 
+def _split_disjoint_duplicates(rows, precision, skip_sids):
+    """join=False helper. Keep a series written as two or more DISJOINT same-ID
+    terminated blocks as SEPARATE series (COFECHA's per-segment convention: e.g.
+    ak200's CM82S 1651-1774 and 1800-1974 are two entries, not one). The first
+    block keeps the original ID; each later block is renamed ID2, ID3, ... and given
+    the same precision. Overlapping/conflicting duplicates and unterminated orphan
+    fragments (``skip_sids``) are left to their own handling. Mutates ``rows`` and
+    ``precision``; returns rename records for the report."""
+    by_sid = {}
+    for b in _terminated_blocks(rows, precision):
+        by_sid.setdefault(b["sid"], []).append(b)
+    existing = set(by_sid.keys())
+    records = []
+    for sid, bl in by_sid.items():
+        if len(bl) < 2 or sid in skip_sids:
+            continue
+        # keep only blocks that actually carry data, and require them disjoint
+        yvs = [(b, set(_block_year_values(rows, b["rows"]).keys())) for b in bl]
+        yvs = [(b, ys) for b, ys in yvs if ys]
+        if len(yvs) < 2:
+            continue
+        seen = set()
+        disjoint = True
+        for _b, ys in yvs:
+            if seen & ys:
+                disjoint = False
+                break
+            seen |= ys
+        if not disjoint:
+            continue                              # overlap/conflict -> handled elsewhere
+        suffix = 2
+        for b, _ys in yvs[1:]:                    # first block keeps the original ID
+            newid = sid + str(suffix)
+            while newid in existing:
+                suffix += 1
+                newid = sid + str(suffix)
+            existing.add(newid)
+            precision[newid] = precision.get(sid)
+            for ri in b["rows"]:
+                s, y, v, k = rows[ri]
+                rows[ri] = (newid, y, v, k)
+            records.append({"series": sid, "issue": "duplicate_id",
+                            "action": "split to " + newid,
+                            "detail": "same ID kept as a separate series " + newid
+                                      + " (join=False)"})
+            suffix += 1
+    return records
+
+
 def _looks_like_record(s):
     """True if ``s`` begins a Tucson data record: an ID, a plausible year, a value."""
     toks = s.split()
@@ -1092,7 +1146,7 @@ def _split_joined_records(line, _depth=0):
     return [line]
 
 
-def read_rwl(lines, strict=True):
+def read_rwl(lines, strict=True, join=True):
     """Parse cleaned Tucson data lines into (rwl_data, precision, order, report).
 
     rwl_data  : {series_id: {year: raw_integer_value}}
@@ -1108,6 +1162,11 @@ def read_rwl(lines, strict=True):
     strict=False enables salvage mode: instead of raising on an unrecoverable
     per-series problem, a self-overlap or precision-shift series is dropped and a
     duplicate-ID's later block(s) are renamed and kept, each recorded in report.
+
+    join=True (the default, matching dplR) merges a series written as two or more
+    disjoint same-ID blocks into one series. join=False keeps them as SEPARATE
+    series -- the 2nd+ terminated block renamed to a unique ID -- which is what a
+    per-segment QA (COFECHA-style crossdating) wants.
     """
     salvage = not strict
     report = []
@@ -1346,6 +1405,13 @@ def read_rwl(lines, strict=True):
                            "action": "dropped",
                            "detail": "block beginning " + str(y) + " after the stop "
                                      "marker dropped (likely a mislabeled series ID)"})
+
+    # join=False: keep same-ID disjoint blocks as separate series (rename the 2nd+),
+    # rather than merging them. Done here -- after precision is known (terminated-block
+    # detection needs it) and orphans are identified (which are skipped) -- so the
+    # accumulation below treats the renamed blocks as independent series.
+    if not join:
+        report.extend(_split_disjoint_duplicates(rows, precision, set(orphan_year)))
 
     rwl_data = {}
     order = []
