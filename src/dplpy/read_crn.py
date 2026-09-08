@@ -57,6 +57,7 @@ __license__ = "GNU GPLv3"
 import os
 import re
 import warnings
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -111,15 +112,24 @@ def read_crn(filename, strict=True, split_by_site=False):
                          + repr(strict))
 
     lines = _read_lines(filename)
-    blocks, stats = _parse_blocks(lines)
+    decade_pos = _detect_decade_pos(lines)
+    blocks, stats = _parse_blocks(lines, decade_pos)
 
-    if not blocks:
+    # No usable chronology: no data rows at all, or rows that parsed a decade but no
+    # actual values (e.g. a non-fixed-width file). Fail cleanly, honouring strict,
+    # instead of crashing downstream when the year set is empty.
+    if not blocks or not any(b["values"] for b in blocks):
         if not strict:
             warnings.warn("No chronology data found in "
                           + os.path.basename(filename) + "; returning None.")
             return None
         raise ValueError("No chronology data found in " + os.path.basename(filename)
                          + " -- is this a Tucson .crn file?")
+
+    if decade_pos != 7:
+        warnings.warn("Using columns " + str(decade_pos) + "-10 for the decade field "
+                      "(the site ID is shorter than 6 characters, or a BC year "
+                      "borrows column 6 for its sign).")
 
     sites = list(dict.fromkeys(b["site"] for b in blocks))
 
@@ -128,6 +138,8 @@ def read_crn(filename, strict=True, split_by_site=False):
         for site in sites:
             sub = [b for b in blocks if b["site"] == site]
             d = _assemble(sub)
+            if d is None:
+                continue                               # this site had no usable values
             d.attrs["dplpy_crn"] = {
                 "sites": [site],
                 "types": list(dict.fromkeys(b["type"] for b in sub)),
@@ -175,19 +187,21 @@ def _read_lines(filename):
 
 # --- parsing ----------------------------------------------------------------
 
-def _decade_field(ln):
+def _decade_field(ln, decade_pos=7):
     """Return (id_width, decade_year) for a data line, or (None, None).
 
-    The ITRDB layout fixes the site ID in cols 1-6 and the decade in cols 7-10
-    (0-indexed 6:10), so we read the decade there. A line whose cols 7-10 are not
-    a plausible year (a header, a blank, or the statistics line's site label) is
-    not a data line. (We deliberately do NOT scan for a shifted decade field: a
-    numeric site ID such as 'CA533' would otherwise be mis-split, and real .crn
-    IDs are always <= 6 characters.)
+    The site ID occupies columns 1..decade_pos-1 and the decade columns
+    decade_pos..10. ``decade_pos`` is 7 for a standard file (ID in cols 1-6, decade
+    in cols 7-10); ``_detect_decade_pos`` shifts it left for a BC chronology that
+    borrows column 6 for the year's minus sign (e.g. 'MWK51-6000'). The value pairs
+    always begin at column 11, so only the id/decade split within cols 1-10 moves.
+    A line whose decade columns are not a plausible year (a header, a blank, or a
+    statistics line's site label) is not a data line.
     """
-    if len(ln) < 10 or not ln[:6].strip():
+    id_width = decade_pos - 1
+    if len(ln) < 10 or not ln[:id_width].strip():
         return None, None
-    seg = ln[6:10]
+    seg = ln[id_width:10]
     if not seg.strip():
         return None, None
     try:
@@ -195,7 +209,7 @@ def _decade_field(ln):
     except ValueError:
         return None, None
     if -12000 <= yr <= 12000:
-        return 6, yr
+        return id_width, yr
     return None, None
 
 
@@ -217,27 +231,61 @@ def _to_int(seg):
         return None
 
 
-def _parse_blocks(lines):
+def _detect_decade_pos(lines):
+    """Find the 1-based column where the decade field starts, following dplR's
+    read.crn adaptive logic.
+
+    Normally 7 (site ID in cols 1-6, decade in cols 7-10). A BC chronology carries
+    the year's minus sign in column 6, pushing the decade field left (the ID is then
+    <= 5 chars) -- e.g. 'MWK51-6000'. dplR detects this when the first data line's
+    cols 7-10 read as a *future* year and a trailing negative number is present in
+    cols 2-10; the decade field then starts at that negative's column. Returns the
+    decade start column (7 for a standard file)."""
+    this_year = date.today().year
+    for ln in lines:
+        if len(ln) < 14:
+            continue
+        seg = ln[6:10]
+        try:
+            yr = int(seg)
+        except ValueError:
+            continue
+        # confirm this is a real data line: the first value pair (cols 11-14) parses
+        if _to_int(ln[10:14]) is None:
+            continue
+        if -12000 <= yr <= this_year:
+            return 7                                   # standard layout
+        # cols 7-10 read as a future year -> look for a trailing negative (a BC
+        # year borrowing col 6 for its sign) in cols 2-10, exactly as dplR does.
+        m = re.search(r" *-\d+$", ln[1:10])
+        if m:
+            return m.start() + 2                       # 1-based col of the decade field
+        return 7                                       # future year, no negative: leave as-is
+    return 7                                           # no data line found
+
+
+def _parse_blocks(lines, decade_pos=7):
     """Group data rows into chronology blocks keyed by (site, type).
 
     Returns (blocks, stats) where each block is a dict with 'site', 'type',
     'values' {year: index/1000 or NaN} and 'depths' {year: sample count}, in
     first-seen order; stats is a list of raw embedded-statistics lines skipped.
+    ``decade_pos`` (from ``_detect_decade_pos``) sets the id/decade column split.
     """
     blocks = {}
     order = []
     stats = []
     for ln in lines:
-        pos, decade = _decade_field(ln)
-        if pos is None:
+        id_width, decade = _decade_field(ln, decade_pos)
+        if id_width is None:
             continue                                  # header / blank / non-data
-        region = ln[pos + 4:]                          # the (I4,I3) pair region
+        region = ln[10:]                               # the (I4,I3) pair region (always col 11+)
         # An embedded statistics line looks like a data row but carries decimals
         # in its value region (e.g. ".106  .358"). Skip it (keep for attrs).
         if "." in region[:70]:
             stats.append(ln.rstrip())
             continue
-        site = ln[:pos].strip()
+        site = ln[:id_width].strip()
         typ = _type_label(ln) or "std"
         key = (site, typ)
         if key not in blocks:
@@ -304,13 +352,20 @@ def _assemble(blocks):
     all_years = set()
     for s in value_src.values():
         all_years.update(s)
+    if not all_years:
+        return None                                    # nothing usable to frame
     lo, hi = min(all_years), max(all_years)
     index = pd.Index(range(lo, hi + 1), name="Year")
 
-    df = pd.DataFrame(index=index)
+    # Build every column at once. Assigning columns one at a time (df[c] = ...) in a
+    # loop copies the whole frame each time and, for a wide multi-site bundle
+    # (hundreds of columns), triggers pandas' "highly fragmented DataFrame"
+    # PerformanceWarning on every insert -- a real slowdown and a flood of noise.
+    data = {}
     for c in col_order:
         src = value_src[c] if c in value_src else depth_src[c]
-        df[c] = [src.get(y, np.nan) for y in index]
+        data[c] = [src.get(y, np.nan) for y in index]
+    df = pd.DataFrame(data, index=index, columns=col_order)
 
     # trim leading/trailing years where every chronology value is NaN, but keep
     # the index contiguous (interior gaps stay as NaN rows).
@@ -318,4 +373,26 @@ def _assemble(blocks):
     present = df.index[~df[val_cols].isna().all(axis=1)]
     if len(present):
         df = df.loc[present.min():present.max()]
+
+    # Follow dplR: a sample-depth column whose recorded values are all 1 means the
+    # sample size was not actually recorded (a chronology assembled or imported from
+    # a source that lacked depths, filled with 1). Keeping it is misleading, so drop
+    # it -- exactly as dplR's read.crn does ("All embedded sample depths are one").
+    # A depth of 0 marks a padding/missing cell (it pairs with a 9990 -> NaN value),
+    # not a real sample count, so ignore 0s (and gap-year NaNs): drop the column when
+    # every *recorded* sample depth is 1.
+    depth_cols = [c for c in df.columns if c in depth_src]
+    dropped = []
+    for c in depth_cols:
+        recorded = df[c].dropna()
+        recorded = recorded[recorded != 0]
+        if len(recorded) and (recorded == 1).all():
+            dropped.append(c)
+    if dropped:
+        df = df.drop(columns=dropped)
+        warnings.warn("Dropped sample-depth column"
+                      + ("s " if len(dropped) > 1 else " ")
+                      + ", ".join(dropped)
+                      + ": all recorded sample depths are 1 (the sample size was not "
+                        "actually recorded).")
     return df

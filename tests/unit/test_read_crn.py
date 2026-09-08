@@ -174,3 +174,101 @@ def test_bad_strict_raises(tmp_path):
     p.write_text("\n".join(_HDR + [_row("SITEAB", 1900, [(1000, 4)])]) + "\n")
     with pytest.raises(ValueError):
         dpl.read_crn(str(p), strict="bogus")
+
+
+# --- adaptive decade column (BC chronologies), à la dplR ----------------------
+def _bc_row(site5, year, pairs):
+    """A BC-convention data row: 5-char ID, then a signed 5-col year (the minus
+    lives in column 6), then the (I4,I3) value pairs from column 11 -- the
+    'MWK51-6000' layout of the Methuselah Walk bristlecone chronology."""
+    cells = "".join("%4d%3d" % (v, d) for v, d in pairs)
+    return ("%-5s" % site5) + ("%5d" % year) + cells
+
+
+def test_bc_year_decade_shift_reads_one_series(tmp_path):
+    # cols 7-10 of the first data line read as a future year (6000); dplPy must
+    # detect the trailing negative and shift the decade field to col 6, reading a
+    # single MWK51 series spanning BC to AD -- not splitting it into 'MWK51-'/'MWK51'.
+    lines = [
+        _bc_row("MWK51", -6000, [(1345, 11), (1077, 11), (1545, 11)]),
+        _bc_row("MWK51", -5990, [(1000, 12), (900, 12)]),
+    ]
+    with pytest.warns(UserWarning, match="decade field"):
+        df = _read(tmp_path, "bc.crn", lines)
+    assert list(df.columns) == ["std", "samp_depth"]       # one series, not split
+    assert int(df.index.min()) == -6000
+    assert df.loc[-6000, "std"] == pytest.approx(1.345)
+    assert df.loc[-5990, "std"] == pytest.approx(1.000)
+
+
+def test_standard_file_keeps_decade_at_col_7(tmp_path):
+    # A normal AD file must NOT trigger the shift (no spurious warning, decade at 7).
+    lines = _HDR + [_row("SITEAB", 1900, [(1000, 5), (1100, 6)])]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")                     # any warning would fail
+        df = _read(tmp_path, "std.crn", lines)
+    assert list(df.columns) == ["std", "samp_depth"]
+    assert df.loc[1900, "std"] == pytest.approx(1.0)
+
+
+# --- graceful failure on a non-fixed-width file (#3) --------------------------
+def test_non_fixedwidth_file_fails_cleanly(tmp_path):
+    # A whitespace-delimited file parses a "year" but no values; must fail cleanly
+    # (clear message / None), never crash on an empty year set.
+    p = tmp_path / "ws.crn"
+    p.write_text("SITEAB 1900 1000 5 1100 6 950 7\n")
+    with pytest.raises(ValueError, match="No chronology data"):
+        with contextlib.redirect_stdout(io.StringIO()):
+            dpl.read_crn(str(p))
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert dpl.read_crn(str(p), strict=False) is None
+
+
+# --- all-1 sample depth dropped (dplR convention) -----------------------------
+def test_all_one_sample_depth_is_dropped(tmp_path):
+    # dplR convention: if every recorded sample depth is 1, the sample size was
+    # never really recorded, so drop the misleading samp_depth column. Padding 0s
+    # (from 9990 cells) are ignored, not counted as a non-1 depth.
+    lines = _HDR + [_row("SITEAB", 1900, [(1000, 1), (1100, 1), (950, 1)]),
+                    _row("SITEAB", 1910, [(1005, 1), (1002, 1)])]
+    with pytest.warns(UserWarning, match="all recorded sample depths are 1"):
+        df = _read(tmp_path, "one.crn", lines)
+    assert list(df.columns) == ["std"]                     # samp_depth dropped
+    assert df.loc[1900, "std"] == pytest.approx(1.0)
+
+
+def test_all_one_depth_dropped_per_column(tmp_path):
+    # In a multi-site file, only the all-1 site's depth column is dropped; a site
+    # with real depths keeps its column.
+    lines = [_row("SITEA", 1900, [(1000, 1), (1100, 1)]),
+             _row("SITEB", 1900, [(900, 5), (950, 6)])]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = _read(tmp_path, "mix.crn", lines)
+    assert "SITEA samp_depth" not in df.columns
+    assert "SITEB samp_depth" in df.columns
+    assert "SITEA" in df.columns and "SITEB" in df.columns  # values kept for both
+
+
+def test_real_depths_are_not_dropped(tmp_path):
+    # A depth column with any recorded value != 1 is kept.
+    lines = _HDR + [_row("SITEAB", 1900, [(1000, 4), (1010, 4)])]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")                     # no drop warning expected
+        df = _read(tmp_path, "keep.crn", lines)
+    assert "samp_depth" in df.columns
+
+
+# --- wide multi-site bundle builds in one shot (#2) ---------------------------
+def test_wide_multisite_no_fragmentation_warning(tmp_path):
+    # _assemble must construct the frame at once: a wide bundle (120 columns) must
+    # not raise pandas' "highly fragmented DataFrame" PerformanceWarning.
+    rows = [_row("SIT%03d" % i, 1900, [(1000, 5), (1010, 5)]) for i in range(60)]
+    p = tmp_path / "wide.crn"
+    p.write_text("\n".join(rows) + "\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pd.errors.PerformanceWarning)
+        with contextlib.redirect_stdout(io.StringIO()):
+            df = dpl.read_crn(str(p))
+    assert df.shape[1] == 120                              # 60 sites x (value + depth)
