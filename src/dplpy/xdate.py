@@ -56,16 +56,36 @@ import re
 # Building blocks
 # ---------------------------------------------------------------------------
 
-def _ar_yw_prewhiten(x):
+def _ar_yw_prewhiten(x, ar_max=None, first_aic_min=False, backcast=False):
     """Prewhiten a 1-D series with a Yule-Walker AR model, matching dplR's ar():
     AIC order selection up to floor(10*log10(n)), residuals + series mean, and
     the series length preserved (the first `order` values become NaN). Validated
-    to reproduce R's ar() to ~1e-15.  `x` must be NaN-free."""
+    to reproduce R's ar() to ~1e-15.  `x` must be NaN-free.
+
+    ``ar_max`` optionally overrides the order ceiling (else floor(10*log10(n))).
+    ``first_aic_min`` switches order selection from the GLOBAL AIC minimum (R's
+    ar(), the dplPy/dplR default) to the FIRST LOCAL AIC minimum -- Ed Cook /
+    Paul Krusic's ARSTAN rule (:func:`autoreg._first_aic_min`, the same rule
+    ``chron_ars`` uses). The COFECHA preset uses ``ar_max=10, first_aic_min=True``
+    because dplR's global-min-to-floor(10*log10(n)) can pick very high orders
+    (e.g. 21) that COFECHA/ARSTAN never would -- inflating the problem-segment
+    count, depressing the inter-series correlation, and discarding many early
+    years of a series.
+
+    ``backcast`` (ARSTAN's ``bckcst``) fills the ``order`` pre-sample values by a
+    zero-innovation reverse-AR recursion (``x_bc[t] = sum_j phi_j * x[t+j]``) so
+    residuals can be formed for *every* year -- the whitened series keeps its
+    full length instead of losing the first ``order`` values to NaN. dplR/dplPy
+    leave this False (NaN-padded, matching R's ar()); the COFECHA preset sets it
+    True, as ARSTAN does, so a series' first segment is anchored at its true
+    first year."""
+    from .autoreg import _first_aic_min
     x = np.asarray(x, dtype=float)
     n = len(x)
     if n < 2:
         return x.astype(float).copy()
-    order_max = min(n - 1, int(np.floor(10 * np.log10(n))))
+    ceiling = int(ar_max) if ar_max is not None else int(np.floor(10 * np.log10(n)))
+    order_max = min(n - 1, ceiling)
     if order_max < 1:
         return x.astype(float).copy()
     xbar = x.mean()
@@ -91,12 +111,48 @@ def _ar_yw_prewhiten(x):
         coeffs_by_order.append(a[1:k + 1].copy())
     var_pred = np.array(var_pred)
     aic = n * np.log(var_pred) + 2 * np.arange(order_max + 1)
-    order = int(np.argmin(aic))
+    order = _first_aic_min(list(aic)) if first_aic_min else int(np.argmin(aic))
     phi = coeffs_by_order[order]
     out = np.full(n, np.nan)
     if order == 0:
         out[:] = xc + xbar
         return out
+    if backcast:
+        # ARSTAN bckcst: prepend `order` zero-innovation backcasts, then form
+        # residuals for all n years (no leading NaN). ext = [x_bc | xc].
+        ext = np.empty(order + n)
+        ext[order:] = xc
+        for idx in range(order - 1, -1, -1):
+            ext[idx] = np.dot(phi, ext[idx + 1:idx + order + 1])
+        out = np.empty(n)
+        for t in range(n):
+            out[t] = ext[order + t] - np.dot(phi, ext[t:order + t][::-1])
+        return out + xbar
+    for t in range(order, n):
+        out[t] = xc[t] - np.dot(phi, xc[t - order:t][::-1])
+    return out + xbar
+
+
+def _ar_burg_prewhiten(x, ar_max=10, first_aic_min=True, nmin=8):
+    """Prewhiten a series the way COFECHA's MEMPR does: Burg (maximum-entropy) AR
+    coefficients (from :func:`autoreg._burg_params_aic`, ceiling ``ar_max``, order
+    by first-local-AIC-minimum), residuals formed for years after the model order,
+    and -- COFECHA's convention -- the first ``order`` (pre-model) values kept as
+    the centred filtered data (``RES(I)=F(I)``) rather than NaN or a backcast, so
+    the whitened series keeps full length. Series shorter than ``nmin`` (COFECHA's
+    N>=8 rule) are returned unmodelled. `x` must be NaN-free."""
+    from .autoreg import _burg_params_aic
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if n < nmin:
+        return x.astype(float).copy()               # COFECHA: no AR below N=8
+    params = _burg_params_aic(x, min(int(ar_max), n - 1), aic=True,
+                              first_aic_min=first_aic_min)
+    phi = params[1:]
+    order = len(phi)
+    xbar = x.mean()
+    xc = x - xbar
+    out = xc.copy()                                 # leading `order` = centred data
     for t in range(order, n):
         out[t] = xc[t] - np.dot(phi, xc[t - order:t][::-1])
     return out + xbar
@@ -210,11 +266,23 @@ def get_bins(first_year, last_year, bin_floor, slide_period, floor_plus1=False):
 # Normalisation / preparation (shared)
 # ---------------------------------------------------------------------------
 
-def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFrame:
+def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True, ar_max=None,
+                              first_aic_min=False, backcast=False, method="yw",
+                              stabilize_period=None, zscore=False) -> pd.DataFrame:
     """Divide each series by its own mean (dplR's normalize1 with n=NULL, i.e.
-    dplPy's 'horizontal' detrend) and, optionally, Yule-Walker prewhiten it
-    keeping the series length. Returns a year-indexed dataframe. Shared by
-    series_corr() and interseries_corr()."""
+    dplPy's 'horizontal' detrend) and, optionally, prewhiten it keeping the series
+    length. Returns a year-indexed dataframe. Shared by series_corr() and
+    interseries_corr().
+
+    The dplR-faithful defaults (``method="yw"``, no variance stabilization, no
+    z-score) reproduce dplR's ``corr.rwl.seg``. The COFECHA preset instead passes
+    ``method="burg"`` (Burg AR via :func:`_ar_burg_prewhiten`),
+    ``stabilize_period`` (COFECHA's spline variance stabilization, applied before
+    AR) and ``zscore=True`` (each series to mean 0 / SD 1 before the master is
+    built, COFECHA's normalize step). ``ar_max`` overrides the AR order ceiling,
+    ``first_aic_min`` selects the ARSTAN first-local-minimum rule, and ``backcast``
+    (YW path only) keeps full series length via ARSTAN's bckcst (see
+    :func:`_ar_yw_prewhiten`)."""
     rwi_data = detrend(data, fit="horizontal", plot=False)
     if isinstance(rwi_data, (ValueError, TypeError)):
         raise rwi_data
@@ -222,11 +290,21 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFram
     to_concat = [pd.DataFrame(index=pd.Index(data.index))]
     for series in rwi_data:
         col = rwi_data[series].dropna()
+        vals = col.to_numpy()
+        if stabilize_period and len(vals) >= 8:
+            from .smoothingspline import variance_stabilize_spline
+            vals = variance_stabilize_spline(vals, period=stabilize_period)
         if prewhiten and len(col) > 3:
-            pw = _ar_yw_prewhiten(col.to_numpy())
-            to_concat.append(pd.Series(data=pw, name=series, index=col.index))
-        else:
-            to_concat.append(col)
+            if method == "burg":
+                vals = _ar_burg_prewhiten(vals, ar_max=(ar_max or 10),
+                                          first_aic_min=first_aic_min)
+            else:
+                vals = _ar_yw_prewhiten(vals, ar_max=ar_max,
+                                        first_aic_min=first_aic_min, backcast=backcast)
+        if zscore:
+            sd = np.nanstd(vals)
+            vals = (vals - np.nanmean(vals)) / sd if sd > 0 else vals - np.nanmean(vals)
+        to_concat.append(pd.Series(data=vals, name=series, index=col.index))
     ready = pd.concat(to_concat, axis=1)
     ready = ready.rename_axis(data.index.name)
     return ready
@@ -238,7 +316,7 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True) -> pd.DataFram
 
 def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
           bin_floor=100, p_val=0.05, biweight=True, lag=10, show_flags=True,
-          make_plot=False):
+          make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None):
     """Crossdate a set of ring-width series against a leave-one-out master.
 
     Mirrors dplR's corr.rwl.seg(): each series is normalized (divided by its
@@ -272,6 +350,32 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         print the flag summary and lag tables.
     make_plot : bool, default False
         draw the segment-correlation plot.
+    preset : str or None, default None
+        set to ``"COFECHA"`` to emulate the COFECHA program instead of dplR's
+        ``corr.rwl.seg``. This overrides the transform, correlation, master and
+        segmentation machinery to match COFECHA's FORTRAN: Pearson correlation, an
+        arithmetic leave-one-out master of z-scored series, 50-yr segments on a
+        25-yr grid anchored to each series' first and last year, a critical value
+        derived from the 99%% one-tailed t rather than ``p_val``, COFECHA's spline
+        variance stabilization before AR, Cook/Krusic Burg AR prewhitening
+        (ceiling 10, first-local-AIC-minimum, N>=8), and a lag search that slides
+        the master against the fixed dated segment (COFECHA's SLSG). Returns the
+        extra keys ``segments`` and ``n_problems``. ``corr``, ``biweight``,
+        ``bin_floor`` and ``p_val`` are ignored in this mode.
+    seg_lag : int or None, default None
+        segment step in years (segment overlap). ``None`` uses
+        ``slide_period // 2`` (COFECHA's 50%% overlap). Only used by the preset.
+    absent : pandas.DataFrame or None, default None
+        COFECHA preset only -- its "omit absent rings" option (QAC=Y). A boolean
+        DataFrame (years x series) marking absent rings, or a raw ring-width
+        DataFrame whose zeros mark them. Absent years are dropped from that
+        series' segment correlations. Ring widths are non-zero after detrending,
+        so pass a *pre-detrend* source, e.g. ``absent=raw_rwl == 0`` (or just the
+        raw frame). ``None`` disables the omission.
+    ar_max : int or None, default None
+        AR-order ceiling for prewhitening. ``None`` is dplR's floor(10*log10(n));
+        the COFECHA preset defaults it to 10 (Cook/Krusic's ARSTAN ceiling) and
+        selects the order by the first-local-AIC-minimum rule.
 
     Returns
     -------
@@ -283,17 +387,33 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
       ``flags``        dict {series: {'A': [...], 'B': [...]}}
       ``bins``         list of "start-end" bin labels
       ``rwi``          DataFrame of the normalized/prewhitened series used
+    and, for ``preset="COFECHA"`` only:
+      ``segments``     dict {series: [{lo,hi,r0,best_lag,best_corr,n,crit,flag,lags}]}
+      ``n_problems``   int, COFECHA's "Segments, possible problems" count
 
     Examples
     --------
     >>> rwi = dpl.detrend(ca533, fit="spline", plot=False)
     >>> res = dpl.xdate(rwi, corr="spearman", slide_period=50, bin_floor=100)
+    >>> # COFECHA emulation (32-yr spline detrend, then the preset):
+    >>> rwi = dpl.detrend(rwl, fit="Spline", period=32, plot=False)
+    >>> res = dpl.xdate(rwi, preset="COFECHA")
+    >>> res["n_problems"]                      # COFECHA "possible problems" count
 
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#xdate
     """
     _require_dataframe(data)
+
+    # COFECHA emulation: fixed 50-yr segments on a 25-yr grid, anchored to each
+    # series' own first/last year, correlated (Pearson) against an arithmetic
+    # leave-one-out master, and flagged against COFECHA's derived critical value.
+    if preset is not None and str(preset).strip().lower() == "cofecha":
+        return _xdate_cofecha(data, prewhiten=prewhiten, slide_period=slide_period,
+                              seg_lag=seg_lag, lag=lag, ar_max=ar_max, absent=absent,
+                              show_flags=show_flags, make_plot=make_plot)
+
     method = _normalize_corr(corr)
 
     # normalize + prewhiten, then work on a dense (years x series) matrix on a
@@ -356,6 +476,219 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
             "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
             "rwi": ready}
+
+
+# ---------------------------------------------------------------------------
+# COFECHA emulation (preset="COFECHA")
+# ---------------------------------------------------------------------------
+
+def _cofecha_segments(y0, y1, seg_len=50, seg_lag=25):
+    """COFECHA's segment layout for one series spanning [y0, y1].
+
+    Interior segments are ``seg_len``-year windows beginning on every multiple
+    of ``seg_lag`` that fits wholly inside the span (a 50%% overlap for the usual
+    50/25). To that COFECHA adds a segment *anchored to the series' first year*
+    (``[y0, y0+seg_len-1]``) and one *anchored to its last year*
+    (``[y1-seg_len+1, y1]``) whenever those endpoints don't already fall on the
+    grid -- so the very start and end of every series are always tested at full
+    window length. A series shorter than one window is a single segment.
+    Returns a sorted, de-duplicated list of ``(lo, hi)`` inclusive year pairs."""
+    grid = []
+    s = ((y0 + seg_lag - 1) // seg_lag) * seg_lag      # first multiple >= y0
+    while s + seg_len - 1 <= y1:
+        grid.append((s, s + seg_len - 1))
+        s += seg_lag
+    segs = []
+    if (not grid or grid[0][0] != y0) and y0 + seg_len - 1 <= y1:
+        segs.append((y0, y0 + seg_len - 1))            # start anchor
+    segs.extend(grid)
+    if (not grid or grid[-1][1] != y1) and y1 - seg_len + 1 >= y0:
+        segs.append((y1 - seg_len + 1, y1))            # end anchor
+    if not segs:
+        segs = [(y0, y1)]                              # series shorter than window
+    out, seen = [], set()
+    for t in sorted(segs):
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _cofecha_crit(n, conf=0.99):
+    """COFECHA's per-segment critical correlation: the one-tailed Student-t
+    value at ``conf`` confidence on ``n-2`` degrees of freedom, converted to r.
+    Reproduces COFECHA's table exactly (n=50 -> 0.3281, n=25 -> 0.4622); shorter
+    end segments therefore face a stiffer threshold, as in COFECHA."""
+    df = n - 2
+    if df < 1:
+        return np.inf
+    t = scipy.stats.t.ppf(conf, df)
+    return float(t / np.sqrt(t * t + df))
+
+
+def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
+                   ar_max=None, stabilize_period=32, absent=None, show_flags=True,
+                   make_plot=False):
+    """COFECHA-style crossdating (see :func:`xdate` with ``preset="COFECHA"``).
+
+    Differs from the dplR-faithful default in exactly the ways COFECHA does:
+    Pearson correlation, an *arithmetic* leave-one-out master of z-scored series,
+    COFECHA's segment anchoring (:func:`_cofecha_segments`), its derived critical
+    value (:func:`_cofecha_crit`) rather than a p-value threshold, COFECHA's
+    spline variance stabilization before AR, and Ed Cook / Paul Krusic's
+    Burg AR prewhitening (ceiling 10, first-local-AIC-minimum order, N>=8) rather
+    than dplR's Yule-Walker global-minimum search. A segment is flagged **A** when
+    the dated (lag-0) position is the highest correlation over -lag..+lag but still
+    falls below the critical value, and **B** when some non-dated lag correlates
+    higher (a possible dating error) -- the two counts that make up COFECHA's
+    "Segments, possible problems". The lag search slides the master against the
+    fixed dated segment, matching COFECHA's SLSG."""
+    seg_len = int(slide_period)
+    if seg_lag is None:
+        seg_lag = seg_len // 2
+    if ar_max is None:
+        ar_max = 10                                     # Cook/Krusic ARSTAN ceiling
+
+    ready = normalize_for_crossdating(data, prewhiten, ar_max=ar_max,
+                                      first_aic_min=True, method="burg",
+                                      stabilize_period=stabilize_period, zscore=True)
+    ready, years, first_year, last_year = dense_year_grid(ready)
+    series_names = list(ready.columns)
+    M = ready.to_numpy(dtype=float)
+    nyears, nseries = M.shape
+    good = np.array([np.sum(~np.isnan(M[:, i])) > 3 for i in range(nseries)])
+    yr_pos = {int(y): k for k, y in enumerate(years)}
+
+    # Absent-ring ("omit absent rings") mask, COFECHA's QAC=Y option: years where
+    # a series' raw ring width is zero are dropped from that series' segment
+    # correlations. Ring widths become non-zero after detrending, so the mask must
+    # come from a pre-detrend source -- ``absent`` (a boolean DataFrame, or a raw
+    # ring-width DataFrame whose zeros mark absent rings). None disables it.
+    absent_M = None
+    if absent is not None:
+        amask = absent if absent.to_numpy().dtype == bool else (absent == 0)
+        amask = amask.reindex(index=years, columns=series_names, fill_value=False)
+        absent_M = amask.to_numpy(dtype=bool)
+
+    # display grid: one column per 25-yr start across the whole data set
+    grid_starts = list(range(int(first_year // seg_lag * seg_lag),
+                             int(last_year) + 1, seg_lag))
+    grid_labels = {g: "%d-%d" % (g, g + seg_len - 1) for g in grid_starts}
+    bins = [grid_labels[g] for g in grid_starts]
+
+    seg_corr = pd.DataFrame(index=series_names, columns=bins, dtype=float)
+    seg_pval = pd.DataFrame(index=series_names, columns=bins, dtype=float)
+    overall = pd.DataFrame(index=series_names, columns=["rho", "p_val"], dtype=float)
+    flags, segments = {}, {}
+
+    for i, name in enumerate(series_names):
+        col = M[:, i]
+        fin = np.where(~np.isnan(col))[0]
+        if fin.size == 0:
+            continue
+        y0, y1 = int(years[fin[0]]), int(years[fin[-1]])
+        keep = good.copy()
+        keep[i] = False
+        master = _row_mean(M[:, keep]) if keep.any() else np.full(nyears, np.nan)
+
+        overall.loc[name, "rho"], overall.loc[name, "p_val"] = \
+            _corr_pval(col, master, "pearson")
+
+        ab_col = absent_M[:, i] if absent_M is not None else None
+        a_flags, b_flags, seg_list, used_cols = [], [], [], set()
+        for (lo, hi) in _cofecha_segments(y0, y1, seg_len, seg_lag):
+            lag_row, best_lag, best_coeff, r0, n0 = _cofecha_lag_table(
+                col, master, yr_pos, first_year, last_year, lo, hi, seg_len, lag,
+                absent=ab_col)
+            if np.isnan(r0):
+                continue
+            _, pv = _corr_pval(col[yr_pos[lo]:yr_pos[hi] + 1],
+                               master[yr_pos[lo]:yr_pos[hi] + 1], "pearson")
+            crit = _cofecha_crit(n0 if n0 else seg_len)
+            flag = ""
+            if best_lag == 0 and r0 < crit:
+                flag = "A"
+                a_flags.append("%d-%d" % (lo, hi))
+            elif best_lag != 0:
+                flag = "B"
+                b_flags.append({"segment": "%d-%d" % (lo, hi), "best_lag": best_lag,
+                                "best_corr": best_coeff, "lags": lag_row})
+            seg_list.append({"lo": lo, "hi": hi, "r0": r0, "best_lag": best_lag,
+                             "best_corr": best_coeff, "n": n0, "crit": crit,
+                             "flag": flag, "lags": lag_row})
+            # place on the display grid (bump on collision, e.g. end anchor)
+            gcol = lo // seg_lag * seg_lag
+            while gcol in used_cols and gcol + seg_lag <= grid_starts[-1]:
+                gcol += seg_lag
+            if gcol in grid_labels:
+                used_cols.add(gcol)
+                seg_corr.loc[name, grid_labels[gcol]] = r0
+                seg_pval.loc[name, grid_labels[gcol]] = pv
+
+        segments[name] = seg_list
+        if a_flags or b_flags:
+            flags[name] = {"A": a_flags, "B": b_flags}
+
+    avg_seg = seg_corr.mean(axis=0, skipna=True)
+    n_problems = sum(len(f["A"]) + len(f["B"]) for f in flags.values())
+
+    if show_flags:
+        _print_flags(flags, lag)
+        print("Segments, possible problems: %d" % n_problems)
+    if make_plot:
+        bin_bounds = [_bin_bounds(b) for b in bins]
+        _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds,
+                  _cofecha_crit(seg_len), seg_len, seg_lag)
+
+    return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
+            "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
+            "rwi": ready, "segments": segments, "n_problems": n_problems,
+            "preset": "COFECHA"}
+
+
+def _cofecha_lag_table(series, master, yr_pos, first_year, last_year,
+                       lo, hi, seg_len, lag_max, absent=None):
+    """Correlate the fixed dated series segment ``[lo, hi]`` against the master
+    over lags -lag_max..+lag_max (Pearson), sliding the MASTER window while the
+    series segment stays put -- exactly COFECHA's SLSG (``ZSERM`` fixed,
+    ``YMSMA(IA+..)`` shifted). Returns (row_strings, best_lag, best_corr, r0,
+    n_at_lag0). Only full ``seg_len`` master windows lying inside the data span
+    count. A positive lag means the segment matches the master shifted later.
+
+    ``absent`` is an optional boolean array over the whole year grid (COFECHA's
+    QAC=Y "omit absent rings"): years where the tested series has an absent ring
+    are dropped from every correlation. The mask is aligned to the fixed segment
+    (it follows the series, not the sliding master), as in COFECHA's CORRP0."""
+    n_lags = 2 * lag_max + 1
+    if lo not in yr_pos or hi not in yr_pos:
+        return ["     "] * n_lags, 0, np.nan, np.nan, 0
+    seg = series[yr_pos[lo]:yr_pos[hi] + 1]              # fixed dated segment
+    if seg.shape[0] != seg_len or np.isnan(seg).all():
+        return ["     "] * n_lags, 0, np.nan, np.nan, 0
+    seg_absent = (absent[yr_pos[lo]:yr_pos[hi] + 1]
+                  if absent is not None else np.zeros(seg_len, dtype=bool))
+
+    row, best_lag, best_coeff, r0, n0 = [], 0, np.nan, np.nan, 0
+    for shift in range(-lag_max, lag_max + 1):
+        mlo, mhi = lo + shift, hi + shift               # slide the master window
+        r = np.nan
+        if mlo >= first_year and mhi <= last_year:
+            mas = master[yr_pos[mlo]:yr_pos[mhi] + 1]
+            if mas.shape[0] == seg_len:
+                ok = ~np.isnan(seg) & ~np.isnan(mas) & ~seg_absent
+                if ok.sum() >= 3:
+                    a, b = seg[ok], mas[ok]
+                    if not (np.all(a == a[0]) or np.all(b == b[0])):
+                        da, db = a - a.mean(), b - b.mean()
+                        den = np.sqrt(np.dot(da, da) * np.dot(db, db))
+                        if den > 0:
+                            r = float(np.dot(da, db) / den)
+                if shift == 0:
+                    r0, n0 = r, int(ok.sum())
+        row.append(("{0:.2f}".format(r)).rjust(5) if not np.isnan(r) else "     ")
+        if not np.isnan(r) and (np.isnan(best_coeff) or r > best_coeff):
+            best_coeff, best_lag = r, int(shift)
+    return row, best_lag, (best_coeff if not np.isnan(best_coeff) else np.nan), r0, n0
 
 
 def _lag_table(series, master, years, lo, hi, slide_period, method, lag_max):

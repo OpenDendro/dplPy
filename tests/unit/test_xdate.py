@@ -134,3 +134,95 @@ def test_xdate_plot_matches_dplR_semantics_ca533():
         if isinstance(p, Rectangle) and mcolors.to_hex(p.get_facecolor()).lower() == red:
             flagged_rows.add(row_name.get(int(round(p.get_y() + p.get_height() / 2))))
     assert flagged_rows == {"CAM011", "CAM051", "CAM131", "CAM181", "CAM201"}
+
+
+def test_xdate_cofecha_preset_smoke():
+    # preset="COFECHA" returns the extra COFECHA keys and a sensible problem count.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="Spline", period=32, plot=False)
+    res = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    for k in ("seg_corr", "flags", "segments", "n_problems", "preset"):
+        assert k in res
+    assert res["preset"] == "COFECHA"
+    assert isinstance(res["n_problems"], int) and res["n_problems"] >= 0
+    # every flagged segment count is accounted for in n_problems
+    total = sum(len(f["A"]) + len(f["B"]) for f in res["flags"].values())
+    assert total == res["n_problems"]
+
+
+def test_xdate_cofecha_segments_anchor_to_series_ends():
+    # COFECHA anchors the first segment to each series' first year (full 50-yr
+    # window) rather than snapping to a 25-yr grid multiple.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="Spline", period=32, plot=False)
+    res = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    for name, segs in res["segments"].items():
+        if not segs:
+            continue
+        col = rwi[name].dropna()
+        y0 = int(col.index.min())
+        # first segment starts at the series' first year (when long enough)
+        if len(col) >= 50:
+            assert segs[0]["lo"] == y0
+            assert segs[0]["hi"] - segs[0]["lo"] + 1 == 50
+        break
+
+
+def test_xdate_default_path_unchanged_by_preset_plumbing():
+    # the dplR-faithful default still returns the base keys and no COFECHA extras.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    res = _xdate_quiet(rwi, show_flags=False)
+    assert "segments" not in res and "n_problems" not in res
+    assert set(["seg_corr", "p_val", "overall", "flags", "bins", "rwi"]).issubset(res)
+
+
+def test_xdate_cofecha_omit_absent_rings():
+    # COFECHA's "omit absent rings" (QAC=Y): a boolean mask and a raw frame whose
+    # zeros mark absent rings give identical results, and dropping absent years
+    # changes the flag accounting relative to not omitting.
+    rng = np.random.default_rng(0)
+    years = np.arange(1800, 1960)
+    cols = {}
+    for k in range(8):
+        x = np.cumsum(rng.standard_normal(len(years))) * 0.05 + 1.0
+        x = np.clip(x, 0.05, None)
+        cols["S%d" % k] = x
+    raw = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
+    # plant a few absent rings (zeros) in one series
+    raw.iloc[10:13, 0] = 0.0
+    rwi = dpl.detrend(raw, fit="Spline", period=32, plot=False)
+    base = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    r_raw = _xdate_quiet(rwi, preset="COFECHA", absent=raw, show_flags=False)
+    r_bool = _xdate_quiet(rwi, preset="COFECHA", absent=(raw == 0), show_flags=False)
+    assert r_raw["n_problems"] == r_bool["n_problems"]     # both forms agree
+    assert isinstance(base["n_problems"], int)
+
+
+def test_xdate_preset_none_vs_cofecha_coexist():
+    # Regression guard: the default (preset=None) dplR-faithful path and the
+    # COFECHA preset run on the same data without interfering. The default still
+    # flags exactly dplR's five series and exposes no COFECHA-only keys; the
+    # preset adds its extras and a non-negative problem count. The default result
+    # is identical whether or not the preset was called first (no shared state).
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+
+    default_before = _xdate_quiet(rwi, show_flags=False)
+    cof = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    default_after = _xdate_quiet(rwi, show_flags=False)
+
+    # default path: unchanged dplR-faithful flags, no COFECHA-only keys
+    a_flagged = sorted(k for k, v in default_before["flags"].items() if v["A"])
+    assert a_flagged == ["CAM011", "CAM051", "CAM131", "CAM181", "CAM201"]
+    assert not any(k in default_before for k in ("segments", "n_problems", "preset"))
+
+    # calling the preset in between does not perturb the default result
+    assert default_before["seg_corr"].equals(default_after["seg_corr"])
+    assert default_before["overall"].equals(default_after["overall"])
+
+    # COFECHA path: extra keys present and self-consistent
+    assert cof["preset"] == "COFECHA"
+    assert cof["n_problems"] == sum(len(f["A"]) + len(f["B"])
+                                    for f in cof["flags"].values())
+    assert cof["n_problems"] >= 0

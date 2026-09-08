@@ -1,6 +1,6 @@
 from .rbar import get_running_rbar, mean_series_intercorrelation, pairwise_corr_mean
 from .chron import chron
-from .smoothingspline import spline
+from .smoothingspline import spline, variance_stabilize_spline
 import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
@@ -232,15 +232,14 @@ def _spline_stabilize(chron_series, n_samps, spline_nyrs):
     their time trend, divide the departures by that trend (restoring sign), then
     rescale to the chronology's original mean and standard deviation. Removes
     time-varying variance whatever its cause -- strictly ad hoc (it can remove
-    real low-frequency variance), per ARSTAN and Osborn et al. (1997)."""
-    tr = np.asarray(chron_series, dtype=float).copy()
-    n = len(tr)
-    ok = np.asarray(n_samps) > 0
-    xbar1 = np.mean(tr[ok])
-    sig1 = np.std(tr[ok], ddof=1)
-    dep = tr - xbar1
-    sign = np.where(dep < 0, -1.0, 1.0)
-    absdep = np.abs(dep)
+    real low-frequency variance), per ARSTAN and Osborn et al. (1997).
+
+    Thin wrapper over :func:`smoothingspline.variance_stabilize_spline` (the
+    shared variance-stabilization core) that resolves this routine's
+    ``spline_nyrs`` stiffness convention and clips negatives (a chronology cannot
+    go below zero).
+    """
+    n = len(chron_series)
     # stiffness: int -> fixed wavelength in years; 0<float<1 -> fraction of n
     if spline_nyrs is None:
         nyrs = max(int(round(0.5 * n)), 2)
@@ -248,13 +247,5 @@ def _spline_stabilize(chron_series, n_samps, spline_nyrs):
         nyrs = max(int(round(spline_nyrs * n)), 2)
     else:
         nyrs = max(int(spline_nyrs), 2)
-    x = np.arange(1, n + 1)
-    cv = np.asarray(spline(x, absdep, period=nyrs), dtype=float)
-    cv = np.where(cv <= 0, np.nan, cv)          # guard: |departures| envelope > 0
-    sb = (absdep / cv) * sign
-    with np.errstate(invalid="ignore"):
-        xbar = np.nanmean(sb[ok])
-        sig = np.nanstd(sb[ok], ddof=1)
-    sb = ((sb - xbar) / sig) * sig1 + xbar1
-    sb[sb < 0] = 0.0
-    return sb
+    return variance_stabilize_spline(chron_series, period=nyrs, clip_negative=True,
+                                     ok=(np.asarray(n_samps) > 0))

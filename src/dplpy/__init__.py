@@ -58,6 +58,7 @@ from .chron import chron
 from .chron_stabilized import chron_stabilized
 from .chron_ars import chron_ars
 from .xdate import xdate, xdate_plot
+from .xdate_report import xdate_report
 from .xdate_floater import xdate_floater
 from .series_corr import series_corr
 from .interseries_corr import interseries_corr
@@ -98,6 +99,7 @@ __all__ = [
     "chron_stabilized",
     "chron_ars",
     "xdate",
+    "xdate_report",
     "xdate_plot",
     "xdate_floater",
     "series_corr",

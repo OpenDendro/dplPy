@@ -152,3 +152,43 @@ def test_autoreg_first_aic_min_never_exceeds_global():
     p_first = len(dpl.autoreg(s, max_lag=15, aic=True, method="yw",
                               first_aic_min=True)) - 1
     assert p_first <= p_global
+
+
+def test_autoreg_burg_recovers_ar1():
+    # Burg (method="burg") should recover a known AR(1) coefficient and whiten
+    # the series (residual lag-1 autocorrelation ~ 0).
+    import numpy as np
+    rng = np.random.default_rng(1)
+    e = rng.standard_normal(800)
+    x = np.zeros(800)
+    for t in range(1, 800):
+        x[t] = 0.6 * x[t - 1] + e[t]
+    s = pd.Series(x)
+    params = dpl.autoreg(s, max_lag=10, method="burg")
+    assert len(params) == 2                       # intercept + one AR coefficient
+    assert abs(params[1] - 0.6) < 0.05
+    res = dpl.ar_func(s, max_lag=10, method="burg").to_numpy()
+    res = res[~np.isnan(res)]
+    r = res - res.mean()
+    lag1 = float(np.dot(r[:-1], r[1:]) / np.dot(r, r))
+    assert abs(lag1) < 0.05
+
+
+def test_autoreg_burg_first_aic_min_caps_order():
+    # first-local-AIC-min with Burg selects an order no higher than the global min.
+    import numpy as np
+    rng = np.random.default_rng(3)
+    e = rng.standard_normal(700)
+    x = np.zeros(700)
+    for t in range(2, 700):
+        x[t] = 0.5 * x[t - 1] - 0.3 * x[t - 2] + e[t]
+    s = pd.Series(x)
+    p_global = len(dpl.autoreg(s, max_lag=10, method="burg")) - 1
+    p_first = len(dpl.autoreg(s, max_lag=10, method="burg", first_aic_min=True)) - 1
+    assert p_first <= p_global
+
+
+def test_autoreg_bad_method_rejected():
+    s = pd.Series([1.0, 2, 3, 4, 5, 6, 7, 8])
+    with pytest.raises(ValueError):
+        dpl.autoreg(s, method="bogus")
