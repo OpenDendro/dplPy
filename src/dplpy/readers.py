@@ -632,7 +632,11 @@ def _assemble_dataframe(rwl_data, precision, order):
 def _warn_salvage_summary(basename, report):
     """One concise per-file warning summarising salvage actions, so a large batch
     stays legible. Full detail lives in df.attrs['dplpy_salvage']."""
-    dropped = [r for r in report if r["action"] == "dropped"]
+    # A post-marker orphan drops only a mislabeled FRAGMENT, not the whole series, so
+    # it is summarised separately from series that were dropped entirely.
+    dropped = [r for r in report if r["action"] == "dropped"
+               and r["issue"] != "post_marker_orphan"]
+    orphans = [r for r in report if r["issue"] == "post_marker_orphan"]
     renamed = [r for r in report if r["action"].startswith("renamed")]
     parts = []
     if dropped:
@@ -643,6 +647,10 @@ def _warn_salvage_summary(basename, report):
         preview = "; ".join(r["action"] for r in renamed[:5])
         parts.append("renamed " + str(len(renamed)) + " (" + preview
                      + (" ..." if len(renamed) > 5 else "") + ")")
+    if orphans:
+        preview = "; ".join(r["series"] for r in orphans[:5])
+        parts.append("dropped a post-marker fragment from " + str(len(orphans))
+                     + " series (" + preview + (" ..." if len(orphans) > 5 else "") + ")")
     if parts:
         warnings.warn("Salvaged " + basename + ": " + "; ".join(parts))
 
@@ -1252,24 +1260,92 @@ def read_rwl(lines, strict=True):
             appearances[sid] = appearances.get(sid, 0) + 1
             prev = sid
 
-    # Determine each series' measurement precision from its TERMINATOR -- the
-    # stop marker on its last row -- exactly as dplR does. This is what makes a
-    # mid-series 999 in a 0.001 mm series read as a real 0.999 mm value rather
-    # than being mistaken for a 0.01 mm stop marker (a silent bug in the older,
-    # "any 999 is a marker" logic).
-    last_row = {}
-    for r in rows:
-        if r is not None:
-            last_row[r[0]] = r          # final occurrence wins (rows are in order)
+    # Determine each series' measurement precision from its TERMINATOR -- the stop
+    # marker (999 for 0.01 mm, -9999 for 0.001 mm) that ends a block -- exactly as dplR
+    # does (a mid-series 999 in a 0.001 mm series stays a real 0.999 mm value).
+    #
+    # We work per contiguous block (a new block begins at a backward year), because a
+    # marker can be followed by more tokens under the same ID:
+    #   * missing padding -- blanks or a -999 "absent" code (brit020's 568112: 999 at
+    #     1907 then -999 to 1919). Reading the literal last token would miss the 999,
+    #     mark the series "no stop marker", and -- precision then unknown in the value
+    #     pass -- read the 999 as a bogus 9.99 mm value. So the terminator is the
+    #     block's last NON-padding token; padding after it is dropped.
+    #   * a whole further block. If that block is itself terminated it is a stacked
+    #     duplicate (merged by the disjoint-duplicate logic below). If it is
+    #     UNTERMINATED it is an orphan -- a mislabeled/misplaced fragment (roma009's
+    #     f1-03, whose trailing 1847 line is really f1-03b's) -- and is dropped (strict
+    #     refuses the file); it must NOT be merged into the terminated series.
+    # A series' precision comes from its FIRST terminated block.
+    def _is_trailing_pad(tok):
+        # A missing/absent cell that may legitimately follow a stop marker: a blank,
+        # or a negative code that is not the -9999 (0.001 mm) marker itself.
+        if tok == "":
+            return True
+        try:
+            return int(tok) < 0 and tok != "-9999"
+        except ValueError:
+            return False
+
+    def _block_cells(b):                 # (row_index, token_index, stripped token)
+        for ri in b["rows"]:
+            toks = rows[ri][2]
+            for j in range(len(toks)):
+                yield ri, j, toks[j].strip()
+
+    blocks_by_sid = {}
+    for b in _segment_blocks(rows):
+        blocks_by_sid.setdefault(b["sid"], []).append(b)
+
     precision = {}
-    for sid, r in last_row.items():
-        vals = r[2]
-        term = vals[-1].strip() if vals else ""
-        if term == "999":
-            precision[sid] = 100        # 0.01 mm
-        elif term == "-9999":
-            precision[sid] = 1000       # 0.001 mm
+    drop_cells = set()  # (row_index, token_index) to skip: post-marker padding + orphans
+    post_marker = {}    # sid -> count of dropped post-marker padding values (brit020)
+    orphan_year = {}    # sid -> first year of a dropped unterminated post-marker block
+    for sid, bl in blocks_by_sid.items():
+        seen_terminator = False
+        for b in bl:
+            mri = mj = None                      # position of this block's terminator
+            term = ""
+            for ri, j, s in _block_cells(b):     # terminator = last non-padding token
+                if not _is_trailing_pad(s):
+                    mri, mj, term = ri, j, s
+            if term in ("999", "-9999"):
+                if sid not in precision:         # precision from the FIRST terminated block
+                    precision[sid] = 100 if term == "999" else 1000
+                after = False                    # drop padding AFTER the marker (in file order)
+                for ri, j, s in _block_cells(b):
+                    if after:
+                        drop_cells.add((ri, j))
+                        if s != "":
+                            post_marker[sid] = post_marker.get(sid, 0) + 1
+                    if ri == mri and j == mj:
+                        after = True
+                seen_terminator = True
+            elif seen_terminator:
+                # An unterminated block after a terminator: an orphan fragment. Drop
+                # every cell so it is not merged into the (already ended) series.
+                for ri, j, s in _block_cells(b):
+                    drop_cells.add((ri, j))
+                orphan_year.setdefault(sid, int(rows[b["rows"][0]][1]))
         # otherwise unknown -> resolved by the dominant-precision fallback below
+
+    # Data after a series' stop marker (an orphan block). Strict refuses the file;
+    # salvage drops the fragment (already excluded via drop_cells) and records it.
+    if orphan_year:
+        if not salvage:
+            ex = "; ".join("series '%s' at year %d" % (s, y)
+                           for s, y in list(orphan_year.items())[:3])
+            more = " ..." if len(orphan_year) > 3 else ""
+            raise ValueError(
+                "Cannot read file -- data after the stop marker: " + ex + more
+                + ". A block under an existing series ID appears after that series' "
+                "stop marker (likely a mislabeled series ID)."
+            )
+        for sid, y in orphan_year.items():
+            report.append({"series": sid, "issue": "post_marker_orphan",
+                           "action": "dropped",
+                           "detail": "block beginning " + str(y) + " after the stop "
+                                     "marker dropped (likely a mislabeled series ID)"})
 
     rwl_data = {}
     order = []
@@ -1282,7 +1358,7 @@ def read_rwl(lines, strict=True):
     prec_shift = []     # (sid, year) where a 0.01 mm series carries a stray -9999
     drop_series = set() # series to drop in salvage mode
 
-    for r in rows:
+    for ri, r in enumerate(rows):
         if r is None:
             continue
         sid, yr, vals, k = r
@@ -1292,6 +1368,8 @@ def read_rwl(lines, strict=True):
             order.append(sid)
         prec = precision.get(sid)
         for j, tok in enumerate(vals):
+            if (ri, j) in drop_cells:
+                continue             # post-marker padding or orphan block (dropped above)
             s = tok.strip()
             y = yr + j
             if s == "":
@@ -1476,6 +1554,21 @@ def read_rwl(lines, strict=True):
             "marker) were set to NaN [" + preview + more + "]"
         )
 
+    # Values written after a series' stop marker are not data (the marker ends the
+    # series); they are ignored. Note it once -- an unusual file structure worth
+    # surfacing in a sweep -- rather than mislabelling the padding as measurements.
+    if post_marker:
+        survivors = {s: n for s, n in post_marker.items() if s in rwl_data}
+        if survivors:
+            if len(survivors) == 1:
+                sid, n = next(iter(survivors.items()))
+                warnings.warn("Series " + str(sid) + " had " + str(n) + " value(s) "
+                              "after its stop marker (ignored).")
+            else:
+                ids = ", ".join(str(s) for s in survivors)
+                warnings.warn(str(len(survivors)) + " series had value(s) after their "
+                              "stop marker (ignored): " + ids + ".")
+
     # Drop salvage-flagged series (self-overlap / precision-shift), then any
     # series that ended up with no usable data at all.
     if drop_series:
@@ -1495,6 +1588,7 @@ def read_rwl(lines, strict=True):
     # merge) and, in strict mode, warned about; it is not mistaken for a flipped-date
     # row (which is a backward year WITHIN one block, handled below).
     dup_joined = _disjoint_duplicate_ids(rows, set(order), precision)
+    dup_joined -= set(orphan_year)   # an orphan fragment was dropped, not joined
     tblock_count = {}
     if dup_joined:
         for b in _terminated_blocks(rows, precision):
@@ -1555,7 +1649,8 @@ def read_rwl(lines, strict=True):
             out_of_order.append(sid)
         max_year_seen[sid] = max(max_year_seen.get(sid, yr), yr)
     out_of_order = [s for s in out_of_order
-                    if s in rwl_data and s not in combined_ids and s not in dup_joined]
+                    if s in rwl_data and s not in combined_ids and s not in dup_joined
+                    and s not in orphan_year]   # an orphan's backward jump was the dropped fragment
     if out_of_order:
         if len(out_of_order) == 1:
             warnings.warn("Series " + str(out_of_order[0]) + " had rows out of year "

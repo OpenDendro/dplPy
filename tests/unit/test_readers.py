@@ -1120,3 +1120,83 @@ def test_decade_misaligned_names_series(tmp_path):
     assert "too many values" in msg and "AAA1" in msg
     assert "1693" in msg                       # names the offending row's year
     assert "does not parse as fixed-width" not in msg   # no longer mislabelled
+
+
+# --- stop marker followed by missing padding (brit020's 568112) ---------------
+def test_stop_marker_followed_by_missing_padding(tmp_path):
+    # A 999 stop marker followed by a run of -999 "absent" padding (brit020 568112).
+    # The 999 must be recognised as the terminator (0.01 mm), NOT read as a 9.99 mm
+    # value; the series ends at the marker; the padding is ignored with a clear note;
+    # and there is NO misleading "no stop marker" warning.
+    p = tmp_path / "pad.rwl"
+    p.write_text(
+        "AAA     1900    50    60    70   999  -999  -999\n"
+        "AAA     1910  -999  -999  -999  -999\n"
+    )
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        d = dpl.readers(str(p))
+    msgs = " || ".join(str(w.message) for w in rec)
+    assert "after its stop marker" in msgs          # the padding is noted
+    assert "no stop marker" not in msgs             # NOT mislabelled unterminated
+    assert d.loc[1900, "AAA"] == pytest.approx(0.50)   # 0.01 mm precision
+    assert d.loc[1902, "AAA"] == pytest.approx(0.70)
+    assert int(d["AAA"].dropna().index.max()) == 1902  # ends at the last real value
+    assert 9.99 not in set(d["AAA"].dropna())          # 999 NOT read as a measurement
+
+
+def test_stop_marker_padding_0001mm(tmp_path):
+    # Same, for a 0.001 mm series: -9999 terminator then -999 padding. The -9999 is
+    # found past the pad (0.001 mm), and the trailing -999 is ignored.
+    p = tmp_path / "pad2.rwl"
+    p.write_text("BBB     1900   500   600   700 -9999  -999\n")
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        d = dpl.readers(str(p))
+    msgs = " || ".join(str(w.message) for w in rec)
+    assert "no stop marker" not in msgs
+    assert d.loc[1900, "BBB"] == pytest.approx(0.500)   # 0.001 mm precision
+    assert d.loc[1902, "BBB"] == pytest.approx(0.700)
+    assert int(d["BBB"].dropna().index.max()) == 1902
+
+
+# --- orphan block after a stop marker (roma009's f1-03) -----------------------
+_ORPHAN = (
+    "AAA     1980    50    60    70   999\n"   # AAA terminated 1980-1982 (0.01 mm)
+    "AAA     1900    80    90   100\n"          # mislabeled fragment: same ID, unterminated
+    "BBB     1910   110   120   130   999\n"    # the next series, intact
+)
+
+
+def test_orphan_after_stop_marker_raises_strict(tmp_path):
+    # A block under an existing ID appearing AFTER that series' stop marker is an
+    # orphan (a mislabeled fragment). Strict refuses the file with a clear message.
+    p = tmp_path / "orphan.rwl"
+    p.write_text(_ORPHAN)
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p), header=False)
+    msg = str(e.value)
+    assert "after the stop marker" in msg
+    assert "AAA" in msg and "1900" in msg
+
+
+def test_orphan_after_stop_marker_salvage_drops_fragment(tmp_path):
+    # Salvage keeps AAA at its terminated extent (1980-1982, no 9.99 from the 999),
+    # drops the orphan 1900-1902 fragment (NOT joined), records it, and leaves the
+    # next series BBB intact. AAA must NOT get a "no stop marker" warning.
+    p = tmp_path / "orphan.rwl"
+    p.write_text(_ORPHAN)
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        d = dpl.readers(str(p), header=False, strict=False)
+    msgs = " || ".join(str(w.message) for w in rec)
+    a = d["AAA"]
+    assert int(a.dropna().index.min()) == 1980            # fragment dropped, not joined
+    assert int(a.dropna().index.max()) == 1982
+    assert a.loc[1980] == pytest.approx(0.50)             # 0.01 mm precision (999 found)
+    assert 9.99 not in set(a.dropna())                    # 999 not read as a value
+    assert "no stop marker" not in msgs
+    rpt = [r for r in d.attrs["dplpy_salvage"] if r["series"] == "AAA"]
+    assert rpt and rpt[0]["issue"] == "post_marker_orphan"
+    assert int(d["BBB"].dropna().index.min()) == 1910     # next series intact
+    assert int(d["BBB"].dropna().index.max()) == 1912
