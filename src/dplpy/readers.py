@@ -59,7 +59,7 @@ import pandas as pd
 import numpy as np
 
 
-def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=None):
+def readers(filename: str, skip_lines=0, header=None, strict=True, format=None):
     """Imports a common ring width data file
 
     Extended Summary
@@ -88,10 +88,11 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
         Tucson file with a nonstandard extension still reads. Pass "tucson" or
         "csv" to override entirely. ("rwl"/"raw" are accepted as aliases for
         "tucson".)
-    on_error : {"raise", "warn"}, default "raise"
-        "raise" (strict) refuses a file with an unrecoverable problem, as before.
-        "warn" (salvage) recovers as much as possible instead of raising: a series
-        with a self-overlap or a measurement-precision shift is dropped, a
+    strict : bool, default True
+        ``True`` (strict, the default) refuses a file with an unrecoverable
+        problem, so an unaware caller gets safe, fail-loud behaviour.
+        ``False`` (salvage) recovers as much as possible instead of raising: a
+        series with a self-overlap or a measurement-precision shift is dropped, a
         duplicate series ID (two overlapping cores) has its later block(s)
         renamed and kept, and a file with nothing usable returns ``None``. Every
         such action is warned about and recorded on ``df.attrs["dplpy_salvage"]``
@@ -115,8 +116,9 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
     .. [1] https:/opendendro.org/dplpy-man/#readers
 
     """
-    if on_error not in ("raise", "warn"):
-        raise ValueError("on_error must be 'raise' or 'warn'")
+    if not isinstance(strict, bool):
+        raise ValueError("strict must be True (strict) or False (salvage), got "
+                         + repr(strict))
 
     # `filename` may be a local path or an http(s) URL -- read either the same way.
     is_url = filename.lower().startswith(("http://", "https://"))
@@ -153,19 +155,19 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
     else:  # tucson
         if is_url:
             raw_lines = _fetch_url_lines(filename)
-            series_data = _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
+            series_data = _lines_to_dataframe(raw_lines, skip_lines, header, strict,
                                               os.path.basename(filename))
         else:
-            series_data = process_rwl_pandas(filename, skip_lines, header, on_error)
+            series_data = process_rwl_pandas(filename, skip_lines, header, strict)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
-        if on_error == "warn":
+        if not strict:
             # Salvage mode: nothing usable, but don't derail a batch -- warn and
             # return None so the caller can simply skip this file.
             warnings.warn(
                 "No usable data could be read from " + os.path.basename(filename)
-                + "; returning None (on_error='warn')."
+                + "; returning None (strict=False)."
             )
             return None
         errorMsg = """
@@ -193,14 +195,14 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
 
     # Sanity check: a ring cannot post-date the present. A most-recent year in the
     # future flags a misdated file or a mis-parsed year (e.g. a 5-digit year from
-    # a bad field split). Strict (on_error='raise') stops; salvage warns and keeps.
+    # a bad field split). Strict (strict=True) stops; salvage warns and keeps.
     this_year = date.today().year
     if last_year > this_year:
         msg = (basename + ": the most recent year is " + str(last_year)
                + ", which is in the future (the current year is " + str(this_year)
                + "). A ring cannot post-date the present -- the file may be "
                "misdated or a year was mis-parsed.")
-        if on_error == "warn":
+        if not strict:
             warnings.warn(msg)
         else:
             raise ValueError(msg)
@@ -235,17 +237,17 @@ def readers(filename: str, skip_lines=0, header=None, on_error="raise", format=N
 # .rwl (Tucson) reading
 # ---------------------------------------------------------------------------
 
-def process_rwl_pandas(filename, skip_lines, header, on_error="raise"):
+def process_rwl_pandas(filename, skip_lines, header, strict=True):
     """Read a Tucson (.rwl/.raw) file into a Year-indexed dataframe.
 
     Returns a dataframe with a ``Year`` column (the public ``readers`` wrapper
     sets it as the index), or ``None`` if nothing usable could be parsed. In
-    salvage mode (on_error="warn") the returned frame carries a report of what
+    salvage mode (strict=False) the returned frame carries a report of what
     was dropped/renamed on ``df.attrs["dplpy_salvage"]``.
     """
     with open(filename, "r") as rwl_file:
         raw_lines = rwl_file.readlines()
-    return _lines_to_dataframe(raw_lines, skip_lines, header, on_error,
+    return _lines_to_dataframe(raw_lines, skip_lines, header, strict,
                                os.path.basename(filename))
 
 
@@ -283,7 +285,7 @@ def _is_noaa_template(raw_lines):
     return False
 
 
-def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
+def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name):
     """Shared pipeline for the file and URL readers: clean lines, resolve the
     header, parse, and assemble the Year-column dataframe (with salvage report on
     ``df.attrs['dplpy_salvage']``). Returns None if nothing usable is present."""
@@ -293,7 +295,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if header is not False and _is_noaa_template(raw_lines):
         msg = (source_name + " is a NOAA Template file, not a Tucson .rwl; use the "
                "Tucson decadal file (the same name without '-noaa').")
-        if on_error == "warn":
+        if not strict:
             warnings.warn(msg + " Returning None.")
             return None
         raise ValueError("Cannot read file -- " + msg)
@@ -336,7 +338,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
                "or a different format -- for example a NOAA Template file (a "
                "tab-delimited table under a large '#' metadata header). If it really "
                "is Tucson data, pass header=False to force the read.")
-        if on_error == "warn":
+        if not strict:
             warnings.warn(msg + " Returning None.")
             return None
         raise ValueError(msg)
@@ -346,7 +348,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     if len(clean_lines) == 0:
         return None
 
-    parsed = read_rwl(clean_lines, on_error=on_error)
+    parsed = read_rwl(clean_lines, strict=strict)
     if parsed is None:
         return None
     rwl_data, precision, order, report, dropped, combined = parsed
@@ -362,7 +364,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, on_error, source_name):
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
-    if on_error == "warn" and report:
+    if not strict and report:
         _warn_salvage_summary(source_name, report)
     return df
 
@@ -1082,7 +1084,7 @@ def _split_joined_records(line, _depth=0):
     return [line]
 
 
-def read_rwl(lines, on_error="raise"):
+def read_rwl(lines, strict=True):
     """Parse cleaned Tucson data lines into (rwl_data, precision, order, report).
 
     rwl_data  : {series_id: {year: raw_integer_value}}
@@ -1095,11 +1097,11 @@ def read_rwl(lines, on_error="raise"):
     the strategy dplR uses to cope with long IDs, negative years, etc. Returns
     ``None`` if nothing usable could be parsed.
 
-    on_error="warn" enables salvage mode: instead of raising on an unrecoverable
+    strict=False enables salvage mode: instead of raising on an unrecoverable
     per-series problem, a self-overlap or precision-shift series is dropped and a
     duplicate-ID's later block(s) are renamed and kept, each recorded in report.
     """
-    salvage = (on_error == "warn")
+    salvage = not strict
     report = []
 
     # Repair joined records: a missing line break that butts a stop marker

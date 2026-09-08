@@ -320,7 +320,7 @@ def test_salvage_offset_duplicate_drops_whole_series(tmp_path):
     p.write_text(_OFFSET_DUP)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), on_error="warn")
+        d = dpl.readers(str(p), strict=False)
     assert "SYN02A" in d.columns                       # the clean series survives
     assert "SYN01A" not in d.columns                   # dropped, not kept
     assert "SYN01A2" not in d.columns                  # and NOT fabricated
@@ -341,7 +341,7 @@ def test_salvage_lone_decade_overrun_drops_series(tmp_path):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), header=False, on_error="warn")
+        d = dpl.readers(str(p), header=False, strict=False)
     assert list(d.columns) == ["BBB1"]                 # clean series kept
     assert "AAA1" not in d.columns                      # offset series dropped
     dropped = [r for r in d.attrs["dplpy_salvage"]
@@ -354,7 +354,7 @@ def test_salvage_aligned_duplicate_still_renames_and_keeps_both():
     # (viet001's BDF02A) -- is still rename-and-kept, not dropped.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(RWL + "viet001.rwl", on_error="warn")
+        d = dpl.readers(RWL + "viet001.rwl", strict=False)
     assert "BDF02A" in d.columns and "BDF02A2" in d.columns
 
 
@@ -487,7 +487,7 @@ def test_rwl_bunched_negative_year_uses_long_format(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Salvage mode (on_error="warn"): recover as much as possible instead of raising.
+# Salvage mode (strict=False): recover as much as possible instead of raising.
 # ---------------------------------------------------------------------------
 
 def test_salvage_self_overlap_drops_series_keeps_rest(tmp_path):
@@ -499,7 +499,7 @@ def test_salvage_self_overlap_drops_series_keeps_rest(tmp_path):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), on_error="warn")
+        d = dpl.readers(str(p), strict=False)
     assert "AAA01" not in d.columns        # bad series dropped
     assert "BBB01" in d.columns            # clean series kept
     rep = d.attrs["dplpy_salvage"]
@@ -516,7 +516,7 @@ def test_salvage_precision_shift_drops_series_keeps_rest(tmp_path):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), on_error="warn")
+        d = dpl.readers(str(p), strict=False)
     assert "AAA01" not in d.columns
     assert "BBB01" in d.columns
     assert any(r["issue"] == "precision_shift" for r in d.attrs["dplpy_salvage"])
@@ -529,7 +529,7 @@ def test_salvage_duplicate_id_renames_and_keeps_both():
         dpl.readers(RWL + "viet001.rwl")                       # strict
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(RWL + "viet001.rwl", on_error="warn")  # salvage
+        d = dpl.readers(RWL + "viet001.rwl", strict=False)  # salvage
     assert "BDF02A" in d.columns and "BDF02A2" in d.columns
     assert any(r["issue"] == "duplicate_id" and r["action"].startswith("renamed")
                for r in d.attrs["dplpy_salvage"])
@@ -547,7 +547,7 @@ def test_salvage_disjoint_segments_merge_and_report(tmp_path):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), on_error="warn")
+        d = dpl.readers(str(p), strict=False)
     assert "AAA01" in d.columns and "AAA012" not in d.columns   # merged, not split
     assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
     assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
@@ -607,14 +607,16 @@ def test_salvage_identical_overlap_not_renamed(tmp_path):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        d = dpl.readers(str(p), on_error="warn")
+        d = dpl.readers(str(p), strict=False)
     assert "AAA01" in d.columns and "AAA012" not in d.columns
     assert not any(r["issue"] == "duplicate_id" for r in d.attrs["dplpy_salvage"])
 
 
-def test_salvage_invalid_on_error_value():
+def test_invalid_strict_value():
+    # strict must be a bool; a stray string (e.g. an old on_error value) is rejected
+    # with a clear ValueError rather than being silently treated as truthy=strict.
     with pytest.raises(ValueError):
-        dpl.readers(RWL + "ca533.rwl", on_error="bogus")
+        dpl.readers(RWL + "ca533.rwl", strict="bogus")
 
 
 def test_readers_reads_rwl_from_url():
@@ -778,7 +780,7 @@ def test_future_year_raises_in_strict_mode(tmp_path):
     p = tmp_path / "future.csv"
     pd.DataFrame({"Year": [2000, 2001, 2999], "S1": [0.1, 0.2, 0.3]}).to_csv(p, index=False)
     with pytest.raises(ValueError) as e:
-        dpl.readers(str(p))                               # on_error='raise' (default)
+        dpl.readers(str(p))                               # strict=True (default)
     assert "future" in str(e.value) and "2999" in str(e.value)
 
 
@@ -787,7 +789,7 @@ def test_future_year_warns_and_continues_in_salvage_mode(tmp_path):
     pd.DataFrame({"Year": [2000, 2001, 2999], "S1": [0.1, 0.2, 0.3]}).to_csv(p, index=False)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        res = dpl.readers(str(p), on_error="warn")
+        res = dpl.readers(str(p), strict=False)
     assert res is not None and int(res.index.max()) == 2999   # kept, not dropped
     assert any("future" in str(x.message) for x in w)
 
@@ -819,7 +821,7 @@ def test_embedded_space_value_raises_in_strict(tmp_path):
     p = tmp_path / "split.rwl"
     p.write_text("\n".join(_SPLIT_RWL) + "\n")
     with pytest.raises(ValueError, match="misaligned"):
-        dpl.readers(str(p), on_error="raise")
+        dpl.readers(str(p), strict=True)
 
 
 def test_embedded_space_value_is_nan_row_in_salvage(tmp_path):
@@ -829,7 +831,7 @@ def test_embedded_space_value_is_nan_row_in_salvage(tmp_path):
     p.write_text("\n".join(_SPLIT_RWL) + "\n")
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        df = dpl.readers(str(p), on_error="warn")
+        df = dpl.readers(str(p), strict=False)
     assert 1900 in df["S1"].dropna().index                    # the clean 1900 decade still read
     assert 1910 not in df["S1"].dropna().index                # the misaligned 1910 row is gone
     acts = [a for a in df.attrs["dplpy_salvage"] if a["issue"] == "column_misalignment"]
@@ -863,7 +865,7 @@ def test_trailing_count_column_ignored(tmp_path):
     p.write_text("\n".join(lines) + "\n")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        df = dpl.readers(str(p), header=False, on_error="raise")   # no self-overlap raised
+        df = dpl.readers(str(p), header=False, strict=True)   # no self-overlap raised
     assert list(df.columns) == ["SER1"]
     assert df["SER1"].loc[1900] == pytest.approx(1.00)             # 100 at 0.01 mm precision
     assert int(df["SER1"].last_valid_index()) == 1910
@@ -877,11 +879,11 @@ def test_joined_records_raise_strict_split_salvage(tmp_path):
     p.write_text(joined + "\n")
     # strict refuses: a missing line break is a file defect, not something to guess
     with pytest.raises(ValueError, match="missing line break"):
-        dpl.readers(str(p), header=False, on_error="raise")
+        dpl.readers(str(p), header=False, strict=True)
     # salvage splits both records apart and warns
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        df = dpl.readers(str(p), header=False, on_error="warn")
+        df = dpl.readers(str(p), header=False, strict=False)
     assert set(df.columns) == {"SER1", "SER2"}
     assert int(df["SER1"].last_valid_index()) == 1908             # 999 stop at 1909
     assert int(df["SER2"].first_valid_index()) == 1910
@@ -896,7 +898,7 @@ def test_site_id_after_stop_is_not_split(tmp_path):
     p.write_text(line + "\n")
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        df = dpl.readers(str(p), header=False, on_error="raise")
+        df = dpl.readers(str(p), header=False, strict=True)
     assert list(df.columns) == ["SER1"]
     assert not any("missing line break" in str(x.message) for x in w)
 
@@ -914,7 +916,7 @@ def test_over_long_header_is_refused(tmp_path):
             dpl.readers(str(p))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            assert dpl.readers(str(p), on_error="warn") is None  # salvage -> None, not garbage
+            assert dpl.readers(str(p), strict=False) is None  # salvage -> None, not garbage
 
 
 def test_three_line_header_reads(tmp_path):
@@ -937,7 +939,7 @@ def test_header_false_bypasses_the_guard(tmp_path):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
-            dpl.readers(str(p), header=False, on_error="warn")
+            dpl.readers(str(p), header=False, strict=False)
         except ValueError as e:
             assert "does not look like a Tucson" not in str(e)     # guard not applied
 
@@ -969,7 +971,7 @@ def test_noaa_template_file_rejected_with_clear_message(tmp_path):
         dpl.readers(str(p))
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        r = dpl.readers(str(p), on_error="warn")
+        r = dpl.readers(str(p), strict=False)
     assert r is None
     assert any("NOAA Template file" in str(x.message) for x in w)
     assert not any("misaligned" in str(x.message) for x in w)   # not the old confusing msg
@@ -984,7 +986,7 @@ def test_hash_in_series_id_is_not_a_comment(tmp_path):
     ]
     p = tmp_path / "hashid.rwl"
     p.write_text("\n".join(lines) + "\n")
-    df = dpl.readers(str(p), on_error="warn")
+    df = dpl.readers(str(p), strict=False)
     assert "SP#1" in df.columns and "SP#2" in df.columns   # not dropped as comments
     assert df.loc[1900, "SP#1"] == pytest.approx(1.00)
     assert df.loc[1901, "SP#2"] == pytest.approx(1.30)
@@ -1057,7 +1059,7 @@ def test_tab_in_id_raises_naming_series(tmp_path):
     p = tmp_path / "tab.rwl"
     p.write_text("\n".join(rows) + "\n")
     with pytest.raises(ValueError) as e:
-        dpl.readers(str(p), header=False, on_error="raise")
+        dpl.readers(str(p), header=False, strict=True)
     msg = str(e.value)
     assert "TAB" in msg and "moo07b" in msg
 
@@ -1086,7 +1088,7 @@ def test_missing_terminator_infers_precision_from_siblings(tmp_path):
     p = tmp_path / "noterm.rwl"
     p.write_text("\n".join(rows) + "\n")
     with pytest.warns(UserWarning, match="no stop marker"):
-        df = dpl.readers(str(p), header=False, on_error="raise")
+        df = dpl.readers(str(p), header=False, strict=True)
     assert "BBB1" in df.columns
     assert df.loc[1900, "BBB1"] == pytest.approx(0.200)  # 200 / 1000 (inferred)
 
@@ -1101,7 +1103,7 @@ def test_no_terminators_anywhere_raises(tmp_path):
     p = tmp_path / "none.rwl"
     p.write_text("\n".join(rows) + "\n")
     with pytest.raises(ValueError, match="no stop marker"):
-        dpl.readers(str(p), header=False, on_error="raise")
+        dpl.readers(str(p), header=False, strict=True)
 
 
 def test_decade_misaligned_names_series(tmp_path):
@@ -1113,7 +1115,7 @@ def test_decade_misaligned_names_series(tmp_path):
     p = tmp_path / "nfw.rwl"
     p.write_text(row + "\n")
     with pytest.raises(ValueError) as e:
-        dpl.readers(str(p), header=False, on_error="raise")
+        dpl.readers(str(p), header=False, strict=True)
     msg = str(e.value)
     assert "too many values" in msg and "AAA1" in msg
     assert "1693" in msg                       # names the offending row's year

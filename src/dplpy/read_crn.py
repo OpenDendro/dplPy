@@ -64,7 +64,7 @@ import pandas as pd
 _MISSING = 9990          # ITRDB missing-value code (before /1000 scaling)
 
 
-def read_crn(filename, on_error="raise", split_by_site=False):
+def read_crn(filename, strict=True, split_by_site=False):
     """Read a Tucson (.crn) chronology file into a DataFrame.
 
     Parameters
@@ -73,10 +73,10 @@ def read_crn(filename, on_error="raise", split_by_site=False):
         Path (or http/https URL) to a .crn chronology file. Standard single
         chronologies and combined multi-block files (stacked ARSTAN types, or
         many sites concatenated) are both handled.
-    on_error : {"raise", "warn"}, default "raise"
-        "raise" refuses a file with no readable chronology; "warn" returns None
-        instead. (Individual malformed rows are skipped with a warning either
-        way.)
+    strict : bool, default True
+        ``True`` (the default) refuses a file with no readable chronology;
+        ``False`` returns None instead. (Individual malformed rows are skipped
+        with a warning either way.)
     split_by_site : bool, default False
         If True, return a dict mapping each site ID to its own DataFrame (each
         framed as a single-site file: value columns named by chronology type
@@ -106,14 +106,15 @@ def read_crn(filename, on_error="raise", split_by_site=False):
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#read_crn
     """
-    if on_error not in ("raise", "warn"):
-        raise ValueError("on_error must be 'raise' or 'warn'")
+    if not isinstance(strict, bool):
+        raise ValueError("strict must be True (strict) or False (salvage), got "
+                         + repr(strict))
 
     lines = _read_lines(filename)
     blocks, stats = _parse_blocks(lines)
 
     if not blocks:
-        if on_error == "warn":
+        if not strict:
             warnings.warn("No chronology data found in "
                           + os.path.basename(filename) + "; returning None.")
             return None

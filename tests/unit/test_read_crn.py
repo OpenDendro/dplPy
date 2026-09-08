@@ -166,11 +166,11 @@ def test_no_data_raises_or_warns(tmp_path):
         dpl.read_crn(str(p))
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert dpl.read_crn(str(p), on_error="warn") is None
+        assert dpl.read_crn(str(p), strict=False) is None
 
 
-def test_bad_on_error_raises(tmp_path):
+def test_bad_strict_raises(tmp_path):
     p = tmp_path / "x.crn"
     p.write_text("\n".join(_HDR + [_row("SITEAB", 1900, [(1000, 4)])]) + "\n")
     with pytest.raises(ValueError):
-        dpl.read_crn(str(p), on_error="bogus")
+        dpl.read_crn(str(p), strict="bogus")
