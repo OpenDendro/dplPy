@@ -1,11 +1,11 @@
 site_name: dplPy
 site_description: Dendrochronology Program Library for Python
 site_author: Andy Bunn, Kevin Anchukaitis, Tyson Swetnam
-site_url: https://opendendro.github.io/dplpy
+site_url: https://opendendro.github.io/dplPy
 
 # Repository
 repo_name: OpenDendro/dplPy
-repo_url: https://github.com/opendendro/dplpy
+repo_url: https://github.com/OpenDendro/dplPy
 # Copyright
 copyright: 'Copyright &copy; 2021 - 2026 OpenDendro'
 
