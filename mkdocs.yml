@@ -118,3 +118,7 @@ nav:
       - Crossdating: reference/crossdating.md
       - Statistics & indices: reference/statistics.md
       - Utilities: reference/utilities.md
+  - Background:
+      - Fidelity & departures: background/fidelity.md
+      - "Crossdating: dplR vs COFECHA": background/crossdating-methods.md
+      - References: background/references.md
