@@ -106,6 +106,9 @@ nav:
       - Detrending & standardization: guide/detrending-standardization.md
       - Building chronologies: guide/chronologies.md
       - Crossdating & COFECHA: guide/crossdating.md
+      - Dating a floating series: guide/floating-series.md
+      - Statistics & agreement: guide/statistics.md
+      - LiPD interchange: guide/lipd.md
       - Coming from dplR: guide/coming-from-dplr.md
   - API Reference:
       - Input & output: reference/io.md
