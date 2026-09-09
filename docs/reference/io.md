@@ -6,40 +6,40 @@ guide for worked examples.
 
 ## readers
 
-::: dplpy.readers
+::: dplpy.readers.readers
 
 ## readers_url
 
-::: dplpy.readers_url
+::: dplpy.readers_url.readers_url
 
 ## metadata
 
-::: dplpy.metadata
+::: dplpy.readers.metadata
 
 ## read_crn
 
-::: dplpy.read_crn
+::: dplpy.read_crn.read_crn
 
 ## read_ids
 
-::: dplpy.read_ids
+::: dplpy.read_ids.read_ids
 
 ## combine_rwl
 
-::: dplpy.combine_rwl
+::: dplpy.combine.combine_rwl
 
 ## writers
 
-::: dplpy.writers
+::: dplpy.writers.writers
 
 ## summary
 
-::: dplpy.summary
+::: dplpy.summary.summary
 
 ## report
 
-::: dplpy.report
+::: dplpy.report.report
 
 ## SiteMetadata
 
-::: dplpy.SiteMetadata
+::: dplpy.site_metadata.SiteMetadata

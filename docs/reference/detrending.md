@@ -6,20 +6,20 @@ guide for when to use each method.
 
 ## detrend
 
-::: dplpy.detrend
+::: dplpy.detrend.detrend
 
 ## rcs
 
-::: dplpy.rcs
+::: dplpy.rcs.rcs
 
 ## ssf
 
-::: dplpy.ssf
+::: dplpy.simplesignalfree.ssf
 
 ## ads
 
-::: dplpy.ads
+::: dplpy.agedepspline.ads
 
 ## powt
 
-::: dplpy.powt
+::: dplpy.powt.powt

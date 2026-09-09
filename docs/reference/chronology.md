@@ -6,20 +6,20 @@ modelling and variance stabilization. See the
 
 ## chron
 
-::: dplpy.chron
+::: dplpy.chron.chron
 
 ## chron_stabilized
 
-::: dplpy.chron_stabilized
+::: dplpy.chron_stabilized.chron_stabilized
 
 ## chron_ars
 
-::: dplpy.chron_ars
+::: dplpy.chron_ars.chron_ars
 
 ## autoreg
 
-::: dplpy.autoreg
+::: dplpy.autoreg.autoreg
 
 ## ar_func
 
-::: dplpy.ar_func
+::: dplpy.autoreg.ar_func
