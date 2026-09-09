@@ -46,9 +46,9 @@ def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True, method="ols", f
     data : pd.DataFrame | pd.Series
         a pandas dataframe imported from dpl.readers() or a series extracted
         from such a dataframe.
-    lag: int, default 5
+    max_lag: int, default 5
         max lag to consider when selecting the AR model.
-   
+
     Returns
     -------
     res :  pandas dataframe or series of AR-modeled data, depending on which was given as input.
@@ -110,9 +110,9 @@ def autoreg(data: pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=Fa
 
     Parameters
     ----------
-    series : pd.Series
+    data : pd.Series
         an individual (Pandas) series representing tree rings/widths.
-    lag : int, default 5
+    max_lag : int, default 5
         max lag to consider when selecting the AR model.
             
     Returns

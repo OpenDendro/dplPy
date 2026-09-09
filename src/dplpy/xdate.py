@@ -395,17 +395,21 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
 
     Returns
     -------
-    dict with keys:
-      ``seg_corr``     DataFrame (series x bins) of segment correlations
-      ``p_val``        DataFrame (series x bins) of one-tailed p-values
-      ``overall``      DataFrame (series x ['rho','p_val'])
-      ``avg_seg_corr`` Series (bins) mean correlation across series
-      ``flags``        dict {series: {'A': [...], 'B': [...]}}
-      ``bins``         list of "start-end" bin labels
-      ``rwi``          DataFrame of the normalized/prewhitened series used
-    and, for ``preset="COFECHA"`` only:
-      ``segments``     dict {series: [{lo,hi,r0,best_lag,best_corr,n,crit,flag,lags}]}
-      ``n_problems``   int, COFECHA's "Segments, possible problems" count
+    dict
+        A dictionary with keys:
+
+        - ``seg_corr`` -- DataFrame (series x bins) of segment correlations
+        - ``p_val`` -- DataFrame (series x bins) of one-tailed p-values
+        - ``overall`` -- DataFrame (series x ['rho', 'p_val'])
+        - ``avg_seg_corr`` -- Series (bins) mean correlation across series
+        - ``flags`` -- dict {series: {'A': [...], 'B': [...]}}
+        - ``bins`` -- list of "start-end" bin labels
+        - ``rwi`` -- DataFrame of the normalized/prewhitened series used
+
+        And, for ``preset="COFECHA"`` only:
+
+        - ``segments`` -- dict {series: [{lo, hi, r0, best_lag, best_corr, n, crit, flag, lags}]}
+        - ``n_problems`` -- int, COFECHA's "Segments, possible problems" count
 
     Examples
     --------

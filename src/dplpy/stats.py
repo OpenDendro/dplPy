@@ -54,9 +54,9 @@ def stats(inp: pd.DataFrame | str):
     
     Parameters
     ----------
-    data : str
+    inp : str or pandas dataframe
         a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
-    
+
     Returns
     -------
     data : pandas dataframe

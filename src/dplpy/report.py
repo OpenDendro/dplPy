@@ -52,7 +52,7 @@ def report(inp: pd.DataFrame | str):
     
     Parameters
     ----------
-    data : str or pandas dataframe
+    inp : str or pandas dataframe
         a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
               
     Returns

@@ -59,7 +59,7 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
 
     Parameters
     ----------
-    data : pandas dataframe
+    rwi_data : pandas dataframe
         a pandas dataframe imported from dpl.readers()
     biweight : boolean, default True
         use Tukey's bi-weight robust mean
