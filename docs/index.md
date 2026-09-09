@@ -1,3 +1,7 @@
+<p style="text-align: center; margin: 1.5rem 0;">
+  <img src="assets/dplpy.png" alt="dplPy logo" width="280">
+</p>
+
 # dplPy
 
 **dplPy** is the Dendrochronology Program Library for Python — an open-source
