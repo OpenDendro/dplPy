@@ -54,7 +54,7 @@ def _dplR_ccf(x, y, lag_max):
     """R's ``ccf(x, y)``: standardised cross-covariance, fixed means, /n.
 
     Returns the correlation at lags -lag_max..+lag_max, where the value at lag
-    k estimates cor(x[t+k], y[t]). Reproduces stats::ccf to ~1e-10.
+    k estimates cor(x[t+k], y[t]). Follows R's stats::ccf definition.
     """
     x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
     x = x - x.mean(); y = y - y.mean()

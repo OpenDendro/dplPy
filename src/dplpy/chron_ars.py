@@ -31,13 +31,12 @@ __license__ = "GNU GPLv3"
 #              as a performance "time killer" needing vectorization; this port
 #              vectorizes it with numpy while reproducing dplR's output.
 #
-#              VALIDATION: the pooled ACF, AR-coefficient matrix, AIC, and
-#              selected order reproduce dplR to machine precision; the std/res/
-#              ars chronologies reproduce dplR to ~1e-15 for the ar.yw method
-#              (both biweight=FALSE and, after the tbrm epsilon fix, biweight=TRUE).
-#              The arima.CSS-ML method matches within tolerance (statsmodels'
-#              state-space MLE differs from R's arima optimizer, mainly in
-#              low-replication years).
+#              NOTES: the pooled ACF, AR-coefficient matrix, AIC, and selected
+#              order follow dplR's algorithm; the std/res/ars chronologies match
+#              dplR for the ar.yw method (both biweight=FALSE and, after the tbrm
+#              epsilon fix, biweight=TRUE). The arima.CSS-ML method differs from
+#              R's arima optimizer (statsmodels' state-space MLE vs R's), mainly
+#              in low-replication years.
 #
 # example usage from Python Console:
 # >>> import dplpy as dpl
@@ -84,8 +83,8 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     This is a port of dplR's chron.ars(). The pooled-AR accumulation -- the
     step the dplR authors flagged as a "time killer" -- is vectorized with numpy
     here (a per-series-pair loop of vectorized lag dot-products, replacing
-    dplR's triple loop with per-iteration cbind/rowSums), while preserving
-    dplR/FORTRAN behavior exactly, including its practice of compressing each
+    dplR's triple loop with per-iteration cbind/rowSums), while following
+    dplR/FORTRAN's behavior, including its practice of compressing each
     series pair to its common overlap and then lagging by position. The
     re-reddening (postAR) forward filter is applied with scipy.signal.lfilter.
 
@@ -187,7 +186,7 @@ def _pooled_ar(x, max_lag, first_aic_min):
     Vectorized port of dplR's pooledAR: accumulates a pooled product-sum across
     every ordered series pair and lag, converts to a pooled ACF, then to AR
     coefficients (Durbin-Levinson), and selects the order by AIC. The per-pair
-    common-overlap compression + position lag reproduces dplR/FORTRAN exactly.
+    common-overlap compression + position lag follows dplR/FORTRAN.
     """
     n_years, n_series = x.shape
 
@@ -274,8 +273,8 @@ def _get_first_min(y):
 
 def _prewhiten_ar_yw(series, p):
     """Prewhiten one series with a fixed-order Yule-Walker AR(p) model.
-    Matches dplR's ar(..., method="yule-walker") residuals (verified to ~1e-15).
-    The first p values become NaN, as in R's ar() residuals."""
+    Matches dplR's ar(..., method="yule-walker") residuals. The first p values
+    become NaN, as in R's ar() residuals."""
     from statsmodels.regression.linear_model import yule_walker
 
     if p == 0:
@@ -325,7 +324,7 @@ def _post_ar(series, phi):
     Port of dplR's postAR: the whitened series is reversed, run through the AR
     filter (scipy.signal.lfilter, zero initial conditions), then a short
     backcast improves the initial values, and the AR filter is applied once
-    more with those improved initials. Matches dplR to machine precision.
+    more with those improved initials.
     """
     mask = np.isnan(series)
     x0 = series.copy()

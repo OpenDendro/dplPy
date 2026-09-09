@@ -25,11 +25,11 @@ __license__ = "GNU GPLv3"
 # Project: OpenDendro dplPy
 # Description: Read Tucson chronology (.crn) files -- the standardized site
 #              chronologies produced by ARSTAN and friends. Handles the standard
-#              single-chronology ITRDB file (as dplR's read.crn does) AND the
-#              "combined" multi-block files that dplR cannot: an ARSTAN run's
-#              stacked std/res/ars(/trn) chronologies for one site, and files
-#              that concatenate many sites' chronologies (e.g. SSF output), each
-#              block tagged with a trailing chronology-type label.
+#              single-chronology ITRDB file AND "combined" multi-block files:
+#              an ARSTAN run's stacked std/res/ars(/trn) chronologies for one
+#              site (which share a single site ID), and files that concatenate
+#              many sites' chronologies (e.g. SSF output), each block tagged with
+#              a trailing chronology-type label.
 #
 # Format (ITRDB, see treeinfo.pdf):
 #   * Optional header records (1 or 3 lines) precede each block; they are skipped

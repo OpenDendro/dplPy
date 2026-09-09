@@ -39,7 +39,7 @@ import pandas as pd
 
 from .readers import readers
 from .detrend import detrend
-from .xdate import xdate
+from .xdate import xdate, _cofecha_crit
 from .sensitivity import sens1
 from .autoreg import autoreg
 
@@ -263,8 +263,15 @@ def _format_part5(rep, per_block=20):
     avg = rep.get("avg_seg_corr")
 
     if rep.get("preset"):
-        crit_phrase = "under .3281 but highest as dated"
-        pcrit_line = "        critical value 0.3281, from pcrit = 0.01, one tailed"
+        # COFECHA's critical r depends on the segment (window) length -- it is the
+        # 99% one-tailed t value on (n-2) df converted to r. For the standard
+        # 50-year window this is .3281; a different slide_period gives a different
+        # threshold, so derive it from sp rather than hardcoding.
+        crit = _cofecha_crit(sp)
+        crit_str = ("%.4f" % crit).lstrip("0")
+        crit_phrase = "under %s but highest as dated" % crit_str
+        pcrit_line = ("        critical value %s for the %d-year window, "
+                      "from pcrit = 0.01, one tailed" % (crit_str, sp))
     else:
         crit_phrase = "not significant but highest as dated"
         pcrit_line = "        critical value from pcrit = 0.05, one tailed"

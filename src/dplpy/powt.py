@@ -229,8 +229,8 @@ def _powt_universal(rwl, rescale, return_power):
 
     # log(S) ~ log(M) with a random intercept per year (dplR's (1|year), ML fit).
     # NB: statsmodels' default 'lbfgs' collapses the year variance to the
-    # boundary here (giving the wrong slope); 'powell'/'cg'/'bfgs' all recover
-    # lme4's estimate exactly, so try those in order.
+    # boundary here (giving the wrong slope); 'powell'/'cg'/'bfgs' recover the
+    # proper estimate (consistent with lme4's), so try those in order.
     model = smf.mixedlm("run_S ~ run_M", df, groups=df["year"])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

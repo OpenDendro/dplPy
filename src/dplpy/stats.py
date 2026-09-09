@@ -37,7 +37,7 @@ __license__ = "GNU GPLv3"
 
 # Note on ar1: dplR's rwl.stats reports the lag-1 autocorrelation (the acf
 # coefficient at lag 1), not an OLS AR(1) slope. We compute it directly (see
-# get_ar1 below), which matches dplR to machine precision.
+# get_ar1 below), following dplR's definition.
 
 import pandas as pd
 from ._validate import _coerce_to_frame

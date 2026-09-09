@@ -28,8 +28,9 @@ __license__ = "GNU GPLv3"
 #              to remove the common signal, the "signal-free" measurements are
 #              re-detrended, and a new chronology is built; this repeats until
 #              the high-frequency chronology stops changing (median absolute
-#              difference below a threshold). Reproduces dplR's ssf() to machine
-#              precision.
+#              difference below a threshold). Ports dplR's ssf() algorithm
+#              (preset=None path); the CRUST-derived options depart from it as
+#              documented on those parameters.
 
 import numpy as np
 import pandas as pd
@@ -182,7 +183,7 @@ def ssf(rwl,
     if max_iterations > 25:
         print("Warning: Having to set max_iterations > 25 may indicate non-ideal data for signal-free detrending.")
     if  not(1e-04 < mad_threshold < 1e-03):
-        print("Warning: The stopping criteria should probably be between 1e-5 and 1e-4 unless you have a good reason to think otherwise.")
+        print("Warning: The stopping criteria should probably be between 1e-4 and 1e-3 unless you have a good reason to think otherwise.")
 
     if crust:
         # CRUST allows up to 40 signal-free iterations; difficult sites (e.g.
@@ -306,7 +307,7 @@ def ssf(rwl,
             # dplR's caps() truncates its nyrs to an integer (caps.R:
             # "stiffness = as.integer(nyrs)"), so nyrs = length(y2)*0.6667 is
             # effectively floored before the spline is fit. Match that here --
-            # passing the raw float instead leaves the spline ~1e-4 off caps.
+            # passing the raw float instead leaves the spline slightly off caps.
             Curve = spline(y=y2, x=y_inds, period=int(nyrs2))
             # Put NA back in
             Curve2 = np.full_like(y, np.nan)

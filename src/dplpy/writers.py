@@ -84,12 +84,15 @@ def writers(data: pd.DataFrame, label: str, format: str, header=None,
     prec : float, default 0.001
         for format='rwl', the measurement precision in mm: 0.001 (values written
         x1000, end-of-series marker -9999) or 0.01 (values x100, end marker 999).
-        Mirrors dplR's write.tucson.
+        The precision->marker mapping follows dplR's write.tucson. Note two
+        deliberate divergences from dplR: dplPy defaults to prec=0.001 (dplR
+        defaults to 0.01), and interior gaps are encoded via the ``gaps`` option
+        below rather than dplR's 0 / -9.99 missing string.
     gaps : {int, "split"}, default -99
         for format='rwl', how to encode a *true interior gap* (a NaN inside a
         series -- missing measurement, as distinct from a real 0, which is a ring
         that was locally absent that year and is always written as 0):
-        a negative integer (Ed Cook's ARSTAN convention, default -99; also e.g.
+        a negative integer (a dplPy convention, default -99; also e.g.
         -9) writes that sentinel in the gap within a continuous block -- it must
         be negative so it is not read as a ring width, and must not be a stop
         marker; dplPy's reader turns any such negative back into NaN on read.
@@ -163,16 +166,19 @@ def write_rwl(data, file, prec=0.001, gaps=-99):
     """Write a ring-width dataframe (years x series -- raw widths OR detrended
     RWI series, whichever you have) to a Tucson decadal .rwl file.
 
-    ``prec`` is the measurement precision in mm and mirrors dplR's write.tucson:
-    0.001 writes values * 1000 with a -9999 end-of-series marker; 0.01 writes
-    values * 100 with a 999 end marker. Values are right-justified in 6-column
-    fields (the standard space-padded encoding).
+    ``prec`` is the measurement precision in mm. The precision->marker mapping
+    follows dplR's write.tucson: 0.001 writes values * 1000 with a -9999
+    end-of-series marker; 0.01 writes values * 100 with a 999 end marker. Values
+    are right-justified in 6-column fields (the standard space-padded encoding).
+    Two deliberate divergences from dplR: dplPy defaults to ``prec=0.001`` (dplR
+    defaults to 0.01), and interior gaps use the ``gaps`` encoding below rather
+    than dplR's 0 / -9.99 missing string.
 
     A real 0 in ``data`` is a *locally absent ring* (a ring that did not form that
     year) and is always written as 0. ``gaps`` controls how a *true interior gap*
     -- a NaN inside a series' span, i.e. a missing measurement -- is encoded:
 
-    * a negative integer (Ed Cook's ARSTAN convention, default ``-99``; also e.g.
+    * a negative integer (a dplPy convention, default ``-99``; also e.g.
       ``-9``): write that sentinel in the gap within one continuous block. It must
       be negative so the reader does not mistake it for a ring width, and must not
       collide with a stop marker; dplPy's reader turns any such negative back into

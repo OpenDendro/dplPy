@@ -26,11 +26,13 @@ __license__ = "GNU GPLv3"
 # Description: Derives tree and core identifiers from tree-ring series names
 #              following the site-tree-core (STC) naming convention, producing
 #              the id mapping consumed by dpl.rwi_stats()/dpl.sss() to group
-#              cores by tree. This is the deterministic subset of dplR's
-#              read.ids(): a pattern-based default plus an explicit fixed-width
-#              STC character mask. It deliberately does NOT attempt dplR's
-#              fuzzy autoread.ids() heuristics (typo correction, look-alike
-#              character substitution, etc.) for unconventional naming.
+#              cores by tree. Inspired by dplR's read.ids(): it offers an
+#              explicit fixed-width STC character mask (analogous to dplR's
+#              stc mask) plus a pattern-based default that is a dplPy addition.
+#              It deliberately does NOT attempt dplR's fuzzy autoread.ids()
+#              heuristics (typo correction, look-alike character substitution,
+#              etc.) for unconventional naming, and its STC mode returns the id
+#              strings rather than dplR's renumbered integer tree/core indices.
 #
 # example usage from Python Console:
 # >>> import dplpy as dpl

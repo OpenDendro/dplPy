@@ -30,7 +30,7 @@ __license__ = "GNU GPLv3"
 #              age. dplR ships Ed Cook's original banded solver as Fortran; the
 #              underlying problem is just a symmetric positive-definite banded
 #              least-squares system, so here it is solved natively with SciPy
-#              (reproducing dplR to ~1e-12).
+#              (a native re-solve of the same banded system dplR's Fortran uses).
 
 import numpy as np
 from scipy.linalg import solveh_banded
@@ -87,7 +87,8 @@ def ads(y, nyrs0=50, pos_slope=True):
     ring is fit with an (nyrs0 + i - 1)-year spline, so young rings are smoothed
     least and the curve grows stiffer with age (Melvin 2004; Melvin et al. 2007).
     The underlying cubic smoothing spline follows Cook & Peters (1981) with a 50%
-    frequency cutoff. Reproduces dplR's ads() to ~1e-12.
+    frequency cutoff. Ports dplR's ads() (the same banded system, solved with
+    SciPy).
 
     Parameters
     ----------

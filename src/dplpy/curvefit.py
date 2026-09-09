@@ -216,6 +216,9 @@ def linear(x, y, bounds=False):
     if bounds is False:
         pars, unk = curve_fit(line_function, x, y)
     else:
+        # Currently unused: every caller invokes linear() with the default
+        # bounds=False. This branch constrains the slope to <= 0 (an upper bound
+        # of 0) and is kept only for a possible future constrained-fit option.
         pars, unk = curve_fit(line_function, x, y, bounds=([-np.inf, -np.inf], [0, np.inf]))
     m, c = pars
     yi = line_function(x, m, c)

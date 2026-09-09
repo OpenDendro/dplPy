@@ -24,8 +24,8 @@ __license__ = "GNU GPLv3"
 # Title: sensitivity.py
 # Project: OpenDendro dplPy
 # Description: Mean sensitivity of a ring-width series -- sens1 and sens2 --
-#              ported to match dplR's C implementations (dplR 1.7.9, src/sens.c,
-#              written by Mikko Korpela) exactly.
+#              ported from dplR's C implementations (dplR 1.7.9, src/sens.c,
+#              written by Mikko Korpela).
 #
 #   sens1  -- the standard (Douglass) mean sensitivity, Eq. 1 of Biondi & Qeadan
 #             (2008). For each adjacent pair the local relative change is
@@ -39,8 +39,8 @@ __license__ = "GNU GPLv3"
 #
 # Both drop NA first and return NaN when fewer than two values remain (dplR
 # returns R_NaN in that case). dplR sums with exact/compensated arithmetic; we
-# use math.fsum (correctly-rounded summation) so the results agree to machine
-# precision. See dev/dplR_gap_analysis_2026-08.md.
+# use math.fsum (correctly-rounded summation) to follow that approach.
+# See dev/dplR_gap_analysis_2026-08.md.
 #
 # NOTE (fidelity): dplR deliberately leaves sens1/sens2 OUT of rwl.stats() -- the
 # lines are present but commented in dplR's source, reflecting the Bunn et al.

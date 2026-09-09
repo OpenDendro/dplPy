@@ -102,8 +102,8 @@ def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
     has a value for every retained year (a complete, gap-free rectangle). This
     is the interval over which chronology-level statistics such as rbar, EPS and
     SSS can be computed without missing values, and is the recommended way to
-    handle datasets whose series are unevenly distributed in time. Ported from,
-    and validated to reproduce exactly, dplR's ``common.interval()``.
+    handle datasets whose series are unevenly distributed in time. Ported from
+    dplR's ``common.interval()``.
 
     Three strategies trade off the number of series against the number of years:
 

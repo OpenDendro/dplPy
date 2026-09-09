@@ -24,9 +24,10 @@ __license__ = "GNU GPLv3"
 # Title: xdate_floater.py
 # Description: Crossdate a *floating* (undated) ring-width series against a dated
 #   reference collection, to estimate the calendar placement of the undated wood
-#   (e.g. a beam from a historic building or a remnant/sub-fossil log). A port of
-#   dplR's xdate.floater(), with the significance statistics dendro dating
-#   practice relies on.
+#   (e.g. a beam from a historic building or a remnant/sub-fossil log). Based on
+#   and extends dplR's xdate.floater(): it combines that sliding-placement
+#   approach with the t statistic and the additional crossdating statistics of
+#   Wilson (2026) that dendro dating practice relies on.
 #
 #   Method: build a master chronology from the dated `rwl` (divide each series by
 #   its mean, apply a high-pass transform, then a Tukey-biweight robust row mean);
@@ -34,6 +35,15 @@ __license__ = "GNU GPLv3"
 #   every offset with at least `min_overlap` overlapping rings; and at each offset
 #   record the correlation r and the crossdating statistics below. The offset with
 #   the highest t-value is the estimated dating.
+#
+#   Two deliberate departures from dplR's xdate.floater():
+#     * Best placement is selected by the highest t statistic, not the highest
+#       correlation r (dplR uses which.max(r)). t and r rank identically when the
+#       overlap n is fixed, but differ at overhang offsets where n varies; t is
+#       used here because it accounts for the degrees of freedom (Wilson 2026).
+#     * dplPy does not apply dplR's future-year trim (dplR drops offsets whose
+#       last year exceeds the current calendar year); every offset with adequate
+#       overlap is reported.
 #
 #   At each offset we report:
 #     * r         -- the sliding correlation (Spearman by default);

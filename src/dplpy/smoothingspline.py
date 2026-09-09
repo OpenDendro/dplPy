@@ -39,9 +39,23 @@ def get_param(amp, period):
     return spline_param
 
 def get_period(period, n):
-    # The default "n-year spline" wavelength is floor(0.67 * n), matching dplR's
-    # detrend.series (nyrs = floor(nY2 * 0.67)). Using an unfloored 0.67 * n left
-    # dplPy's spline ~3e-5 off dplR's -- the sole source of the crossdating gap.
+    # Resolve the requested spline wavelength (in years) from `period` and the
+    # series length `n`. Four conventions are supported:
+    #   * None      -> the default "n-year spline" wavelength floor(0.67 * n),
+    #                  matching dplR's detrend.series (nyrs = floor(nY2 * 0.67)).
+    #                  (Flooring matters: an unfloored 0.67 * n left dplPy's
+    #                  spline ~3e-5 off dplR's, the source of an early crossdating
+    #                  gap.)
+    #   * period < 0 -> a "percent spline" (ARSTAN convention): the absolute
+    #                  value is read as a percentage of the series length, so
+    #                  period=-10 gives a 10%-of-length wavelength (n * 10/100).
+    #                  ARSTAN signals a percentage-of-length stiffness with a
+    #                  negative spline selection: "idt < -9 -- cubic smoothing
+    #                  spline (years cutoff = idt/100*n)" (ARSTAN source), i.e.
+    #                  the same |value|/100 * n formula used here.
+    #   * 0 < period <= 1 -> a fraction of the series length (n * period), e.g.
+    #                  period=0.1 gives a 10%-of-length wavelength.
+    #   * period > 1 -> a fixed wavelength in years, used as given.
     if period is None:
         return floor(n * 0.67)
     elif period < 0:
@@ -67,26 +81,32 @@ def spline(x, y, period=None, f=0.5):
 
 
 def variance_stabilize_spline(x, period=None, f=0.5, clip_negative=False, ok=None):
-    """Ad-hoc spline variance stabilization -- the method in ARSTAN (its stabit
-    step) and COFECHA (their variance-stabilization step).
+    """Ad-hoc spline variance stabilization -- the approach offered as a
+    variance-stabilization option in ARSTAN and used in COFECHA's
+    variance-stabilization step.
 
     Centres the series, fits a smoothing spline to the ABSOLUTE departures to
     capture their time-varying amplitude, divides the departures by that envelope
     (restoring sign), and rescales to the original mean and standard deviation.
     This flattens time-varying variance whatever its cause; it is strictly ad hoc
-    and can remove real low-frequency variance (per ARSTAN and Osborn et al.
-    1997), so it is opt-in.
+    and can remove real low-frequency variance (Osborn et al. 1997), so it is
+    opt-in.
 
     Parameters
     ----------
     x : array-like
         the series to stabilize (no interior NaNs).
     period : int or float or None
-        spline stiffness passed to :func:`spline` -- an int is a fixed wavelength
-        in years (COFECHA uses 32; ARSTAN's stabit uses ~0.5*n via ``None``); a
-        float in (0,1) is a fraction of the series length.
+        spline stiffness (wavelength) passed to :func:`spline`, resolved by
+        :func:`get_period`. An int > 1 is a fixed wavelength in years (COFECHA
+        uses 32); a float in (0, 1) is a fraction of the series length; ``None``
+        uses the default 67% spline (``floor(0.67 * n)`` years), the same
+        wavelength convention detrending uses. Note that ``period`` sets the
+        *wavelength*; ``f`` (below) independently sets the frequency response at
+        that wavelength -- the two are separate knobs.
     f : float, default 0.5
-        spline frequency-response amplitude at ``period`` (50% cutoff).
+        spline frequency-response amplitude at ``period`` (a 50% amplitude cutoff
+        at that wavelength).
     clip_negative : bool, default False
         set negatives to 0 after rescaling -- appropriate when the result is a
         chronology (chron.stabilized), not when it is a pre-AR filtered index

@@ -234,16 +234,15 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
        long gaps.
     2. Build the common chronology: the (biweight) mean of the raw widths across
        series each year, detrended by an n/3-year spline, then (optionally)
-       variance-stabilized with ARSTAN's spline `stabit` step.
+       variance-stabilized with ARSTAN's variance-stabilization spline option.
     3. For each missing ring, take the common signal at that year, standardize it
        against the common signal's mean/SD over the series' span, rescale it to
        the series' own index mean/SD (moment matching), clamp negatives to zero,
        and multiply back through the series' growth curve to recover a width.
 
-    Present rings are returned unchanged. This is a faithful re-expression of the
-    FORTRAN algorithm's intent (there is no released reference to validate it to
-    machine precision), so treat the filled values as principled estimates, not
-    measurements.
+    Present rings are returned unchanged. This is a re-expression of the FORTRAN
+    algorithm's intent; there is no released reference to validate it against, so
+    treat the filled values as principled estimates, not measurements.
 
     Parameters
     ----------
@@ -258,9 +257,11 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
     biweight : bool, default True
         aggregate series with Tukey's biweight mean (else arithmetic).
     stabilize : bool, default True
-        variance-stabilize the common chronology (ARSTAN's stabit).
+        variance-stabilize the common chronology (ARSTAN's variance-stabilization
+        option).
     stabilize_nyrs : int, default 50
-        stiffness (years) for the stabit spline when stabilize=True.
+        stiffness (years) for the variance-stabilization spline when
+        stabilize=True.
     """
     from csaps import csaps
     from .smoothingspline import get_param
@@ -314,7 +315,7 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
         g_span = np.where(g_span <= 0, np.nan, g_span)    # growth must be positive
         growth[span, s] = g_span
 
-    # ---- 2. common chronology: biweight mean of raw, n/3-spline detrend, stabit ----
+    # ---- 2. common chronology: biweight mean of raw, n/3-spline detrend, variance-stabilize ----
     if biweight:
         m_raw = tbrm_rows(X)
     else:

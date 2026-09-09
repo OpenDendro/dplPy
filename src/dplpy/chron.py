@@ -79,8 +79,8 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
         (dplR's ar() aic=TRUE). If False, fit a fixed AR of order ``max_lag``.
     ar_method : {"yw", "ols"}, default "yw"
         AR estimator used for prewhitening. "yw" (Yule-Walker) matches R's ar()
-        default and reproduces dplR's residual chronology to machine precision at
-        the same order; "ols" (statsmodels AutoReg, conditional least squares)
+        default and reproduces dplR's residual chronology at the same order;
+        "ols" (statsmodels AutoReg, conditional least squares)
         matches R's ar(method="ols"). chron_ars() also uses Yule-Walker.
     first_aic_min : boolean, default False
         AR order-selection rule when ``aic`` is True. False takes the global AIC

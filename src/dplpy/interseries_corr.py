@@ -75,7 +75,7 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
     implement), then optionally prewhitened with an autoregressive model
     (matching dplR's default). Note also that, unlike dplR's
     rwi.stats()/rwi.stats.running(), this function does not exclude series
-    with very few (four or fewer) valid observations from contributing to
+    with very few (three or fewer) valid observations from contributing to
     other series' composite chronologies; for typical dendrochronological
     datasets this is not expected to matter, but a pathologically short
     series could be weighted differently here than in dplR.

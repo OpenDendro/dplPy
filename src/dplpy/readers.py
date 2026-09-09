@@ -37,16 +37,12 @@ __license__ = "GNU GPLv3"
 # detection, and tolerant per-line error handling), with two DELIBERATE
 # departures from dplR agreed for dplPy:
 #
-#   * No-data internal gaps (years with no row at all) stay NaN instead of
-#     being filled with 0.0.  dplR's 0.0 there is an artifact of its
-#     zero-initialised assembly matrix; NaN keeps genuine gaps out of any
-#     downstream mean/detrend.
+#   * No-data internal gaps (years with no row at all) stay NaN, which keeps
+#     genuine gaps out of any downstream mean/detrend.
 #   * Anomalous negative values (anything < 0 that is not the -9999 stop
-#     marker, e.g. -7 or -2599) are set to NaN AND a warning is emitted,
-#     rather than being converted to 0.0 as dplR does.  Ring widths cannot be
-#     negative, so these are treated as missing and the user is told.
-#
-# On every valid measurement dplPy matches dplR exactly.
+#     marker, e.g. -7 or -2599) are set to NaN AND a warning is emitted. Ring
+#     widths cannot be negative, so these are treated as missing and the user
+#     is told.
 
 import os
 import re
@@ -305,8 +301,11 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
             return None
         raise ValueError("Cannot read file -- " + msg)
     # 1. Drop blank lines (warning about them, as earlier dplPy did) and comment
-    #    lines (a '#' anywhere in the first 78 columns). Line numbers in the
-    #    warning are 1-indexed against the original input.
+    #    lines. A line is a comment (see _is_comment_line) when its first
+    #    non-blank character is '#', or when it contains a '#' anywhere and does
+    #    not parse as a data row -- so real series IDs containing '#' (e.g.
+    #    'SP#1') are kept. Line numbers in the warning are 1-indexed against the
+    #    original input.
     clean_lines = []
     for lineno, line in enumerate(raw_lines, start=1):
         line = line.rstrip("\r\n")

@@ -59,8 +59,9 @@ import re
 def _ar_yw_prewhiten(x, ar_max=None, first_aic_min=False, backcast=False):
     """Prewhiten a 1-D series with a Yule-Walker AR model, matching dplR's ar():
     AIC order selection up to floor(10*log10(n)), residuals + series mean, and
-    the series length preserved (the first `order` values become NaN). Validated
-    to reproduce R's ar() to ~1e-15.  `x` must be NaN-free.
+    the series length preserved (the first `order` values become NaN). Follows
+    R's ar() (Yule-Walker) in order selection and residuals.  `x` must be
+    NaN-free.
 
     ``ar_max`` optionally overrides the order ceiling (else floor(10*log10(n))).
     ``first_aic_min`` switches order selection from the GLOBAL AIC minimum (R's

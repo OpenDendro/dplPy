@@ -29,8 +29,8 @@ __license__ = "GNU GPLv3"
 #              "regional curve"; that curve is smoothed and each ring is divided
 #              by (or has subtracted) the curve value at its cambial age. Unlike
 #              curve-fitting standardisation this preserves low-frequency
-#              (e.g. multi-centennial) signal. Reproduces dplR's rcs() to machine
-#              precision.
+#              (e.g. multi-centennial) signal. Ports dplR's rcs() (preset=None
+#              path).
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,7 @@ from .xdate import _row_biweight
 
 
 # --- CRUST-style regional-curve refinements (Melvin & Briffa 2014) ----------
-# Validated against CRUST's compiled spline3 / splinec kernels to ~1e-11.
+# A native re-implementation of CRUST's spline3 / splinec kernels.
 
 def _spline3(rws, cnt, ss=10, rise=False):
     """CRUST's age-dependent RCS smoother (stand.f90 spline3).
@@ -149,7 +149,7 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     pos_slope : bool, default True
         passed to ads when method='ads'.
     preset : {None, "crust"}, default None
-        None reproduces dplR's rcs() exactly (the parameters above apply).
+        None follows dplR's rcs() (the parameters above apply).
         "crust" builds the regional curve the CRUST way (Melvin & Briffa 2014):
         an age-dependent spline smoothed only where sample depth >= 4 with the
         "no rise in the final third" tail rule, gaps in the curve infilled, a

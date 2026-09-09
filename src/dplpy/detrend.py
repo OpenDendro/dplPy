@@ -225,7 +225,7 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     # curve and dividing (see detrend.series.R: "y2[y2 == 0] <- 0.001"). A zero
     # is a locally-absent ring -- a real, dated near-zero-growth year -- so this
     # keeps it as a small positive index instead of collapsing it to an exact 0
-    # (0 / curve = 0), which also matches dplR's RWI to machine precision.
+    # (0 / curve = 0), as dplR's detrend.series does.
     y[y == 0] = 0.001
 
     if verbose:

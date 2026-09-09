@@ -34,7 +34,7 @@ import pandas as pd
 # NOTE: the earlier rectangle-maximising common_interval() that lived here has
 # been superseded by dplpy.common_interval (see common_interval.py), a faithful
 # port of dplR's common.interval() offering the 'series', 'years' and 'both'
-# selection strategies and validated exactly against dplR.
+# selection strategies.
 
 
 # rbar: the mean inter-series correlation over a window, used by
@@ -60,8 +60,8 @@ def pairwise_corr_mean(data, method="pearson", min_overlap=None, strict=False):
     NOT be a mean-of-column-means: the two coincide only when every series has the
     same number of retained partners, but once the overlap mask drops pairs
     unevenly across series (interior windows), a mean-of-column-means weights each
-    series equally instead of each pair and drifts from dplR by ~1e-4 on a handful
-    of windows. The flat mean reproduces dplR to machine precision.
+    series equally instead of each pair and drifts from dplR on those windows.
+    The flat mean matches dplR's ``mean(corMat, na.rm = TRUE)``.
     """
     # corr.to_numpy() can be a read-only view under numpy 2 / copy-on-write, so
     # fill_diagonal needs an explicit writable copy, not the view pandas hands back.

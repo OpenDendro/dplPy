@@ -7,7 +7,7 @@ from ._validate import _require_dataframe
 import warnings
 
 
-def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
+def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=1/3,
                      biweight=True, running_rbar=False, method="running_rbar",
                      spline_nyrs=None):
     """ Variance Stabilization functions
@@ -45,9 +45,10 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
     win_length : int, default 50
         an integer for specifying the window lengths where rbar values
         will be calculated.
-    min_seg_ratio : float, default 0.33
+    min_seg_ratio : float, default 1/3
         the minimum ratio of non-NA values to the window length for a series to be
-        considered in an Neff calculation.
+        considered in an Neff calculation. Defaults to exactly 1/3 to match
+        dplR's chron.stabilized(), which drops overlaps below win_length/3.
     biweight : boolean, default True
         flag indicating whether or not to use Tukey's bi-weight robust mean when
         calculating the mean-value chronology
@@ -182,7 +183,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=0.33,
         vsc = stabilized_means + mean_val
 
     else:  # method == "spline"
-        # ARSTAN's ad-hoc spline stabilization (stabit): flatten the time trend
+        # ARSTAN's ad-hoc spline variance stabilization: flatten the time trend
         # in the chronology's absolute departures with a smoothing spline.
         vsc = _spline_stabilize(mean_rwis + mean_val, n_samps, spline_nyrs)
 
@@ -227,7 +228,7 @@ def _briffa_rbar(data, min_overlap=20):
 
 
 def _spline_stabilize(chron_series, n_samps, spline_nyrs):
-    """ARSTAN's ad-hoc spline variance stabilization (subroutine stabit): centre
+    """ARSTAN's ad-hoc spline variance stabilization option: centre
     the chronology, fit a smoothing spline to the ABSOLUTE departures to capture
     their time trend, divide the departures by that trend (restoring sign), then
     rescale to the chronology's original mean and standard deviation. Removes

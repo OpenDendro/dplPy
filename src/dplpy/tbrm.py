@@ -51,9 +51,8 @@ def tbrm_rows(mat, c=9):
 
     This is the single vectorized form of ``tbrm`` used by the hot per-year
     aggregation paths (the crossdating master, chron_ars, the ARSTAN infill).
-    It reproduces ``tbrm(row_without_nan, c)`` row-for-row to machine precision
-    (see test_tbrm) while avoiding a Python loop. A row that is entirely NaN
-    yields NaN.
+    It reproduces ``tbrm(row_without_nan, c)`` row-for-row (see test_tbrm) while
+    avoiding a Python loop. A row that is entirely NaN yields NaN.
     """
     mat = np.asarray(mat, dtype=float)
     e = 1e-6

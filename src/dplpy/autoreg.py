@@ -152,9 +152,8 @@ def autoreg(data: pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=Fa
     # Burg (maximum-entropy) path -- Ed Cook / Paul Krusic's estimator, and the
     # one COFECHA's MEMPR uses. Same [intercept, phi_1..phi_p] layout as the
     # others. Burg minimises the summed forward+backward prediction error, which
-    # is better conditioned on short series than Yule-Walker and reproduces
-    # COFECHA's segment correlations far more closely (see the COFECHA preset in
-    # xdate).
+    # is better conditioned on short series than Yule-Walker; it is the estimator
+    # used for the COFECHA preset in xdate.
     if method == "burg":
         return _burg_params_aic(data.dropna().to_numpy(dtype=float), max_lag_used, aic,
                                 first_aic_min=first_aic_min)
@@ -178,8 +177,9 @@ def _yw_params_aic(x, max_lag, aic=True, first_aic_min=False):
 
     Uses the Levinson-Durbin recursion on the biased (divisor-n) autocovariances,
     selecting the order by AIC (n*log(var_p) + 2p, R's criterion) up to ``max_lag``
-    when ``aic`` is True, else a fixed order ``max_lag``. Verified against R to
-    ~1e-15 in both the selected order and the coefficients. Returns parameters as
+    when ``aic`` is True, else a fixed order ``max_lag``. Follows R's
+    Levinson-Durbin AR estimation in both the selected order and the
+    coefficients. Returns parameters as
     ``[intercept, phi_1, ..., phi_p]`` where intercept = mean*(1 - sum(phi)), so
     the array plugs straight into fitted_values() like the OLS coefficients.
 
@@ -238,8 +238,7 @@ def _burg_params_aic(x, max_lag, aic=True, first_aic_min=False):
     IOPT=1 / ARSTAN rule) rather than the global minimum. Returns parameters as
     ``[intercept, phi_1, ..., phi_p]`` with intercept = mean*(1 - sum(phi)),
     matching :func:`_yw_params_aic` so fitted_values() and the residual+mean
-    convention downstream are unchanged. Validated to whiten AR(1)/AR(2) test
-    series to ~1e-2 residual autocorrelation."""
+    convention downstream are unchanged."""
     x = x[~np.isnan(x)]
     n = len(x)
     m = float(np.mean(x)) if n else 0.0
