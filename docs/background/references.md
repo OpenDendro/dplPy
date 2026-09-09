@@ -21,7 +21,10 @@ those docstrings directly.
   Lamont-Doherty Earth Observatory.
 - **CRUST** — Melvin, T.M., Briffa, K.R. (2014). CRUST: Software for the
   implementation of Regional Chronology Standardisation: Part 1. Signal-free RCS.
-  *Dendrochronologia* 32(1), 7–20.
+  *Dendrochronologia* 32(1), 7–20.<br>
+  Melvin, T. M., & Briffa, K. R. (2014). CRUST: Software for the implementation
+  of Regional Chronology Standardisation: Part 2. Further RCS options and
+  recommendations. *Dendrochronologia*, 32(4), 343-356.
 
 ## Detrending & standardization
 
@@ -39,7 +42,10 @@ those docstrings directly.
 - Melvin, T.M., Briffa, K.R. (2014). CRUST: Software for the
   implementation of Regional Chronology Standardisation: Part 1. Signal-free RCS.
   *Dendrochronologia* 32(1), 7–20.
-
+- Melvin, T. M., & Briffa, K. R. (2014). CRUST: Software for the implementation
+  of Regional Chronology Standardisation: Part 2. Further RCS options and
+  recommendations. *Dendrochronologia*, 32(4), 343-356.
+  
 ## Chronology & signal strength
 
 - Wigley, T.M.L., Briffa, K.R., Jones, P.D. (1984). On the average value of
