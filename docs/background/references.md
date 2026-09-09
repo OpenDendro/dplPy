@@ -8,8 +8,11 @@ those docstrings directly.
 
 ## Software heritage
 
+- **DPL** — Holmes, R.L. (1983). *Dendrochronology Program Library.* Laboratory
+  of Tree-Ring Research, University of Arizona, Tucson, AZ, USA. *(the original
+  FORTRAN library)*
 - **dplR** — Bunn, A.G. (2008). A dendrochronology program library in R (dplR).
-  *Dendrochronologia* 26(2), 115–124.<br> 
+  *Dendrochronologia* 26(2), 115–124.<br>
   Bunn, A.G. (2010). Statistical and visual
   crossdating in R using the dplR library. *Dendrochronologia* 28(4), 251–258.
 - **COFECHA** — Holmes, R.L. (1983). Computer-assisted quality control in
@@ -24,7 +27,7 @@ those docstrings directly.
   *Dendrochronologia* 32(1), 7–20.<br>
   Melvin, T. M., & Briffa, K. R. (2014). CRUST: Software for the implementation
   of Regional Chronology Standardisation: Part 2. Further RCS options and
-  recommendations. *Dendrochronologia*, 32(4), 343-356.
+  recommendations. *Dendrochronologia*, 32(4), 343–356.
 
 ## Detrending & standardization
 
@@ -44,8 +47,8 @@ those docstrings directly.
   *Dendrochronologia* 32(1), 7–20.
 - Melvin, T. M., & Briffa, K. R. (2014). CRUST: Software for the implementation
   of Regional Chronology Standardisation: Part 2. Further RCS options and
-  recommendations. *Dendrochronologia*, 32(4), 343-356.
-  
+  recommendations. *Dendrochronologia*, 32(4), 343–356.
+
 ## Chronology & signal strength
 
 - Wigley, T.M.L., Briffa, K.R., Jones, P.D. (1984). On the average value of
@@ -59,11 +62,11 @@ those docstrings directly.
   dendrochronology. In: *Dendroclimatology* (Developments in Paleoenvironmental
   Research 11), Springer, 77–112. *(effective signal, SNR)*
 - Frank, D., Esper, J., Cook, E.R. (2006). On Variance Adjustments in Tree-Ring
-  Chronology Development,  *Tree Rings in Archaeology, Climatology and Ecology, 
-  (TRACE)*, 4, 56-66. *(variance stabilization)*
+  Chronology Development, *Tree Rings in Archaeology, Climatology and Ecology
+  (TRACE)*, 4, 56–66. *(variance stabilization)*
 - Frank, D., Esper, J., & Cook, E. R. (2007). Adjustment for proxy number and
-  coherence in a large‐scale temperature reconstruction. *Geophysical Research Letters*, 
-  34(16). *(variance stabilization)*
+  coherence in a large-scale temperature reconstruction. *Geophysical Research
+  Letters*, 34(16). *(variance stabilization)*
 - Buras, A. (2017). A comment on the expressed population signal.
   *Dendrochronologia* 44, 130–132. *(SSS vs EPS)*
 
@@ -83,9 +86,10 @@ those docstrings directly.
   for big tree-ring data sets, *Archaeometry*, 63(1), 204–215.
 
 ## Statistics & indices
+
 - Bunn, A. G., Jansma, E., Korpela, M., Westfall, R. D., & Baldwin, J. (2013).
-  Using simulations and data to evaluate mean sensitivity (ζ) as a useful statistic
-   in dendrochronology. *Dendrochronologia*, 31(3), 250-254.
+  Using simulations and data to evaluate mean sensitivity (ζ) as a useful
+  statistic in dendrochronology. *Dendrochronologia*, 31(3), 250–254.
 - Biondi, F., Qeadan, F. (2008). Inequality in paleorecords. *Ecology* 89(4),
   1056–1067. *(Gini coefficient; mean-sensitivity treatment)*
 
@@ -93,8 +97,7 @@ those docstrings directly.
 
 dplPy is developed by the [OpenDendro](https://opendendro.org) group (Andy Bunn,
 Kevin Anchukaitis, Tyson Swetnam, and contributors). If you use it in published
-work, please acknowledge and cite the OpenDendro project and dplPy, along with 
-the specific method reference(s) named in the function docstrings you relied on. 
+work, please acknowledge and cite the OpenDendro project and dplPy, along with
+the specific method reference(s) named in the function docstrings you relied on.
 See the [project repository](https://github.com/OpenDendro/dplPy) for the current
 recommended citation and version.
-
