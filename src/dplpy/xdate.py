@@ -172,11 +172,21 @@ def _row_mean(mat):
 
 
 def dense_year_grid(df):
-    """Reindex a year-indexed frame onto its full consecutive-year span. Returns
-    (reindexed_frame, years, first_year, last_year) -- shared by xdate() and
-    series_corr(), which both need a gap-free year grid for the segment logic."""
-    first_year = int(df.first_valid_index())
-    last_year = int(df.last_valid_index())
+    """Reindex a year-indexed frame onto the full consecutive-year span of its
+    INDEX. Returns (reindexed_frame, years, first_year, last_year) -- shared by
+    xdate() and series_corr(), which both need a gap-free year grid for the
+    segment logic.
+
+    The span comes from the index range, NOT first_valid_index()/last_valid_index().
+    ``normalize_for_crossdating`` seeds the frame with the whole data year index,
+    so the range is the data's own span; AR prewhitening leaves the leading
+    ``order`` years NaN, and trimming to the first *valid* year would shift the
+    bin-floor later (e.g. a series starting 1698 whose prewhitened first value is
+    1706 would floor bins to 1800 instead of 1700). dplR keeps the full year range
+    and pads NaN, so the segment bins are not shifted by AR-order loss -- this
+    matches that behaviour."""
+    first_year = int(df.index.min())
+    last_year = int(df.index.max())
     years = np.arange(first_year, last_year + 1)
     return df.reindex(years), years, first_year, last_year
 

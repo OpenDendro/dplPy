@@ -247,3 +247,20 @@ def test_xdate_default_b_flag_is_cofecha_no_margin():
             if pd.notna(r0) and (b["best_corr"] - r0) < 0.08:
                 below_old_margin += 1
     assert below_old_margin > 0     # proves no 0.08 margin is applied
+
+
+def test_xdate_bins_floor_from_data_first_year_not_prewhitened():
+    # Regression: get_bins must floor the first segment from the DATA's first year
+    # (as dplR does), NOT the prewhitened first-valid year. AR prewhitening blanks
+    # the leading `order` years; taking the bin span from the prewhitened first
+    # value would floor later and silently drop early segments. wa082 starts in
+    # 1698 (prewhitened first value ~1706); the first bin must be 1700-1749, not
+    # 1800-1849. The earliest bin itself may hold no *complete* window, but the
+    # pre-1800 bins now carry the ~20 segments the buggy 1800-floor dropped.
+    data = _read_quiet("tests/data/rwl/wa082.rwl")
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    res = _xdate_quiet(rwi)
+    assert res["bins"][0] == "1700-1749"
+    assert res["seg_corr"]["1750-1799"].notna().sum() > 0     # early region evaluated
+    # total evaluated segments recovers to dplR's ~134 (the 1800-floor bug gave 113)
+    assert int(res["seg_corr"].notna().sum().sum()) > 120
