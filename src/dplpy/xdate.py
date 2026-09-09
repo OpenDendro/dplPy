@@ -319,13 +319,18 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
           make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None):
     """Crossdate a set of ring-width series against a leave-one-out master.
 
-    Mirrors dplR's corr.rwl.seg(): each series is normalized (divided by its
-    mean), optionally Yule-Walker prewhitened, and correlated against a biweight
-    master built from all the *other* series, over segments of ``slide_period``
-    years that overlap by half. For every segment it reports the correlation and
-    its one-tailed p-value; a segment is flagged **A** if it is not significant
-    (p >= p_val) and **B** if it correlates markedly better at a non-zero lag
-    (a possible dating error). The per-segment lag table (COFECHA-style) is
+    The segment correlations mirror dplR's corr.rwl.seg(): each series is
+    normalized (divided by its mean), optionally Yule-Walker prewhitened, and
+    correlated against a biweight master built from all the *other* series, over
+    segments of ``slide_period`` years that overlap by half; the **A** flag
+    reproduces dplR exactly -- a segment is flagged A when it is not significant
+    (one-tailed p >= p_val).
+
+    The **B** flag is *not* from dplR (corr.rwl.seg has no lag flag): it is a
+    COFECHA-derived dating-shift screen, flagging a segment when it correlates
+    better with the master at a non-dated lag (best_lag != 0, no margin), using
+    COFECHA's SLSG convention of sliding the master past the fixed segment. The
+    same B rule is used in ``preset="COFECHA"``. The per-segment lag table is
     printed for flagged segments.
 
     Parameters
@@ -456,10 +461,13 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
             # (A) significance flag -- independent of (B)
             if not np.isnan(pv) and pv >= p_val:
                 a_flags.append(blabel)
-            # (B) lag flag + COFECHA lag table
+            # (B) COFECHA-style lag flag: the segment correlates better with the
+            # master at a non-dated position (best_lag != 0), no margin -- exactly
+            # COFECHA's rule (SLSG: IF MXCOR != dated). This is a COFECHA-derived
+            # dating-shift screen; dplR's corr.rwl.seg has no B flag of its own.
             lag_row, best_lag, best_coeff = _lag_table(series, master, years, lo, hi,
                                                        slide_period, method, lag)
-            if best_lag != 0 and (best_coeff - rho) >= 0.08:
+            if best_lag != 0:
                 b_flags.append({"segment": blabel, "best_lag": best_lag,
                                 "best_corr": best_coeff, "lags": lag_row})
         if a_flags or b_flags:
@@ -692,43 +700,50 @@ def _cofecha_lag_table(series, master, yr_pos, first_year, last_year,
 
 
 def _lag_table(series, master, years, lo, hi, slide_period, method, lag_max):
-    """Correlation of a segment against the master at lags -lag_max..+lag_max
-    (the COFECHA-style table). Returns (row_strings, best_lag, best_corr)."""
+    """Correlate the fixed dated series segment ``[lo, hi]`` against the master at
+    lags -lag_max..+lag_max, sliding the MASTER window while the segment stays put
+    -- COFECHA's SLSG convention (the same one the COFECHA preset uses). Returns
+    (row_strings, best_lag, best_corr). The B flag fires when best_lag != 0, i.e.
+    the segment matches the master better at a non-dated position, with no margin,
+    exactly as COFECHA does. Correlation uses ``method`` (the caller's choice), so
+    the lag table is consistent with the segment correlations around it."""
     n_lags = 2 * lag_max + 1
     shifts = np.arange(-lag_max, lag_max + 1)
     mask0 = (years >= lo) & (years <= hi)
-    mas = master[mask0]
-    if mas.shape[0] != slide_period or np.isnan(mas).any():
+    seg = series[mask0]                                   # fixed dated segment
+    if seg.shape[0] != slide_period or np.isnan(seg).any():
         return ["     "] * n_lags, 0, -np.inf
 
-    # Stack the (valid, complete) lag windows into one matrix and rank/correlate
-    # them in a single vectorized pass rather than 2*lag_max+1 separate calls.
-    W = np.full((n_lags, slide_period), np.nan)
+    # Stack the (valid, complete) shifted MASTER windows into one matrix and
+    # rank/correlate them in a single vectorized pass. Sliding the master rather
+    # than the series keeps the tested segment fixed (COFECHA/SLSG), so the "best
+    # at another lag" question is asked exactly as COFECHA asks it.
+    Wm = np.full((n_lags, slide_period), np.nan)
     valid = np.zeros(n_lags, dtype=bool)
     for k, shift in enumerate(shifts):
         m = (years >= lo + shift) & (years <= hi + shift)
         if m.sum() == slide_period:
-            seg = series[m]
-            if not np.isnan(seg).any():
-                W[k] = seg
+            mw = master[m]
+            if not np.isnan(mw).any():
+                Wm[k] = mw
                 valid[k] = True
 
     corrs = np.full(n_lags, np.nan)
     if valid.any():
         if method == "kendall":
             for k in np.where(valid)[0]:
-                corrs[k] = _fast_corr(W[k], mas, "kendall")
+                corrs[k] = _fast_corr(seg, Wm[k], "kendall")
         else:
             if method == "spearman":
-                Wv = scipy.stats.rankdata(W[valid], axis=1)
-                bv = scipy.stats.rankdata(mas)
+                sv = scipy.stats.rankdata(seg)
+                Mv = scipy.stats.rankdata(Wm[valid], axis=1)
             else:  # pearson
-                Wv, bv = W[valid], mas
-            b = bv - bv.mean()
-            A = Wv - Wv.mean(axis=1, keepdims=True)
-            den = np.sqrt((A * A).sum(axis=1) * np.dot(b, b))
+                sv, Mv = seg, Wm[valid]
+            a = sv - sv.mean()
+            B = Mv - Mv.mean(axis=1, keepdims=True)
+            den = np.sqrt(np.dot(a, a) * (B * B).sum(axis=1))
             with np.errstate(invalid="ignore", divide="ignore"):
-                corrs[valid] = np.where(den > 0, (A @ b) / den, np.nan)
+                corrs[valid] = np.where(den > 0, (B @ a) / den, np.nan)
 
     row = []
     best_lag, best_coeff = 0, np.nan

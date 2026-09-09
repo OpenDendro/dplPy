@@ -50,3 +50,25 @@ def test_xdate_report_bad_file_is_recorded_not_raised(tmp_path):
     bad.write_text("this is not tree-ring data\njust prose\n")
     res = _quiet_report([str(bad)], out_dir=str(tmp_path))
     assert "error" in res[str(bad)]
+
+
+def test_xdate_report_cofecha_preset(tmp_path):
+    # preset="COFECHA" routes the batch report through xdate's COFECHA emulation
+    # (Burg / variance stabilization / omit-absent / length-weighted summary) and
+    # still produces a well-formed report. Its summary differs from the default.
+    key = RWL + "ca533.rwl"
+    cof = _quiet_report(key, out_dir=str(tmp_path), write=False, preset="COFECHA")
+    dfl = _quiet_report(key, out_dir=str(tmp_path), write=False)
+    assert cof[key]["report"]["preset"] == "COFECHA"
+    assert dfl[key]["report"].get("preset") is None
+    ctxt, dtxt = cof[key]["text"], dfl[key]["text"]
+    assert "Series intercorrelation" in ctxt and "PART 5" in ctxt and "PART 7" in ctxt
+    # the two presets give different summary numbers (different transform)
+    assert ctxt != dtxt
+
+    # length-weighted intercorrelation in COFECHA mode reproduces the COFECHA run
+    # on ca533 (0.668) far better than the plain mean the default reports.
+    import re
+    def _intercorr(t):
+        return float(re.search(r"Series intercorrelation:\s*([0-9.]+)", t).group(1))
+    assert abs(_intercorr(ctxt) - 0.668) < 0.01

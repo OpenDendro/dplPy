@@ -226,3 +226,24 @@ def test_xdate_preset_none_vs_cofecha_coexist():
     assert cof["n_problems"] == sum(len(f["A"]) + len(f["B"])
                                     for f in cof["flags"].values())
     assert cof["n_problems"] >= 0
+
+
+def test_xdate_default_b_flag_is_cofecha_no_margin():
+    # The default (preset=None) B flag must follow COFECHA's rule -- flagged when
+    # the best correlation is at a non-dated lag, with NO margin. The old dplPy
+    # code gated B on (best_corr - rho) >= 0.08, an arbitrary threshold that is in
+    # neither dplR (which has no B flag) nor COFECHA (which uses no margin). This
+    # guards against that margin ever creeping back: every B flag's best_lag is
+    # non-zero, and at least one B flag has an alternate-lag gain below 0.08 that
+    # the old gate would have suppressed.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="spline", plot=False)
+    res = _xdate_quiet(rwi, show_flags=False)
+    below_old_margin = 0
+    for name, f in res["flags"].items():
+        for b in f["B"]:
+            assert b["best_lag"] != 0
+            r0 = res["seg_corr"].loc[name, b["segment"]]
+            if pd.notna(r0) and (b["best_corr"] - r0) < 0.08:
+                below_old_margin += 1
+    assert below_old_margin > 0     # proves no 0.08 margin is applied

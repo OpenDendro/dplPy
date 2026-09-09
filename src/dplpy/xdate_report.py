@@ -15,16 +15,20 @@ __license__ = "GNU GPLv3"
 #              statistics). Meant for batch QA of new ITRDB submissions -- COFECHA
 #              itself is not built to run over many files.
 #
-# NOTE: This is a dplPy-NATIVE report. Several columns match COFECHA closely (e.g.
-# per-series correlation with the master, mean sensitivity), but dplPy's
-# detrending / prewhitening / flagging differ from the COFECHA Fortran, so figures
-# such as the overall intercorrelation and problem-segment counts will not be
-# bit-identical. A future preset="COFECHA" could tighten the match.
+# NOTE: By default this is a dplR-faithful report styled after COFECHA. Several
+# columns match COFECHA closely (e.g. per-series correlation with the master, mean
+# sensitivity), but the default detrending / prewhitening / flagging follow dplR,
+# so figures such as the overall intercorrelation and problem-segment counts will
+# not be bit-identical to the COFECHA Fortran. Pass preset="COFECHA" to emulate
+# the COFECHA program (Burg prewhitening, spline variance stabilization, its
+# segment anchoring / critical value, omit-absent-rings, length-weighted summary),
+# which reproduces COFECHA's headline numbers closely (see dpl.xdate preset).
 #
 # example usage:
 # >>> import dplpy as dpl
-# >>> dpl.xdate_report("AK200.rwl", out_dir="qc")            # one file
-# >>> dpl.xdate_report(files, out_dir="qc")                  # a list of paths
+# >>> dpl.xdate_report("AK200.rwl", out_dir="qc")                 # dplR-native
+# >>> dpl.xdate_report("AK200.rwl", out_dir="qc", preset="COFECHA")
+# >>> dpl.xdate_report(files, out_dir="qc", preset="COFECHA")     # batch
 
 import os
 import warnings
@@ -49,16 +53,20 @@ def _lag1(x):
     return float(np.corrcoef(a[:-1], a[1:])[0, 1])
 
 
-def _ar_order(series):
-    """Order of the AR model dpl.autoreg selects (number of lag terms)."""
+def _ar_order(series, method="yw", first_aic_min=False, max_lag=10):
+    """Order of the AR model selected for a series (number of lag terms). Defaults
+    mirror xdate's dplR-faithful prewhitening (Yule-Walker); the COFECHA preset
+    passes method="burg", first_aic_min=True to match its Burg prewhitening."""
     try:
-        params = autoreg(series.dropna())
+        params = autoreg(series.dropna(), max_lag=max_lag, method=method,
+                         first_aic_min=first_aic_min)
         return max(0, len(params) - 1)          # minus the constant
     except Exception:
         return 0
 
 
-def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags):
+def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags,
+                ar_kw=None):
     """One PART-7 descriptive-statistics record for a series."""
     r = raw.dropna()
     fyr, lyr = int(r.index.min()), int(r.index.max())
@@ -78,12 +86,14 @@ def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags):
         "fmax": float(rwi.max()) if rwi.size else np.nan,
         "fstd": float(rwi.std(ddof=1)) if rwi.size > 1 else np.nan,
         "fac": _lag1(rwi.to_numpy()),
-        "ar": _ar_order(raw),
+        "ar": _ar_order(raw, **(ar_kw or {})),
     }
 
 
-def _process_one(path, fit, corr, slide_period, bin_floor, p_val):
+def _process_one(path, fit, corr, slide_period, bin_floor, p_val,
+                 preset=None, spline_period=None):
     """Read + detrend + cross-date one file; return an assembled report dict."""
+    is_cofecha = preset is not None and str(preset).strip().lower() == "cofecha"
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         # join=False keeps same-ID disjoint blocks as SEPARATE series, matching
@@ -94,9 +104,16 @@ def _process_one(path, fit, corr, slide_period, bin_floor, p_val):
     meta = rw.attrs.get("dplpy_metadata", {}) or {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        rwi = detrend(rw, fit=fit, plot=False)
-        res = xdate(rwi, corr=corr, slide_period=slide_period, bin_floor=bin_floor,
-                    p_val=p_val, show_flags=False, make_plot=False)
+        if is_cofecha:
+            # COFECHA emulation: a 32-yr spline detrend feeding xdate's COFECHA
+            # preset, with absent rings (zeros in the raw frame) omitted.
+            rwi = detrend(rw, fit="Spline", period=(spline_period or 32), plot=False)
+            res = xdate(rwi, preset="COFECHA", absent=rw, slide_period=slide_period,
+                        show_flags=False, make_plot=False)
+        else:
+            rwi = detrend(rw, fit=fit, plot=False)
+            res = xdate(rwi, corr=corr, slide_period=slide_period, bin_floor=bin_floor,
+                        p_val=p_val, show_flags=False, make_plot=False)
 
     seg_corr, overall, flags = res["seg_corr"], res["overall"], res["flags"]
     bins = res["bins"]
@@ -104,48 +121,75 @@ def _process_one(path, fit, corr, slide_period, bin_floor, p_val):
     # autocorrelation), which xdate returns as res["rwi"] -- not the merely detrended
     # index (which keeps its autocorrelation).
     pw = res.get("rwi")
+    # AR order reported in PART 7 mirrors the prewhitening actually used: Burg /
+    # first-local-AIC-min for the COFECHA preset, Yule-Walker for the default.
+    ar_kw = ({"method": "burg", "first_aic_min": True, "max_lag": 10}
+             if is_cofecha else {"method": "yw", "max_lag": 10})
     rows = []
     for seq, name in enumerate(seg_corr.index, start=1):
         fseries = pw[name] if (pw is not None and name in pw.columns) else pd.Series(dtype=float)
         rows.append(_series_row(
             name, seq, rw[name], fseries,
-            seg_corr.loc[name], overall.loc[name, "rho"], flags.get(name, {})))
+            seg_corr.loc[name], overall.loc[name, "rho"], flags.get(name, {}),
+            ar_kw=ar_kw))
     return {
         "path": path, "meta": meta, "rows": rows, "bins": bins,
         "seg_corr": seg_corr, "flags": flags,
         "avg_seg_corr": res.get("avg_seg_corr"),
         "first_year": int(rw.index.min()), "last_year": int(rw.index.max()),
         "n_series": rw.shape[1], "slide_period": slide_period,
+        "preset": "COFECHA" if is_cofecha else None,
     }
 
 
 # --- text formatting (COFECHA-style) ----------------------------------------
 
-def _fmt_corr(v, flag=""):
-    """A correlation cell in COFECHA style: leading zero dropped, optional A/B
-    flag, 5 columns wide (blank when missing)."""
+def _z(v, dec):
+    """Format a float with ``dec`` decimals, dropping the leading zero for values
+    below 1 in magnitude (COFECHA/dplR style: .564, -.032). NaN -> empty."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "     "
-    s = ("%.2f" % v)
+        return ""
+    s = ("%." + str(dec) + "f") % v
     if s.startswith("0."):
         s = s[1:]
     elif s.startswith("-0."):
         s = "-" + s[2:]
-    return "%4s%s" % (s, (flag or " "))
+    return s
 
 
-def _summary_stats(rows):
+def _cell(v, flag=""):
+    """A 5-column PART-5 correlation cell: a space, then the 2-decimal value (no
+    leading zero) with an optional A/B flag, left-justified in 4 (e.g. ' .75 ',
+    ' .29B', ' -.03'). Blank when missing."""
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return "     "
+    return " %-4s" % (_z(v, 2) + (flag or ""))
+
+
+def _summary_stats(rows, weighted=False):
     corr = np.array([r["corr"] for r in rows], float)
     sens = np.array([r["sens"] for r in rows], float)
     std = np.array([r["std"] for r in rows], float)
     ac = np.array([r["ac"] for r in rows], float)
+    wts = np.array([r["nyears"] for r in rows], float)
     n_flag = sum(r["nflag"] for r in rows)
     n_seg = sum(r["nseg"] for r in rows)
+
+    def _mean(v):
+        # COFECHA weights every summary statistic by series length (ring count),
+        # e.g. ZSEN = sum(SEN*N) / sum(N); the dplR-native report uses a plain mean.
+        ok = ~np.isnan(v)
+        if not ok.any():
+            return np.nan
+        if weighted:
+            return float(np.sum(v[ok] * wts[ok]) / np.sum(wts[ok]))
+        return float(np.mean(v[ok]))
+
     return {
-        "intercorr": np.nanmean(corr) if corr.size else np.nan,
-        "sens": np.nanmean(sens) if sens.size else np.nan,
-        "std": np.nanmean(std) if std.size else np.nan,
-        "ac": np.nanmean(ac) if ac.size else np.nan,
+        "intercorr": _mean(corr),
+        "sens": _mean(sens),
+        "std": _mean(std),
+        "ac": _mean(ac),
         "n_flag": n_flag, "n_seg": n_seg,
         "pct_flag": (100.0 * n_flag / n_seg) if n_seg else 0.0,
     }
@@ -153,59 +197,93 @@ def _summary_stats(rows):
 
 def _format_header(rep):
     m = rep["meta"]
-    s = _summary_stats(rep["rows"])
+    weighted = bool(rep.get("preset"))
+    s = _summary_stats(rep["rows"], weighted=weighted)
     L = []
-    L.append(" " + str(m.get("site_name", "")) + "   - " + str(m.get("site_id", "")))
-    L.append("Additional Site Information")
-    L.append(" " + str(m.get("investigators", "")))
+
+    def fld(label, val):
+        L.append("      %-23s: %s" % (label, val))
+
+    engine = "dplPy"
+    try:
+        import dplpy as _d
+        v = getattr(_d, "__version__", "")
+        if v:
+            engine += " " + v
+    except Exception:
+        pass
+    mode = ' preset="COFECHA"' if weighted else ""
     L.append("")
-    L.append("      Report generated by   : dplPy (dpl.xdate_report)")
-    L.append("      Measurement file name  : " + os.path.basename(rep["path"]))
-    L.append("      Date checked           : " + date.today().strftime("%d%b%y").upper())
-    L.append("      Beginning year         : " + str(rep["first_year"]))
-    L.append("      Ending year            : " + str(rep["last_year"]))
-    L.append("      Principal investigators: " + str(m.get("investigators", "")))
-    L.append("      Site name              : " + str(m.get("site_name", "")))
-    L.append("      Site location          : " + str(m.get("country_region", "")))
-    L.append("      Species information    : " + str(m.get("species_code", ""))
-             + " " + str(m.get("species_name", "")))
+    L.append("COFECHA-style output, reproduced with %s%s on %s"
+             % (engine, mode, date.today().strftime("%d%b%y")))
+    L.append("")
+    L.append("")
+
+    fld("Measurement file name", os.path.basename(rep["path"]))
+    # Optional ITRDB header fields -- shown only when the .rwl carries them.
+    if m.get("site_name"):
+        fld("Site name", m["site_name"])
+    if m.get("country_region"):
+        fld("Site location", m["country_region"])
+    sp = (str(m.get("species_code", "") or "").strip() + " "
+          + str(m.get("species_name", "") or "").strip()).strip()
+    if sp:
+        fld("Species information", sp)
+    if m.get("investigators"):
+        fld("Principal investigators", m["investigators"])
     if m.get("latitude") is not None:
-        L.append("      Latitude               : %.4f" % m["latitude"])
-        L.append("      Longitude              : %.4f" % m["longitude"])
+        fld("Latitude", "%.4f" % m["latitude"])
+        fld("Longitude", "%.4f" % m["longitude"])
     if m.get("elevation_m") is not None:
-        L.append("      Elevation              : " + str(m["elevation_m"]) + "M")
+        fld("Elevation", str(m["elevation_m"]) + "M")
+    fld("Beginning year", rep["first_year"])
+    fld("Ending year", rep["last_year"])
     L.append("")
-    L.append("      Series intercorrelation: %6.3f" % s["intercorr"])
-    L.append("      Avg mean sensitivity   : %6.3f" % s["sens"])
-    L.append("      Avg standard deviation : %6.3f" % s["std"])
-    L.append("      Avg autocorrelation    : %6.3f" % s["ac"])
-    L.append("      Number dated series    : " + str(rep["n_series"]))
-    L.append("      Segment length tested  : " + str(rep["slide_period"]))
+    fld("Series intercorrelation", _z(s["intercorr"], 3))
+    fld("Avg mean sensitivity", _z(s["sens"], 3))
+    fld("Avg standard deviation", _z(s["std"], 3))
+    fld("Avg autocorrelation", _z(s["ac"], 3))
+    fld("Number dated series", rep["n_series"])
+    fld("Segment length tested", rep["slide_period"])
     L.append("")
-    L.append("      Number problem segments: " + str(s["n_flag"]))
-    L.append("      Pct problem segments   : %5.2f" % s["pct_flag"])
+    fld("Number problem segments", s["n_flag"])
+    fld("Pct problem segments", "%.2f" % s["pct_flag"])
     L.append("")
     return "\n".join(L)
+
+
+_P5_PREFIX = 25          # columns start here; keeps the 131-col rule comfortable
 
 
 def _format_part5(rep, per_block=20):
     seg_corr, flags, bins = rep["seg_corr"], rep["flags"], rep["bins"]
     starts = [int(b.split("-")[0]) for b in bins]
     ends = [int(b.split("-")[1]) for b in bins]
-    out = ["PART 5:  CORRELATION OF SERIES BY SEGMENTS",
-           "-" * 100,
-           " Correlations of %2d-year dated segments, lagged %2d years"
-           % (rep["slide_period"], rep["slide_period"] // 2),
-           " Flags:  A = correlation not significant but highest as dated;"
-           "  B = correlation higher at another position", ""]
+    sp = rep["slide_period"]
+    avg = rep.get("avg_seg_corr")
+
+    if rep.get("preset"):
+        crit_phrase = "under .3281 but highest as dated"
+        pcrit_line = "        critical value 0.3281, from pcrit = 0.01, one tailed"
+    else:
+        crit_phrase = "not significant but highest as dated"
+        pcrit_line = "        critical value from pcrit = 0.05, one tailed"
+
+    out = [" PART 5:  CORRELATION OF SERIES BY SEGMENTS: ",
+           "-" * 131,
+           "Correlations of  %d-year dated segments, lagged  %d years" % (sp, sp // 2),
+           "Flags:  A = correlation %s;  B = correlation higher at other than dated position"
+           % crit_phrase,
+           pcrit_line, ""]
+
     seq_of = {name: i + 1 for i, name in enumerate(seg_corr.index)}
     for c0 in range(0, len(bins), per_block):
         cols = list(range(c0, min(c0 + per_block, len(bins))))
-        out.append(" Seq Series   Time_span  "
+        out.append(("%-*s" % (_P5_PREFIX, " Seq Series  Time_span"))
                    + "".join("%5d" % starts[c] for c in cols))
-        out.append("                          "
-                   + "".join("%5d" % ends[c] for c in cols))
-        out.append(" --- --------  --------- " + "-----" * len(cols))
+        out.append((" " * _P5_PREFIX) + "".join("%5d" % ends[c] for c in cols))
+        out.append(("%-*s" % (_P5_PREFIX, " --- -------- ---------"))
+                   + "".join(" ----" for _ in cols))
         for name in seg_corr.index:
             row = seg_corr.loc[name]
             if all(pd.isna(row.iloc[c]) for c in cols):
@@ -218,50 +296,86 @@ def _format_part5(rep, per_block=20):
             for c in cols:
                 b = bins[c]
                 fl = "A" if b in fa else ("B" if b in fb else "")
-                cells.append(_fmt_corr(row.iloc[c], fl))
-            out.append("%4d %-8s %5d %4d  %s"
+                cells.append(_cell(row.iloc[c], fl))
+            out.append(" %3d %-8s %4d %4d %s"
                        % (seq_of[name], name[:8], r["first"], r["last"], "".join(cells)))
+        # mean correlation across series for each segment in this block
+        if avg is not None:
+            av_cells = []
+            for c in cols:
+                v = avg.iloc[c] if hasattr(avg, "iloc") else avg[c]
+                av_cells.append("  NaN" if pd.isna(v) else _cell(v))
+            out.append(("%-*s" % (_P5_PREFIX, " Av segment correlation"))
+                       + "".join(av_cells))
         out.append("")
     return "\n".join(out)
 
 
-def _format_part7(rep):
-    out = ["PART 7:  DESCRIPTIVE STATISTICS",
-           "-" * 100, "",
-           "                                             Corr   "
-           "//------- Unfiltered -------\\\\  //---- Filtered ----\\\\",
-           "                          No.   No.   No.   with   "
-           "Mean   Max    Std   Auto   Mean   Max    Std   Auto  AR",
-           " Seq Series   Interval  Years Segmt Flags  Master  "
-           "msmt   msmt    dev   corr   sens  value    dev   corr  ()",
-           " --- --------  --------- ----- ----- -----  ------ "
-           "-----  -----  -----  -----  -----  -----  -----  -----  --"]
-    for r in rep["rows"]:
-        out.append(
-            "%4d %-8s %5d %4d  %5d %5d %5d   %s   %4.2f  %5.2f  %s  %s  %s  %5.2f  %s  %s %3d"
-            % (r["seq"], r["series"][:8], r["first"], r["last"], r["nyears"],
-               r["nseg"], r["nflag"], _num3(r["corr"]), r["mean"], r["max"],
-               _num3(r["std"]), _num3(r["ac"]), _num3(r["sens"]), r["fmax"],
-               _num3(r["fstd"]), _num3(r["fac"]), r["ar"]))
-    s = _summary_stats(rep["rows"])
-    out.append(" --- --------  --------- ----- ----- -----  ------ "
-               "-----  -----  -----  -----  -----  -----  -----  -----  --")
-    out.append(" Total or mean:          %6d %5s %5d   %s"
-               % (sum(x["nyears"] for x in rep["rows"]), "",
-                  s["n_flag"], _num3(s["intercorr"])))
-    return "\n".join(out)
+_P7_HEAD = [
+    "                                                Corr   "
+    "//-------- Unfiltered --------\\\\  //---- Filtered -----\\\\",
+    "                           No.    No.    No.    with   "
+    "Mean   Max     Std   Auto   Mean   Max     Std   Auto  AR",
+    " Seq Series   Interval   Years  Segmt  Flags   Master  "
+    "msmt   msmt    dev   corr   sens  value    dev   corr  ()",
+    " --- -------- ---------  -----  -----  -----   ------ "
+    "-----  -----  -----  -----  -----  -----  -----  -----  --",
+]
 
 
-def _num3(v):
-    """A 3-decimal figure with the leading zero dropped, 6 columns (COFECHA style)."""
+def _p7_row(seq, name, first, last, nyears, nseg, nflag,
+            corr, mean, mx, std, ac, sens, fmax, fstd, fac, ar):
+    """One PART-7 data line, aligned under _P7_HEAD (widths match COFECHA/dplR)."""
+    return (" %3d %-8s %4d %4d  %5s  %5s  %5s   %6s"
+            " %5s  %5s  %5s  %5s  %5s  %5s  %5s  %5s  %2s"
+            % (seq, name[:8], first, last,
+               _blank(nyears, "%d"), _blank(nseg, "%d"), _blank(nflag, "%d"),
+               _z(corr, 3), _z(mean, 2), _z(mx, 2), _z(std, 3), _z(ac, 3),
+               _z(sens, 3), _z(fmax, 2), _z(fstd, 3), _z(fac, 3),
+               _blank(ar, "%d")))
+
+
+def _blank(v, fmt):
+    """Format an int with ``fmt``, or blank if None/NaN."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "     ."
-    s = "%.3f" % v
-    if s.startswith("0."):
-        s = s[1:]
-    elif s.startswith("-0."):
-        s = "-" + s[2:]
-    return "%6s" % s
+        return ""
+    return fmt % v
+
+
+def _format_part7(rep):
+    out = [" PART 7:  DESCRIPTIVE STATISTICS: ", "-" * 131, ""]
+    out.extend(_P7_HEAD)
+    for r in rep["rows"]:
+        out.append(_p7_row(
+            r["seq"], r["series"], r["first"], r["last"], r["nyears"],
+            r["nseg"], r["nflag"], r["corr"], r["mean"], r["max"], r["std"],
+            r["ac"], r["sens"], r["fmax"], r["fstd"], r["fac"], r["ar"]))
+    s = _summary_stats(rep["rows"], weighted=bool(rep.get("preset")))
+    n_years = sum(x["nyears"] for x in rep["rows"])
+    n_seg = sum(x["nseg"] for x in rep["rows"])
+
+    # column means for the total row: length-weighted in COFECHA mode (as COFECHA
+    # reports them), a plain mean otherwise.
+    def _wm(field, dec):
+        v = np.array([x[field] for x in rep["rows"]], float)
+        w = np.array([x["nyears"] for x in rep["rows"]], float)
+        ok = ~np.isnan(v)
+        if not ok.any():
+            return ""
+        m = (np.sum(v[ok] * w[ok]) / np.sum(w[ok])) if rep.get("preset") \
+            else float(np.mean(v[ok]))
+        return _z(m, dec)
+
+    out.append(_P7_HEAD[-1])
+    # label fills the seq+series+interval span; the numeric columns then line up
+    # under the data rows (years starts at column 25).
+    out.append(("%-25s" % " Total or mean:")
+               + "%5s  %5s  %5s   %6s %5s  %5s  %5s  %5s  %5s  %5s  %5s  %5s"
+               % (_blank(n_years, "%d"), _blank(n_seg, "%d"), s["n_flag"],
+                  _z(s["intercorr"], 3), _wm("mean", 2), _wm("max", 2),
+                  _z(s["std"], 3), _z(s["ac"], 3), _z(s["sens"], 3),
+                  _wm("fmax", 2), _wm("fstd", 3), _wm("fac", 3)))
+    return "\n".join(out)
 
 
 def _format_report(rep):
@@ -272,15 +386,21 @@ def _format_report(rep):
 
 def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
                  slide_period=50, bin_floor=100, p_val=0.05,
-                 write=True, verbose=True):
+                 write=True, verbose=True, preset=None, spline_period=None):
     """Generate a COFECHA-style crossdating QA report for one or more .rwl files.
 
     For each file: read (salvage mode), detrend, cross-date with ``dpl.xdate``,
     collate per-series statistics, and (if ``write``) save a ``<name>.txt`` report
     in ``out_dir``. Built for batch QA of ITRDB submissions.
 
-    This is a dplPy-native report styled after COFECHA; some columns match COFECHA
-    closely while others differ by method (see the module note).
+    By default this is a dplR-faithful report styled after COFECHA (some columns
+    match COFECHA closely, others differ by method). Pass ``preset="COFECHA"`` to
+    emulate the COFECHA program instead: each file is detrended with a 32-year
+    spline and cross-dated with ``dpl.xdate(preset="COFECHA")`` (Burg prewhitening,
+    spline variance stabilization, an arithmetic z-scored master, Pearson
+    correlation, COFECHA segment anchoring and critical value, and "omit absent
+    rings" fed automatically from the raw frame), and the summary statistics are
+    length-weighted by ring count as COFECHA reports them.
 
     Parameters
     ----------
@@ -289,13 +409,20 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     out_dir : str, default "."
         Directory for the ``.txt`` reports (created if needed).
     fit : str, default "Spline"
-        detrending curve passed to ``dpl.detrend``.
+        detrending curve passed to ``dpl.detrend`` (ignored when
+        ``preset="COFECHA"``, which always uses a spline).
     corr, slide_period, bin_floor, p_val
-        passed through to ``dpl.xdate``.
+        passed through to ``dpl.xdate`` (``corr``, ``bin_floor`` and ``p_val`` are
+        ignored when ``preset="COFECHA"``; ``slide_period`` still applies).
     write : bool, default True
         write the ``.txt`` files; if False, only the text is returned.
     verbose : bool, default True
         print progress and a final tally.
+    preset : str or None, default None
+        set to ``"COFECHA"`` to emulate the COFECHA program (see above).
+    spline_period : int or None, default None
+        spline stiffness (years) for the ``preset="COFECHA"`` detrend; defaults
+        to COFECHA's 32.
 
     Returns
     -------
@@ -312,7 +439,8 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     for i, path in enumerate(files, start=1):
         base = os.path.splitext(os.path.basename(path))[0]
         try:
-            rep = _process_one(path, fit, corr, slide_period, bin_floor, p_val)
+            rep = _process_one(path, fit, corr, slide_period, bin_floor, p_val,
+                               preset=preset, spline_period=spline_period)
             text = _format_report(rep)
             if write:
                 with open(os.path.join(out_dir, base + ".txt"), "w") as fh:
