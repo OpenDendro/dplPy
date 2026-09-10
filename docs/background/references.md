@@ -103,9 +103,38 @@ Two foundational texts underpin the field and the methods dplPy implements:
 
 ## Citing dplPy
 
-dplPy is developed by the [OpenDendro](https://opendendro.org) group (Andy Bunn,
-Kevin Anchukaitis, Tyson Swetnam, and contributors). If you use it in published
-work, please acknowledge and cite the OpenDendro project and dplPy, along with
-the specific method reference(s) named in the function docstrings you relied on.
-See the [project repository](https://github.com/OpenDendro/dplPy) for the current
-recommended citation and version.
+dplPy is developed by the [OpenDendro](https://opendendro.org) group. If you use
+it in published work, please cite the software using its archived Zenodo record,
+and also cite the specific method reference(s) named in the docstrings of the
+functions you relied on (e.g. Osborn et al. 1997 and Frank et al. 2006 for
+variance stabilization, Cook 1985 / ARSTAN for `chron_ars`).
+
+The software has a **concept DOI** that always resolves to the latest release:
+
+> [10.5281/zenodo.22695105](https://doi.org/10.5281/zenodo.22695105)
+
+Each release also has its own version DOI on Zenodo, so you can cite the exact
+version you used. A suggested citation (adjust the version and year to the release
+you used):
+
+> Anchukaitis, K. J., Ale, I., Bunn, A. G., Swetnam, T. L., & Cook, E. R. (2026).
+> *dplPy: Dendrochronology Program Library for Python* (version 0.6.0) [Computer
+> software]. Zenodo. https://doi.org/10.5281/zenodo.22695105
+
+In BibTeX:
+
+```bibtex
+@software{dplpy,
+  author  = {Anchukaitis, Kevin J. and Ale, Ifeoluwa and Bunn, Andrew G. and
+             Swetnam, Tyson Lee and Cook, Edward R.},
+  title   = {dplPy: Dendrochronology Program Library for Python},
+  year    = {2026},
+  version = {0.6.0},
+  doi     = {10.5281/zenodo.22695105},
+  url     = {https://opendendro.github.io/dplPy}
+}
+```
+
+The repository ships a [`CITATION.cff`](https://github.com/OpenDendro/dplPy/blob/main/CITATION.cff),
+so GitHub's "Cite this repository" button gives the current APA and BibTeX
+entries automatically, and always reflects the latest authors, version, and DOI.
