@@ -90,3 +90,88 @@ def test_chron_plot():
     dpl.chron(input_df, prewhiten=False, plot=True)
     assert len(plt.get_fignums()) >= 1
     plt.close("all")
+
+
+# --- stabilize= convenience flag -------------------------------------------
+# see dev/variance_stabilization_design_2026-09-10.md
+import warnings
+
+import numpy as np
+
+
+def _staggered_rwi(n_years=200, n_series=12, seed=0):
+    """years x series RWI-like frame with staggered starts (depth rises)."""
+    rng = np.random.default_rng(seed)
+    common = rng.normal(0, 1, n_years)
+    years = np.arange(1, n_years + 1)
+    cols = {}
+    for s in range(n_series):
+        start = s * (n_years // (2 * n_series))
+        v = np.full(n_years, np.nan)
+        noise = rng.normal(0, 1, n_years)
+        v[start:] = 1.0 + 0.15 * (common[start:] + noise[start:])
+        cols["s%02d" % s] = v
+    return pd.DataFrame(cols, index=years)
+
+
+def test_chron_stabilize_none_is_default_unchanged():
+    rwi = _staggered_rwi()
+    base = dpl.chron(rwi, prewhiten=True, plot=False)
+    assert "std_vsc" not in base.columns and "res_vsc" not in base.columns
+    assert list(base.columns) == ["std", "res", "samp_depth"]
+
+
+def test_chron_stabilize_adds_vsc_columns():
+    rwi = _staggered_rwi()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = dpl.chron(rwi, prewhiten=True, plot=False, stabilize="both")
+    # vsc columns sit beside their base chronology; base columns unchanged
+    assert list(out.columns) == ["std", "std_vsc", "res", "res_vsc", "samp_depth"]
+    base = dpl.chron(rwi, prewhiten=True, plot=False)
+    assert np.allclose(out["std"], base["std"], equal_nan=True)
+    assert np.allclose(out["res"], base["res"], equal_nan=True)
+    assert np.isfinite(out["std_vsc"]).any() and np.isfinite(out["res_vsc"]).any()
+
+
+def test_chron_stabilize_no_res_vsc_without_prewhiten():
+    rwi = _staggered_rwi()
+    out = dpl.chron(rwi, prewhiten=False, plot=False, stabilize="rbar")
+    assert list(out.columns) == ["std", "std_vsc", "samp_depth"]
+
+
+def test_chron_std_vsc_matches_direct_stabilize_chron():
+    # the flag must reproduce a direct stabilize_chron call on the std column,
+    # using the standard (detrended) matrix's rbar
+    rwi = _staggered_rwi()
+    out = dpl.chron(rwi, plot=False, stabilize="both")
+    ref = dpl.stabilize_chron(dpl.chron(rwi, plot=False)["std"], "both", rwi=rwi)["vsc"]
+    assert np.allclose(out["std_vsc"], ref, equal_nan=True)
+
+
+def test_chron_stabilize_kwargs_forwarded():
+    # a passthrough kwarg (constant rbar) changes the result vs the running default
+    rwi = _staggered_rwi()
+    running = dpl.chron(rwi, plot=False, stabilize="rbar")["std_vsc"].to_numpy()
+    const = dpl.chron(rwi, plot=False, stabilize="rbar",
+                      stabilize_kwargs={"rbar_mode": "constant"})["std_vsc"].to_numpy()
+    ok = np.isfinite(running) & np.isfinite(const)
+    assert not np.allclose(running[ok], const[ok])
+
+
+def test_chron_stabilize_kwargs_rejects_managed_keys():
+    rwi = _staggered_rwi()
+    with pytest.raises(ValueError):
+        dpl.chron(rwi, plot=False, stabilize="rbar", stabilize_kwargs={"rwi": rwi})
+
+
+def test_chron_stabilize_kwargs_without_method_raises():
+    rwi = _staggered_rwi()
+    with pytest.raises(ValueError):
+        dpl.chron(rwi, plot=False, stabilize_kwargs={"rbar_mode": "constant"})
+
+
+def test_chron_invalid_stabilize_method():
+    rwi = _staggered_rwi()
+    with pytest.raises(ValueError):
+        dpl.chron(rwi, plot=False, stabilize="nope")

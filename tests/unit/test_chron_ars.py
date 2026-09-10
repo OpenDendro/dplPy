@@ -158,6 +158,93 @@ def test_chron_ars_methods_differ_under_staggered_depth():
     assert not np.allclose(a[ok], d[ok], atol=1e-8)
 
 
+# --- stabilize= convenience flag -------------------------------------------
+# see dev/variance_stabilization_design_2026-09-10.md
+def _staggered_ar2(n_series=10, n_years=250, phi=(0.6, -0.25), seed=4):
+    """AR(2) dataset with staggered onsets (rising sample depth)."""
+    df = _ar2_dataset(n_series=n_series, n_years=n_years, phi=phi, seed=seed)
+    arr = df.to_numpy(dtype=float)
+    for s in range(arr.shape[1]):
+        arr[: s * 12, s] = np.nan
+    return pd.DataFrame(arr, index=df.index, columns=df.columns)
+
+
+def test_chron_ars_stabilize_none_is_default_unchanged():
+    df = _staggered_ar2()
+    out = dpl.chron_ars(df, verbose=False)
+    assert list(out.columns) == ["std", "res", "ars", "samp_depth"]
+
+
+def test_chron_ars_stabilize_adds_vsc_columns():
+    df = _staggered_ar2()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = dpl.chron_ars(df, verbose=False, stabilize="both")
+    assert list(out.columns) == ["std", "std_vsc", "res", "res_vsc",
+                                 "ars", "ars_vsc", "samp_depth"]
+    base = dpl.chron_ars(df, verbose=False)
+    # base chronologies are untouched by the flag
+    for col in ("std", "res", "ars"):
+        assert np.allclose(out[col], base[col], equal_nan=True), col
+    for col in ("std_vsc", "res_vsc", "ars_vsc"):
+        assert np.isfinite(out[col]).any(), col
+
+
+def test_chron_ars_arstan_ars_vsc_is_stabilize_then_reredden():
+    # ARSTAN order: ars_vsc = postAR( stabilize(mean(prewhitened), residual rbar) )
+    # -- stabilize the residual mean BEFORE re-reddening (same pipeline as the
+    # unstabilized arstan ars). Rebuild that reference from the internals.
+    from dplpy.chron_ars import (_pooled_ar, _prewhiten_ar_yw, _post_ar,
+                                 _aggregate)
+
+    df = _staggered_ar2(seed=6)
+    x = df.to_numpy(dtype=float)
+    ns = x.shape[1]
+    oa = _pooled_ar(x, 10, True)
+    p = oa["order"]
+    assert p > 0
+    phi = -oa["arcoefs"][p - 1, :p]
+    rwi_clean = np.column_stack([_prewhiten_ar_yw(x[:, s], p) for s in range(ns)])
+    resid_matrix = pd.DataFrame(rwi_clean, index=df.index, columns=df.columns)
+    resid_mean = _aggregate(rwi_clean, biweight=True)
+    rmv = dpl.stabilize_chron(pd.Series(resid_mean, index=df.index), "both",
+                              rwi=resid_matrix)["vsc"].to_numpy()
+    expected = _post_ar(rmv, phi)
+
+    out = dpl.chron_ars(df, verbose=False, stabilize="both")  # arstan default
+    v = out["ars_vsc"].to_numpy()
+    ok = np.isfinite(expected) & np.isfinite(v)
+    assert ok.any()
+    assert np.allclose(v[ok], expected[ok], atol=1e-10)
+
+
+def test_chron_ars_dplr_ars_vsc_is_posthoc_on_reddened():
+    # for ars_method="dplr", ars is built by reddening each series then
+    # averaging, so ars_vsc is stabilized post-hoc on that reddened chronology
+    # (residual matrix rbar), not in the ARSTAN order.
+    from dplpy.chron_ars import _pooled_ar, _prewhiten_ar_yw
+
+    df = _staggered_ar2(seed=8)
+    x = df.to_numpy(dtype=float)
+    ns = x.shape[1]
+    p = _pooled_ar(x, 10, True)["order"]
+    rwi_clean = np.column_stack([_prewhiten_ar_yw(x[:, s], p) for s in range(ns)])
+    resid_matrix = pd.DataFrame(rwi_clean, index=df.index, columns=df.columns)
+
+    out = dpl.chron_ars(df, verbose=False, ars_method="dplr", stabilize="both")
+    ars0 = dpl.chron_ars(df, verbose=False, ars_method="dplr")["ars"]
+    ref = dpl.stabilize_chron(pd.Series(ars0.to_numpy(), index=df.index), "both",
+                              rwi=resid_matrix)["vsc"]
+    assert np.allclose(out["ars_vsc"], ref, equal_nan=True)
+
+
+def test_chron_ars_stabilize_kwargs_rejects_managed_keys():
+    df = _staggered_ar2()
+    with pytest.raises(ValueError):
+        dpl.chron_ars(df, verbose=False, stabilize="rbar",
+                      stabilize_kwargs={"column": "std"})
+
+
 def test_pooled_acf_matches_dplR_reference_ca533():
     from dplpy.chron_ars import _pooled_ar
     data = dpl.readers("tests/data/csv/ca533.csv")

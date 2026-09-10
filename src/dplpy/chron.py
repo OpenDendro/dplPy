@@ -44,7 +44,8 @@ from .autoreg import ar_func
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
-          max_lag=10, aic=True, ar_method="yw", first_aic_min=False):
+          max_lag=10, aic=True, ar_method="yw", first_aic_min=False,
+          stabilize=None, stabilize_kwargs=None):
     """Creates a mean value chronology for a dataset of tree-ring widths.
 
     Extended Summary
@@ -88,6 +89,21 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
         takes the first local AIC minimum -- ARSTAN's rule, shared with
         chron_ars() -- which is more parsimonious (it rarely selects an order
         above ~7, so ``max_lag`` seldom binds) at the cost of a little AIC.
+    stabilize : {None, "rbar", "spline", "both"}, default None
+        If not None, also variance-stabilize each chronology and return the
+        stabilized versions in extra ``*_vsc`` columns (see Notes). This is the
+        ARSTAN workflow, where variance stabilization (menu option ``isb``) is
+        applied to the finished chronologies. The method families are as in
+        :func:`stabilize_chron`: ``"rbar"`` (Osborn/Frank N_eff scaling),
+        ``"spline"`` (ARSTAN stabit spline), or ``"both"`` (rbar then a 67%
+        spline; ARSTAN ``isb=2``).
+    stabilize_kwargs : dict, optional
+        Extra keyword arguments forwarded to :func:`stabilize_chron` when
+        ``stabilize`` is set (e.g. ``{"rbar_mode": "constant"}``,
+        ``{"win_length": 30}``, ``{"spline_period": 100}``). The chronology,
+        column, source RWI matrix, and sample depth are supplied automatically
+        and may not be overridden here. Defaults (running rbar, 67% spline) match
+        Frank (2006) / ARSTAN.
 
     Returns
     -------
@@ -95,8 +111,19 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
         a mean-value chronology indexed by year. Columns: ``std`` (the standard
         chronology), ``res`` (the residual/AR-prewhitened chronology; only when
         ``prewhiten`` is True), and ``samp_depth`` (the sample depth). These
-        names match chron_ars() and mirror dplR's std/res/samp.depth.
-    
+        names match chron_ars() and mirror dplR's std/res/samp.depth. When
+        ``stabilize`` is set, a stabilized ``std_vsc`` (and ``res_vsc`` when
+        ``prewhiten`` is True) column is added next to each base chronology.
+
+    Notes
+    -----
+    **Variance stabilization (``stabilize``).** Following ARSTAN's per-chronology
+    rbar convention, the standard chronology is stabilized with the rbar of the
+    standard (detrended) RWI matrix, and the residual chronology with the rbar of
+    the residual (prewhitened) matrix. Both restandardize to the input
+    chronology's full period (see :func:`stabilize_chron`). For the ARSTAN
+    (re-reddened) chronology, use :func:`chron_ars` with ``stabilize=``.
+
     Examples
     --------
     >>> import dplpy as dpl 
@@ -112,7 +139,9 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     
     """
     _require_dataframe(rwi_data)
-    
+    from .stabilize import stabilize_chron, _prepare_stabilize_kwargs
+    skw = _prepare_stabilize_kwargs(stabilize, stabilize_kwargs)
+
     chron_data = {}
     for series in rwi_data:
         series_data = rwi_data[series].dropna()
@@ -127,10 +156,19 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     chron_res = pd.DataFrame(data={"Year":years})
     chron_res = pd.concat([chron_res, pd.Series(data=means, name="std")], axis=1)
 
+    res_matrix = None
     if prewhiten:
-        whitened_means = get_whitened_chron_info(rwi_data, chron_data, biweight,
-                                                 max_lag, aic, method=ar_method,
-                                                 first_aic_min=first_aic_min)
+        # capture the prewhitened (residual) matrix when stabilizing, so the
+        # residual chronology can use the residual matrix's rbar (ARSTAN's
+        # per-chronology rbar convention).
+        if skw is not None:
+            whitened_means, res_matrix = get_whitened_chron_info(
+                rwi_data, chron_data, biweight, max_lag, aic, method=ar_method,
+                first_aic_min=first_aic_min, return_matrix=True)
+        else:
+            whitened_means = get_whitened_chron_info(rwi_data, chron_data, biweight,
+                                                     max_lag, aic, method=ar_method,
+                                                     first_aic_min=first_aic_min)
         chron_res = pd.concat([chron_res, pd.Series(data=whitened_means, name="res")], axis=1)
     else:
         whitened_means = None
@@ -138,9 +176,22 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     chron_res = pd.concat([chron_res, pd.Series(data=depths, name="samp_depth")], axis=1)
     chron_res.set_index('Year', inplace = True, drop = True)
 
+    if skw is not None:
+        # std_vsc: stabilize the standard chronology with the standard matrix rbar
+        chron_res["std_vsc"] = stabilize_chron(
+            chron_res["std"], stabilize, rwi=rwi_data, **skw)["vsc"]
+        if prewhiten:
+            # res_vsc: stabilize the residual chronology with the residual matrix rbar
+            chron_res["res_vsc"] = stabilize_chron(
+                chron_res["res"], stabilize, rwi=res_matrix, **skw)["vsc"]
+        # keep each stabilized column beside its base chronology
+        order = [c for c in ("std", "std_vsc", "res", "res_vsc", "samp_depth")
+                 if c in chron_res.columns]
+        chron_res = chron_res[order]
+
     if plot:
         plot_chron(years, depths, means, whitened_means)
-    
+
     return chron_res
 
 # Does the work of creating the actual chronology by finding the mean RWI for each year
@@ -163,7 +214,7 @@ def get_chron_info(chron_data, biweight):
 # Does the work of creating a chronology when the data has to be fit to an AR model
 # first (i.e. prewhitened).
 def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=10, aic=True,
-                            method="yw", first_aic_min=False):
+                            method="yw", first_aic_min=False, return_matrix=False):
     whitened_data = {}
     ar_fit_data = {}
 
@@ -187,6 +238,13 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=10, aic=True
             whitened_means.append(tbrm(whitened_data[year][1:]))
         else:
             whitened_means.append(sum(whitened_data[year][1:])/whitened_data[year][0])
+
+    if return_matrix:
+        # assemble the prewhitened series into a years x series matrix (the
+        # residual RWI matrix), aligned to rwi_data's year index. Each column is
+        # ar_func's residual+mean series; years a series does not cover are NaN.
+        res_matrix = pd.DataFrame(ar_fit_data).reindex(rwi_data.index)
+        return whitened_means, res_matrix
     return whitened_means
 
 # Plots the data created by the chronology

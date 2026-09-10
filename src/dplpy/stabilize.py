@@ -40,6 +40,40 @@ from .smoothingspline import variance_stabilize_spline
 _METHODS = ("rbar", "spline", "both")
 _RBAR_MODES = ("running", "constant")
 
+# keys that chron()/chron_ars() set internally when they call stabilize_chron
+# on each column, so the user's stabilize_kwargs must not also set them.
+_STABILIZE_MANAGED = frozenset(
+    {"rwi", "column", "samp_depth", "running_rbar", "rbar", "return_info",
+     "method", "chron"}
+)
+
+
+def _prepare_stabilize_kwargs(stabilize, stabilize_kwargs):
+    """Validate the ``stabilize=`` convenience-flag inputs shared by chron() and
+    chron_ars().
+
+    Returns a dict of keyword arguments to forward to :func:`stabilize_chron`
+    (empty when ``stabilize_kwargs`` is None), or ``None`` when ``stabilize`` is
+    None (i.e. no stabilization requested). Raises if stabilize_kwargs is given
+    without a method, or tries to set an internally-managed argument.
+    """
+    if stabilize is None:
+        if stabilize_kwargs:
+            raise ValueError(
+                "stabilize_kwargs was given but stabilize is None; set stabilize "
+                "to 'rbar', 'spline', or 'both'.")
+        return None
+    if stabilize not in _METHODS:
+        raise ValueError("stabilize must be one of %s (or None); got %r"
+                         % (_METHODS, stabilize))
+    skw = dict(stabilize_kwargs or {})
+    bad = _STABILIZE_MANAGED & set(skw)
+    if bad:
+        raise ValueError(
+            "stabilize_kwargs may not set %s (managed internally by "
+            "chron/chron_ars)." % ", ".join(sorted(bad)))
+    return skw
+
 
 def _restandardize(a, target_mean, target_sd):
     """Affine-rescale ``a`` so its (nan-ignoring) mean/SD match the targets. A

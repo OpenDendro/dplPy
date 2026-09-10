@@ -60,7 +60,7 @@ _KNOWN_ARS_METHODS = ("arstan", "dplr")
 
 def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
               first_aic_min=True, verbose=True, prewhiten_method="ar.yw",
-              ars_method="arstan"):
+              ars_method="arstan", stabilize=None, stabilize_kwargs=None):
     """Build ARSTAN standard, residual, and re-reddened chronologies.
 
     Extended Summary
@@ -116,11 +116,26 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
         re-redden -- Ed Cook's ARSTAN order); "dplr" re-reddens each series and
         then averages (dplR's chron.ars order). The two agree only when every
         series spans the full period; under staggered sample depth they differ.
+    stabilize : {None, "rbar", "spline", "both"}, default None
+        If not None, also variance-stabilize each chronology and return the
+        stabilized versions in extra ``*_vsc`` columns (see Notes). This mirrors
+        ARSTAN, where variance stabilization (menu option ``isb``) is applied to
+        the finished chronologies. The method families are as in
+        :func:`stabilize_chron`: ``"rbar"`` (Osborn/Frank N_eff scaling),
+        ``"spline"`` (ARSTAN stabit spline), or ``"both"`` (rbar then a 67%
+        spline; ARSTAN ``isb=2``).
+    stabilize_kwargs : dict, optional
+        Extra keyword arguments forwarded to :func:`stabilize_chron` when
+        ``stabilize`` is set (e.g. ``{"rbar_mode": "constant"}``). The
+        chronology, column, source matrix, and sample depth are supplied
+        automatically and may not be overridden here.
 
     Returns
     -------
     out : pandas dataframe indexed by year with columns 'std', 'res', 'ars',
-        and 'samp_depth'.
+        and 'samp_depth'. When ``stabilize`` is set, a stabilized ``std_vsc``,
+        ``res_vsc``, and ``ars_vsc`` column is added next to each base
+        chronology.
 
     Notes
     -----
@@ -142,6 +157,18 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     common-pooled-order prewhitening are identical for both settings; only the
     ``ars`` column changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
 
+    **Variance stabilization (``stabilize``).** Following ARSTAN's per-chronology
+    rbar convention, ``std_vsc`` uses the rbar of the standard (detrended) RWI
+    matrix, and both ``res_vsc`` and the ARSTAN chronology use the rbar of the
+    residual (prewhitened) matrix. The ARSTAN column is stabilized in the ARSTAN
+    order: with ``ars_method="arstan"`` the residual-style mean of the prewhitened
+    series is stabilized **before** re-reddening (ARSTAN stabilizes the residual
+    chronology, then ``commie1``), so ``ars_vsc`` stays consistent with the
+    unstabilized ``ars``. With ``ars_method="dplr"`` the ARSTAN chronology is
+    already built by re-reddening each series, so ``ars_vsc`` is stabilized
+    post-hoc on the reddened chronology (not the ARSTAN order). All columns
+    restandardize to their own full period (see :func:`stabilize_chron`).
+
     Examples
     --------
     >>> import dplpy as dpl
@@ -162,6 +189,8 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     if ars_method not in _KNOWN_ARS_METHODS:
         raise ValueError("ars_method must be one of " + str(_KNOWN_ARS_METHODS)
                          + ", got '" + str(ars_method) + "'.")
+    from .stabilize import stabilize_chron, _prepare_stabilize_kwargs
+    skw = _prepare_stabilize_kwargs(stabilize, stabilize_kwargs)
 
     x = rwi_data.to_numpy(dtype=float)
     n_series = x.shape[1]
@@ -216,6 +245,40 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
         {"std": std_crn, "res": res_crn, "ars": ars_crn, "samp_depth": samp_depth},
         index=rwi_data.index,
     )
+
+    if skw is not None:
+        # residual (prewhitened) RWI matrix, for the residual/ARSTAN rbar
+        # (ARSTAN's per-chronology rbar convention).
+        resid_matrix = pd.DataFrame(rwi_clean, index=rwi_data.index,
+                                    columns=rwi_data.columns)
+
+        # std_vsc: standard chronology, standard matrix rbar
+        out["std_vsc"] = stabilize_chron(
+            pd.Series(std_crn, index=rwi_data.index), stabilize,
+            rwi=rwi_data, **skw)["vsc"]
+        # res_vsc: residual chronology, residual matrix rbar
+        out["res_vsc"] = stabilize_chron(
+            pd.Series(res_crn, index=rwi_data.index), stabilize,
+            rwi=resid_matrix, **skw)["vsc"]
+
+        if ars_method == "arstan":
+            # ARSTAN order: stabilize the residual-style mean of the prewhitened
+            # series (residual rbar), THEN re-redden -- the same average-then-
+            # redden pipeline as the unstabilized ars, matching ARSTAN.
+            resid_mean = _aggregate(rwi_clean, biweight)
+            resid_mean_vsc = stabilize_chron(
+                pd.Series(resid_mean, index=rwi_data.index), stabilize,
+                rwi=resid_matrix, **skw)["vsc"].to_numpy()
+            out["ars_vsc"] = _post_ar(resid_mean_vsc, phi)
+        else:  # "dplr": ars is already reddened -- stabilize it post-hoc
+            out["ars_vsc"] = stabilize_chron(
+                pd.Series(ars_crn, index=rwi_data.index), stabilize,
+                rwi=resid_matrix, **skw)["vsc"]
+
+        # keep each stabilized column beside its base chronology
+        out = out[["std", "std_vsc", "res", "res_vsc", "ars", "ars_vsc",
+                   "samp_depth"]]
+
     return out
 
 
