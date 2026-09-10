@@ -6,6 +6,14 @@ cited across the dplPy source; each function's docstring names the specific
 reference(s) behind it, and the [API Reference](../reference/io.md) surfaces
 those docstrings directly.
 
+## Fundamentals
+
+Two foundational texts underpin the field and the methods dplPy implements:
+
+- Fritts, H.C. (1976). *Tree Rings and Climate.* Academic Press, New York.
+- Cook, E.R., Kairiukstis, L.A. (eds.) (1990). *Methods of Dendrochronology:
+  Applications in the Environmental Sciences.* Springer, Dordrecht, Netherlands.
+
 ## Software heritage
 
 - **DPL** — Holmes, R.L. (1983). *Dendrochronology Program Library.* Laboratory

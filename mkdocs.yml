@@ -106,6 +106,7 @@ nav:
       - Reading & writing data: guide/reading-writing-data.md
       - Detrending & standardization: guide/detrending-standardization.md
       - Building chronologies: guide/chronologies.md
+      - Variance stabilization: guide/variance-stabilization.md
       - Crossdating & COFECHA: guide/crossdating.md
       - Dating a floating series: guide/floating-series.md
       - Statistics & agreement: guide/statistics.md

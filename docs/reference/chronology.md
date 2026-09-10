@@ -12,6 +12,10 @@ modelling and variance stabilization. See the
 
 ::: dplpy.chron_stabilized.chron_stabilized
 
+## stabilize_chron
+
+::: dplpy.stabilize.stabilize_chron
+
 ## chron_ars
 
 ::: dplpy.chron_ars.chron_ars
