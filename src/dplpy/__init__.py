@@ -74,6 +74,7 @@ from .agedepspline import ads
 from .pith import po_to_wc, wc_to_po
 from .powt import powt
 from .rcs import rcs
+from .sfrcs import sfrcs
 from .bai import bai_out, bai_in
 from .combine import combine_rwl
 from .simplesignalfree import ssf
@@ -121,6 +122,7 @@ __all__ = [
     "wc_to_po",
     "powt",
     "rcs",
+    "sfrcs",
     "bai_out",
     "bai_in",
     "combine_rwl",
