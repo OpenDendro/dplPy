@@ -255,7 +255,8 @@ def test_normalize_fit_canonical_and_aliases():
     assert _normalize_fit("ModHugershoff") == "ModHugershoff"
     assert _normalize_fit("Mean") == "Mean"
     assert _normalize_fit("AgeDepSpline") == "AgeDepSpline"
-    assert _normalize_fit("Linear") == "Linear"
+    assert _normalize_fit("LinearAny") == "LinearAny"
+    assert _normalize_fit("LinearNegative") == "LinearNegative"
     # case-insensitive
     assert _normalize_fit("spline") == "Spline"
     assert _normalize_fit("MODNEGEXP") == "ModNegExp"
@@ -265,6 +266,20 @@ def test_normalize_fit_canonical_and_aliases():
     # 'Hugershoff' is Cook's ARSTAN closed form; 'ModHugershoff' is dplR's nls
     assert _normalize_fit("Hugershoff") == "Hugershoff"
     assert _normalize_fit("ModHugershoff") == "ModHugershoff"
+    # ARSTAN additions: 'NegExp' (deterministic neg-exp, ARSTAN's `curve`) sits
+    # beside dplR's nls 'ModNegExp'; 'GeneralExp' is ARSTAN's gexp (Hugershoff b=1)
+    assert _normalize_fit("NegExp") == "NegExp"
+    assert _normalize_fit("negexp") == "NegExp"
+    assert _normalize_fit("negex") == "NegExp"
+    assert _normalize_fit("GeneralExp") == "GeneralExp"
+    assert _normalize_fit("generalexp") == "GeneralExp"
+    assert _normalize_fit("genexp") == "GeneralExp"
+    # 'linear' is a back-compatible alias of ARSTAN option 4 ('LinearAny', any
+    # slope); 'LinearNegative' is ARSTAN option 5 (slope constrained non-positive)
+    assert _normalize_fit("linear") == "LinearAny"
+    assert _normalize_fit("linearany") == "LinearAny"
+    assert _normalize_fit("linearnegative") == "LinearNegative"
+    assert _normalize_fit("linearneg") == "LinearNegative"
 
 
 @patch.object(_m_detrend, 'spline')
@@ -567,3 +582,104 @@ def test_detrend_method_given_curve_name_is_guarded():
     msg = str(e.value)
     assert "looks like a curve type" in msg
     assert "fit=" in msg
+
+
+# --- ARSTAN curve-fit additions: NegExp, GeneralExp, LinearAny, LinearNegative ---
+
+def test_negexp_deterministic_fits_decaying_series_no_fallback():
+    # ARSTAN's deterministic `curve` fits a clean decay itself (no line/mean
+    # fallback): a positive, monotonically declining neg-exp, not the flat mean.
+    import numpy as np
+    from dplpy import curvefit as cf
+    x = np.arange(1, 41)
+    y = 5.0 * np.exp(-0.08 * np.arange(40)) + 1.0
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        yi, info = cf.neg_exp_arstan(x, y, name="decay", info=True)
+    fallback = [m for m in w if issubclass(m.category, UserWarning)]
+    assert not fallback                                        # curve was used
+    assert info["method"] == "NegativeExponential"
+    assert set(info["coefs"]) == {"a", "b", "k"}
+    assert info["coefs"]["b"] < 0 and info["coefs"]["a"] > 0   # decaying, positive
+    assert np.all(yi > 0) and yi[0] > yi[-1]
+    assert not np.allclose(yi, yi.mean())                      # not the flat fallback
+
+
+def test_negexp_matches_modnegexp_when_nls_converges():
+    # NegExp (deterministic, ARSTAN `curve`) and ModNegExp (nls, dplR) minimise the
+    # SAME data-space RSS for the SAME model y=a*exp(b*t)+k -- so when the nls
+    # converges cleanly the two curves coincide (unlike the Hugershoff pair, which
+    # optimise different error spaces). NegExp's distinction is robustness, not shape.
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    det = _detrend_quiet(data["CAM011"], fit="NegExp")
+    nls = _detrend_quiet(data["CAM011"], fit="ModNegExp")
+    d = det.dropna().to_numpy(); m = nls.dropna().to_numpy()
+    assert np.all(np.isfinite(d)) and np.all(d > 0)
+    assert np.corrcoef(d, m)[0, 1] > 0.999                     # essentially the same
+    assert np.allclose(d, m, atol=1e-2)                        # coincide at convergence
+
+
+def test_negexp_reports_coefs_via_return_info():
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    info = _detrend_quiet(data["CAM011"], fit="NegExp", return_info=True)
+    assert info["model_info"]["method"] in ("NegativeExponential", "Line", "Mean")
+
+
+def test_generalexp_produces_valid_positive_curve_and_coefs():
+    # ARSTAN gexp: f = a*t*exp(b*t). On a series with a juvenile rise it gives a
+    # positive, finite curve and reports its two coefficients.
+    import numpy as np
+    from dplpy import curvefit as cf
+    t = np.arange(1, 61)
+    y = 2.0 * t * np.exp(-0.05 * t) + 0.5      # rise-then-decline
+    yi, info = cf.general_exp(np.arange(1, 61), y, name="rise", info=True)
+    assert info["method"] == "GeneralExponential"
+    assert set(info["coefs"]) == {"a", "b"}
+    assert np.all(yi > 0) and np.all(np.isfinite(yi))
+    assert yi.argmax() > 0                                     # peaks after t=1 (a rise)
+
+
+def test_generalexp_detrend_runs_on_real_series():
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    a = _detrend_quiet(data["CAM011"], fit="GeneralExp")
+    v = a.dropna().to_numpy()
+    assert np.all(np.isfinite(v)) and np.all(v > 0)
+
+
+def test_linearany_is_the_linear_alias():
+    # 'linear' is a back-compatible alias of 'LinearAny' -> identical result.
+    import numpy as np
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    a = _detrend_quiet(data["CAM011"], fit="LinearAny")
+    b = _detrend_quiet(data["CAM011"], fit="linear")
+    assert np.array_equal(a.dropna().to_numpy(), b.dropna().to_numpy())
+
+
+def test_linearnegative_matches_linearany_on_declining_series():
+    # On a declining series the best-fit slope is <= 0, so LinearNegative accepts
+    # the same line LinearAny returns (no mean fallback).
+    import numpy as np
+    from dplpy import curvefit as cf
+    x = np.arange(1, 31, dtype=float)
+    y = 10.0 - 0.2 * x + 0.01 * np.sin(x)      # gently declining, all positive
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        neg = cf.linear_neg(x, y, name="decl")
+    any_ = cf.linear(x, y)
+    assert not [m for m in w if issubclass(m.category, UserWarning)]   # no fallback
+    assert np.allclose(neg, any_)
+
+
+def test_linearnegative_falls_back_to_mean_on_rising_series():
+    # A positively-sloped series is rejected by LinearNegative -> series mean.
+    import numpy as np
+    from dplpy import curvefit as cf
+    x = np.arange(1, 31, dtype=float)
+    y = 1.0 + 0.2 * x                          # rising
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        neg = cf.linear_neg(x, y, name="rise")
+    assert [m for m in w if issubclass(m.category, UserWarning)]       # warned
+    assert np.allclose(neg, np.mean(y))                               # flat mean

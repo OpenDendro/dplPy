@@ -67,15 +67,27 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         the growth curve to fit. Accepted values (case-insensitive; dplR's names
         are used as the canonical spelling):
         'Spline' (smoothing spline), 'AgeDepSpline' (age-dependent spline),
-        'ModNegExp' (modified negative exponential, with a linear->mean fallback),
+        'ModNegExp' (modified negative exponential fit by nonlinear least squares,
+        dplR-style, with a linear->mean fallback), 'NegExp' (the SAME neg-exp curve
+        fit by Ed Cook's ARSTAN deterministic method -- a 1-D search for the decay
+        rate with the amplitude/asymptote in closed form. It minimises the same
+        data-space error as 'ModNegExp', so the two coincide when the nls converges;
+        its advantage is robustness -- being deterministic it never fails to
+        converge, so it still fits series where 'ModNegExp' would fall back to a
+        line/mean. Same linear->mean fallback for the rejected cases),
         'ModHugershoff' (Hugershoff growth curve fit by nonlinear least squares,
-        dplR-style, with a linear->mean fallback), 'Hugershoff' (the SAME growth
-        curve but fit by Ed Cook's ARSTAN log-linearised closed form -- always
-        succeeds, never falls back, but optimises log-space error so it gives a
-        different curve than 'ModHugershoff'), 'Mean' (horizontal line at the
-        series mean), and 'Linear' (best-fit straight line; a dplPy addition).
-        Names are case-insensitive; legacy dplPy spellings ('ModNegEx',
-        'horizontal') are also accepted.
+        dplR-style, with a linear->mean fallback), 'Hugershoff' (the SAME curve fit
+        by ARSTAN's log-linearised closed form -- here the two genuinely differ, as
+        the closed form optimises log-space rather than data-space error),
+        'GeneralExp' (the general exponential a*t*exp(b*t) -- Hugershoff with the
+        power fixed at 1, ARSTAN's menu option 8, deterministic), 'Mean' (horizontal
+        line at the series mean), 'LinearAny' (best-fit straight line, any slope;
+        ARSTAN option 4), and 'LinearNegative' (best-fit line constrained to a
+        non-positive slope, falling back to the mean if the slope is positive;
+        ARSTAN option 5). NegExp/ModNegExp and Hugershoff/ModHugershoff each pair
+        ARSTAN's deterministic fit with dplR's nls fit of the same curve.
+        Names are case-insensitive; legacy spellings ('ModNegEx', 'horizontal',
+        and 'Linear' as an alias of 'LinearAny') are also accepted.
         ``fit`` may also be a LIST of curve types (e.g. ['Spline', 'ModNegExp'])
         to detrend by each and compare them (mirrors dplR's method vector). In
         that case a Series returns a DataFrame with one column per method, and a
@@ -238,8 +250,9 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
               % (series_name, fit, method, len(y), detail))
 
     # fit is already canonical (see _normalize_fit): Spline, AgeDepSpline,
-    # ModNegExp, ModHugershoff, Mean, Linear. model_info records what was actually
-    # fit (mirroring dplR's return.info$model.info), collected only when needed.
+    # ModNegExp, NegExp, ModHugershoff, Hugershoff, GeneralExp, Mean, LinearAny,
+    # LinearNegative. model_info records what was actually fit (mirroring dplR's
+    # return.info$model.info), collected only when needed.
     model_info = None
     if fit == "Spline":
         yi = spline(x, y, period, f)
@@ -252,6 +265,12 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
                                                   info=True)
         else:
             yi = curvefit.mod_neg_exp(x, y, pos_slope, series_name)
+    elif fit == "NegExp":
+        if return_info:
+            yi, model_info = curvefit.neg_exp_arstan(x, y, pos_slope, series_name,
+                                                     info=True)
+        else:
+            yi = curvefit.neg_exp_arstan(x, y, pos_slope, series_name)
     elif fit == "ModHugershoff":
         if return_info:
             yi, model_info = curvefit.mod_hugershoff(x, y, pos_slope, series_name,
@@ -263,10 +282,20 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
             yi, model_info = curvefit.hugershoff_arstan(x, y, series_name, info=True)
         else:
             yi = curvefit.hugershoff_arstan(x, y, series_name)
-    elif fit == "Linear":
+    elif fit == "GeneralExp":
+        if return_info:
+            yi, model_info = curvefit.general_exp(x, y, series_name, info=True)
+        else:
+            yi = curvefit.general_exp(x, y, series_name)
+    elif fit == "LinearAny":
         yi = curvefit.linear(x, y)
         if return_info:
             model_info = curvefit._line_info(x, yi)
+    elif fit == "LinearNegative":
+        if return_info:
+            yi, model_info = curvefit.linear_neg(x, y, series_name, info=True)
+        else:
+            yi = curvefit.linear_neg(x, y, series_name)
     elif fit == "Mean":
         yi = curvefit.horizontal(x, y)
         if return_info:
@@ -345,13 +374,19 @@ _FIT_CANON = {
     "spline": "Spline",
     "agedepspline": "AgeDepSpline",
     "modnegexp": "ModNegExp", "modnegex": "ModNegExp",
+    "negexp": "NegExp", "negex": "NegExp",
     "modhugershoff": "ModHugershoff",
     "hugershoff": "Hugershoff",
+    "generalexp": "GeneralExp", "genexp": "GeneralExp",
     "mean": "Mean", "horizontal": "Mean",
-    "linear": "Linear",
+    # 'Linear' kept as an alias of the any-slope line for back-compatibility;
+    # ARSTAN's two linear options are 'LinearAny' (opt 4) and 'LinearNegative'
+    # (opt 5, slope constrained <= 0).
+    "linear": "LinearAny", "linearany": "LinearAny",
+    "linearnegative": "LinearNegative", "linearneg": "LinearNegative",
 }
-_FIT_OPTIONS = ("Spline, AgeDepSpline, ModNegExp, ModHugershoff, Hugershoff, "
-                "Mean, Linear")
+_FIT_OPTIONS = ("Spline, AgeDepSpline, ModNegExp, NegExp, ModHugershoff, "
+                "Hugershoff, GeneralExp, Mean, LinearAny, LinearNegative")
 
 
 def _normalize_fit(fit):

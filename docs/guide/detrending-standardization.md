@@ -17,15 +17,37 @@ rwl = dpl.readers("ca533.rwl", header=True)
 rwi = dpl.detrend(rwl, fit="Spline")
 ```
 
-The `fit` argument selects the curve, using dplR's names:
+The `fit` argument selects the curve (dplR's names are the canonical spelling,
+and are case-insensitive):
 
 | `fit` | Curve |
 |---|---|
 | `"Spline"` (default) | Cubic smoothing spline |
-| `"ModNegExp"` | Modified negative exponential, with a negexp → linear → mean fallback chain |
-| `"ModHugershoff"` | Modified Hugershoff |
-| `"Mean"` | Horizontal (series mean) |
-| `"AgeDepSpline"` | Age-dependent spline |
+| `"AgeDepSpline"` | Age-dependent (increasing-stiffness) spline |
+| `"ModNegExp"` | Negative exponential `a·exp(b·t)+k`, fit by **nonlinear least squares** (dplR), with a negexp → linear → mean fallback chain |
+| `"NegExp"` | The **same** negative-exponential curve, fit by ARSTAN's **deterministic** method (Ed Cook's `curve`) |
+| `"ModHugershoff"` | Hugershoff `a·t^b·exp(c·t)+d`, fit by **nonlinear least squares** (dplR) |
+| `"Hugershoff"` | The Hugershoff curve, fit by ARSTAN's **log-linearised closed form** (Ed Cook's `hughdi`) |
+| `"GeneralExp"` | General exponential `a·t·exp(b·t)` — Hugershoff with the power fixed at 1 (ARSTAN option 8) |
+| `"LinearAny"` (alias `"Linear"`) | Best-fit straight line, any slope (ARSTAN option 4) |
+| `"LinearNegative"` | Best-fit line constrained to a non-positive slope, falling back to the mean if the slope is positive (ARSTAN option 5) |
+| `"Mean"` | Horizontal line at the series mean |
+
+Two of these come as **deterministic/nonlinear pairs** — `NegExp`/`ModNegExp`
+and `Hugershoff`/`ModHugershoff` — pairing ARSTAN's deterministic fit with dplR's
+nonlinear-least-squares fit of the same curve. The two behave differently in
+each case:
+
+- **Negative exponential.** Both members minimise the *same* data-space error for
+  the *same* model, so when the nonlinear fit converges `NegExp` and `ModNegExp`
+  give the same curve. `NegExp`'s advantage is robustness: being deterministic it
+  never fails to converge, so it still returns a curve on series where the nls
+  diverges and `ModNegExp` falls back to a line or the mean — handy for batch
+  processing.
+- **Hugershoff.** Here the two *genuinely differ*: dplR's `ModHugershoff`
+  minimises data-space error, while ARSTAN's `Hugershoff` linearises the model and
+  minimises log-space error, so the fitted curves are not the same even when both
+  succeed.
 
 Other important arguments:
 

@@ -202,6 +202,152 @@ def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
                   + str(name) + "; detrending by the series mean instead.\n")
     return out(*_mean_curve(y))
 
+# --- ARSTAN deterministic negative exponential (subroutine `curve`) ----------
+# Ed Cook / R.L. Holmes' deterministic neg-exp fit: model f(i) = ah*exp(-b*i) + eh
+# (i = 1..n). Unlike dplR's ModNegExp (a nonlinear least-squares fit), the decay
+# rate b is found by a 1-D adaptive search seeded from the first-10/last-10 ring
+# means, and the amplitude ah and asymptote eh are solved in closed form at each
+# candidate b. It minimises the SAME data-space RSS as ModNegExp for the SAME
+# model, so when the nls converges cleanly the two curves coincide (to numerical
+# precision) -- unlike the Hugershoff pair, whose two members optimise different
+# error spaces (log vs data). NegExp's value is therefore robustness, not a
+# different shape: the deterministic search never fails to converge, so it still
+# returns a fit on series where the nls diverges and ModNegExp falls back to a
+# line or the mean. It is the neg-exp counterpart of hugershoff_arstan only in
+# spirit (an ARSTAN deterministic port beside a dplR nls fit).
+def _neg_exp_profile(y, b):
+    """Closed-form (ah, eh, rss) for a fixed decay rate b (ARSTAN curve inner
+    solve): least-squares fit of y = eh + ah*exp(-b*i). Returns None if degenerate."""
+    n = len(y)
+    idx = np.arange(1.0, n + 1)
+    if np.any(np.abs(b) * idx > 112.8):        # exp overflow guard (as in curve)
+        return None
+    f = np.exp(-b * idx)
+    a = float(n); bsum = f.sum(); d = y.sum()
+    e = float((f * f).sum()); g = float((y * f).sum())
+    if not (1e-15 < bsum < 1e15) or not (1e-15 < e < 1e15):
+        return None
+    denom = a * e - bsum * bsum
+    if not np.isfinite(denom) or denom == 0:
+        return None
+    eh = (d * e - bsum * g) / denom
+    ah = (d - a * eh) / bsum
+    rss = float(np.sum((y - eh - ah * f) ** 2))
+    return ah, eh, rss
+
+
+def _neg_exp_curve(y):
+    """ARSTAN `curve`: deterministic search for the neg-exp decay rate b, with
+    (ah, eh) profiled out. Returns (ah, b, eh) or None on failure (n<20, overflow,
+    or a rejected fit: b<=0 or eh<0), mirroring the routine's flag-and-fall-back."""
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    if n < 20:
+        return None
+    yf = float(y[:10].mean())
+    yl = float(y[-10:].mean())
+    if yf <= 0 or yl <= 0:
+        return None
+    b = (np.log(yf) - np.log(yl)) / (n - 10.0)
+    if b <= 0:
+        b = 1e-8
+    dlt = 0.0005
+    dinc = 5e-7
+    mid = _neg_exp_profile(y, b)
+    if mid is None:
+        return None
+    ah, eh, rss_mid = mid
+    # Two-phase 1-D search (ARSTAN `curve`): compare the two neighbours b +/- dlt,
+    # greedily stepping the centre onto whichever lowers the RSS. `mo` latches the
+    # moment an iteration finds NO improvement; while it is unset (still improving)
+    # the step DOUBLES to accelerate toward the optimum, and once latched the step
+    # HALVES each iteration to refine, until dlt <= dinc (convergence).
+    mo = False
+    for _ in range(34):
+        improved = False
+        for bk in (b - dlt, b + dlt):
+            r = _neg_exp_profile(y, bk)         # arg-overflow -> ARSTAN's goto 99
+            if r is None:
+                return None
+            if r[2] < rss_mid:                  # sequential/greedy, as in curve
+                b, (ah, eh, rss_mid) = bk, r
+                improved = True
+        if not improved:
+            mo = True                           # latch: leave the accelerate phase
+        if not mo:
+            dlt *= 2.0                          # accelerate: widen the step
+        else:
+            dlt *= 0.5                          # refine: shrink the step
+            if dlt <= dinc:
+                break
+    # ARSTAN reject conditions (line 11903): asymptote too large, non-positive
+    # amplitude, or a negative decay rate -> signal the caller to fall back.
+    if eh > 9999.0 or ah <= 0.0 or b < 0.0:
+        return None
+    return ah, b, eh
+
+
+def neg_exp_arstan(x, y, pos_slope=False, name="", info=False):
+    """Deterministic negative-exponential detrend (ARSTAN `curve`), with the same
+    line->mean fallback chain as ModNegExp. The ARSTAN counterpart of dplR's
+    ModNegExp: same model f = a*exp(-b*t)+k (a>0, b>0, k>=0), fit deterministically
+    rather than by nonlinear least squares."""
+    def out(curve, meta):
+        return (curve, meta) if info else curve
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    sol = _neg_exp_curve(y)
+    if sol is not None:
+        ah, b, eh = sol
+        t = np.arange(1.0, n + 1)
+        fit = ah * np.exp(-b * t) + eh
+        if np.all(fit > 0) and np.all(np.isfinite(fit)):
+            return out(fit, {"method": "NegativeExponential",
+                             "coefs": {"a": float(ah), "b": float(-b), "k": float(eh)}})
+    # straight-line fallback (slope <= 0 unless pos_slope), then the mean
+    yl = linear(x, y)
+    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
+        warnings.warn("NegExp (deterministic) could not fit " + str(name)
+                      + "; using a linear fit instead.\n")
+        return out(yl, _line_info(x, yl))
+    warnings.warn("NegExp (deterministic) and the linear fallback are unsuitable for "
+                  + str(name) + "; detrending by the series mean instead.\n")
+    return out(*_mean_curve(y))
+
+
+# --- ARSTAN general exponential (subroutine `gexp`, menu option 8) ------------
+# The Hugershoff family with the power exponent fixed at 1: f(t) = a * t * exp(b*t)
+# (a>0, b<0). Fit deterministically by linearising -- ln(y/t) = ln(a) + b*t is an
+# ordinary least-squares line of ln(y/t) on t over the positive rings -- so it is
+# closed-form and never fails to converge. A gentler rise-then-decline curve than
+# the full 4-parameter Hugershoff; ARSTAN's gexp carries no intercept term.
+def general_exp(x, y, name="", info=False):
+    def out(curve, meta):
+        return (curve, meta) if info else curve
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    t = np.arange(1.0, n + 1)
+    ok = (y > 0) & (t > 0)
+    tk = t[ok]
+    if tk.size < 3:
+        warnings.warn("GeneralExp needs >=3 positive rings for " + str(name)
+                      + "; detrending by the series mean instead.\n")
+        return out(*_mean_curve(y))
+    z = np.log(y[ok]) - np.log(tk)             # ln(y/t)
+    sxx = float(np.sum((tk - tk.mean()) ** 2))
+    if sxx == 0:
+        return out(*_mean_curve(y))
+    b = float(np.sum((tk - tk.mean()) * (z - z.mean())) / sxx)   # OLS slope
+    a = float(np.exp(z.mean() - b * tk.mean()))                  # ln-intercept -> a
+    fit = a * t * np.exp(b * t)
+    if not (np.all(fit > 0) and np.all(np.isfinite(fit))):
+        warnings.warn("GeneralExp fit is not all positive for " + str(name)
+                      + "; detrending by the series mean instead.\n")
+        return out(*_mean_curve(y))
+    return out(fit, {"method": "GeneralExponential",
+                     "coefs": {"a": a, "b": b}})
+
+
 # Fit a horizontal line to the series
 def horizontal(x, y):
     yi = np.asarray([np.mean(y)] * len(x))
@@ -223,3 +369,18 @@ def linear(x, y, bounds=False):
     m, c = pars
     yi = line_function(x, m, c)
     return yi
+
+
+# ARSTAN opt 5 / LinearNegative: a best-fit straight line accepted only when its
+# slope is <= 0 (a non-increasing line) AND all its values are positive; otherwise
+# detrend by the series mean. (opt 4 / LinearAny is the plain any-slope linear().)
+def linear_neg(x, y, name="", info=False):
+    def out(curve, meta):
+        return (curve, meta) if info else curve
+    yl = linear(x, y)
+    if (yl[-1] - yl[0]) <= 0 and np.all(yl > 0):
+        return out(yl, _line_info(x, yl))
+    warnings.warn("LinearNegative: the best-fit slope is positive (or the line is "
+                  "non-positive) for " + str(name)
+                  + "; detrending by the series mean instead.\n")
+    return out(*_mean_curve(y))
