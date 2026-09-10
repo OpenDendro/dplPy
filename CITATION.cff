@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use dplPy in your research, please cite both the software (via this record) and any specific method reference(s) named in the docstrings of the functions you relied on."
+title: "dplPy: Dendrochronology Program Library for Python"
+abstract: >-
+  dplPy is a Python library for tree-ring (dendrochronology) analysis: reading
+  and writing ring-width data, detrending and standardization, chronology
+  building, variance stabilization, and crossdating. It ports the methods of the
+  R library dplR and emulates the ARSTAN, CRUST, and COFECHA programs, with a
+  focus on reproducing their methods faithfully.
+type: software
+authors:
+  - family-names: Anchukaitis
+    given-names: Kevin J
+    orcid: "https://orcid.org/0000-0002-8509-8080"
+    affiliation: "University of Arizona"
+  - family-names: Ale
+    given-names: Ifeoluwa
+    affiliation: "University of Arizona"
+  - family-names: Bunn
+    given-names: Andrew G
+    orcid: "https://orcid.org/0000-0001-9027-2162"
+    affiliation: "Western Washington University"
+  - family-names: Swetnam
+    given-names: Tyson Lee
+    orcid: "https://orcid.org/0000-0002-6639-7181"
+    affiliation: "University of New Mexico"
+  - family-names: Cook
+    given-names: Edward R
+    orcid: "https://orcid.org/0000-0001-7478-4176"
+    affiliation: "Lamont-Doherty Earth Observatory of Columbia University"
+repository-code: "https://github.com/OpenDendro/dplPy"
+url: "https://opendendro.github.io/dplPy"
+repository-artifact: "https://pypi.org/project/dplpy/"
+license: GPL-3.0-or-later
+version: 0.5.0
+date-released: "2026-09-09"
+keywords:
+  - dendrochronology
+  - tree rings
+  - dendroclimatology
+  - paleoclimate
+  - crossdating
+  - standardization
+  - chronology
+  - dplR
+  - ARSTAN
+  - time series
+# Once the repository is archived on Zenodo, add the CONCEPT DOI here so the
+# citation always resolves to the latest version, e.g.:
+# doi: 10.5281/zenodo.XXXXXXX
+# identifiers:
+#   - type: doi
+#     value: 10.5281/zenodo.XXXXXXX
+#     description: "Concept DOI (all versions)"

@@ -1,0 +1,45 @@
+{
+  "title": "dplPy: Dendrochronology Program Library for Python",
+  "description": "dplPy is a Python library for tree-ring (dendrochronology) analysis: reading and writing ring-width data, detrending and standardization, chronology building, variance stabilization, and crossdating. It ports the methods of the R library dplR and emulates the ARSTAN, CRUST, and COFECHA programs, with a focus on reproducing their methods faithfully.",
+  "upload_type": "software",
+  "license": "GPL-3.0-or-later",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Anchukaitis, Kevin J",
+      "affiliation": "University of Arizona",
+      "orcid": "0000-0002-8509-8080"
+    },
+    {
+      "name": "Ale, Ifeoluwa",
+      "affiliation": "University of Arizona"
+    },
+    {
+      "name": "Bunn, Andrew G",
+      "affiliation": "Western Washington University",
+      "orcid": "0000-0001-9027-2162"
+    },
+    {
+      "name": "Swetnam, Tyson Lee",
+      "affiliation": "University of New Mexico",
+      "orcid": "0000-0002-6639-7181"
+    },
+    {
+      "name": "Cook, Edward R",
+      "affiliation": "Lamont-Doherty Earth Observatory of Columbia University",
+      "orcid": "0000-0001-7478-4176"
+    }
+  ],
+  "keywords": [
+    "dendrochronology",
+    "tree rings",
+    "dendroclimatology",
+    "paleoclimate",
+    "crossdating",
+    "standardization",
+    "chronology",
+    "dplR",
+    "ARSTAN",
+    "time series"
+  ]
+}
