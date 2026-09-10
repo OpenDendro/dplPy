@@ -39,6 +39,37 @@ import numpy as np
 import pandas as pd
 
 
+def _skew(x):
+    """Population (g1) skewness of the non-NaN values, matching ARSTAN's moment
+    and scipy.stats.skew (bias=True). NaN if fewer than 3 finite values."""
+    x = np.asarray(x, dtype=float)
+    x = x[~np.isnan(x)]
+    if x.size < 3:
+        return np.nan
+    m = x.mean()
+    s = x.std(ddof=0)
+    if s == 0 or not np.isfinite(s):
+        return np.nan
+    return float(np.mean(((x - m) / s) ** 3))
+
+
+def _spread_level_corr(x, prec):
+    """Pearson correlation of log(spread) on log(level) from adjacent rings --
+    the strength of the level-spread dependence the power transform removes. Uses
+    the same mean-based level/spread as the power fit (ARSTAN's diagnostic uses
+    the trailing ring for the level; dplPy stays consistent with its own power)."""
+    x = np.asarray(x, dtype=float)
+    x = x[~np.isnan(x)]
+    if x.size < 3:
+        return np.nan
+    M, S = _level_spread(x, prec)
+    lm, ls = np.log(M), np.log(S)
+    ok = np.isfinite(lm) & np.isfinite(ls)
+    if ok.sum() < 3 or np.std(lm[ok]) == 0 or np.std(ls[ok]) == 0:
+        return np.nan
+    return float(np.corrcoef(lm[ok], ls[ok])[0, 1])
+
+
 def _getprec(values):
     """Measurement resolution used to floor zero level/spread values before the
     log regression. Mirrors dplR's getprec()."""
@@ -107,7 +138,55 @@ def _rescale(transformed, original):
     return (t - tm) / ts * np.nanstd(o, ddof=1) + np.nanmean(o)
 
 
-def powt(rwl, method="cook", rescale=False, return_power=False):
+def _powt_diagnostic_plot(stats):
+    """ARSTAN-style 'data transform statistics' figure: per-series skew and
+    spread-vs-level correlation, before (top) and after (bottom) the transform,
+    as bars with median and quartile-hinge reference lines. ``stats`` is the
+    per-series DataFrame built by powt (columns skew_before/after, r_before/after).
+    A dplPy addition emulating ARSTAN's power1 (dplR's powt has no such plot)."""
+    import matplotlib.pyplot as plt
+    from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
+
+    idx = np.arange(1, len(stats) + 1)
+
+    def panel(ax, vals, title, ylab):
+        vals = np.asarray(vals, dtype=float)
+        ax.bar(idx, vals, width=0.7, color=ACCENT, edgecolor="none")
+        ax.axhline(0, color="0.4", lw=0.8)
+        finite = vals[np.isfinite(vals)]
+        if finite.size:
+            med = float(np.median(finite))
+            lo, hi = np.percentile(finite, [25, 75])
+            ax.axhline(med, color=ACCENT_WARM, lw=1.1, label="median %.2f" % med)
+            ax.axhline(lo, color=ACCENT_WARM, lw=0.7, ls="--")
+            ax.axhline(hi, color=ACCENT_WARM, lw=0.7, ls="--")
+            ax.legend(loc="upper right", fontsize=7, frameon=False)
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel("series")
+        ax.set_ylabel(ylab)
+        style_axes(ax)
+
+    fig, axs = plt.subplots(2, 2, figsize=(12, 7))
+    fig.suptitle("Data transform statistics (adaptive power, Cook & Peters 1997)",
+                 fontsize=12)
+    panel(axs[0, 0], stats["skew_before"], "Before: skew", "skew")
+    panel(axs[0, 1], stats["r_before"], "Before: spread-vs-level correlation", "r")
+    panel(axs[1, 0], stats["skew_after"], "After: skew", "skew")
+    panel(axs[1, 1], stats["r_after"], "After: spread-vs-level correlation", "r")
+    # share the y-axis within each column so before/after are directly comparable
+    for col in (0, 1):
+        lo = min(axs[0, col].get_ylim()[0], axs[1, col].get_ylim()[0])
+        hi = max(axs[0, col].get_ylim()[1], axs[1, col].get_ylim()[1])
+        axs[0, col].set_ylim(lo, hi)
+        axs[1, col].set_ylim(lo, hi)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    finalize_font(fig)
+    plt.show()
+    return fig
+
+
+def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
+         return_stats=False):
     """Adaptive power transformation of ring-width series (variance stabilising).
 
     Extended Summary
@@ -141,11 +220,38 @@ def powt(rwl, method="cook", rescale=False, return_power=False):
         if True, return a (transformed, power) tuple instead of just the
         transformed data; ``power`` is a Series over series for 'cook' or a
         single float for 'universal'.
+    plot : bool, default False
+        if True, draw the "data transform statistics" diagnostic -- a 2x2 figure
+        of per-series skew and spread-vs-level correlation, before (top row) and
+        after (bottom row) the transform, with median and quartile reference
+        lines. A successful transform drives the bottom-row bars toward zero
+        (series made symmetric and variance decoupled from level). This emulates
+        ARSTAN's power-transform diagnostic (dplR's powt has no such plot).
+    return_stats : bool, default False
+        if True, also return a per-series diagnostics DataFrame with columns
+        ``skew_before``, ``skew_after``, ``r_before``, ``r_after`` (the
+        spread-vs-level correlations) and ``power``. The spread-vs-level
+        correlation uses dplPy's mean-based level/spread (the same used to fit the
+        power), which differs slightly from ARSTAN's trailing-ring level.
 
     Returns
     -------
-    transformed data of the same type as ``rwl`` (or a (data, power) tuple when
-    return_power=True).
+    transformed data of the same type as ``rwl``. With ``return_power`` and/or
+    ``return_stats`` the return becomes a tuple: ``(data, power)``,
+    ``(data, stats)``, or ``(data, power, stats)`` (power first, stats last).
+
+    Notes
+    -----
+    **Difference from ARSTAN's power transform.** The power comes from regressing
+    log(spread) on log(level) across adjacent rings. dplPy (following dplR) defines
+    the *level* as the pair mean ``(x[t] + x[t-1]) / 2``; ARSTAN's power path
+    (``trnfrm``/``mndf`` with ``iopt=2``) instead uses the trailing ring ``x[t]``.
+    ARSTAN also clamps the fitted power to ``[0, 1]`` (with ``p = 0`` becoming a
+    log transform), whereas dplPy applies ``p = |1 - b|`` directly (log only when
+    ``p <= 0``). So dplPy reproduces dplR's power exactly, but a given series'
+    power can differ slightly from ARSTAN's. The ``plot``/``return_stats``
+    diagnostic uses the same mean-based level as the fit, so it stays consistent
+    with the power dplPy actually applies.
 
     Examples
     --------
@@ -173,22 +279,55 @@ def powt(rwl, method="cook", rescale=False, return_power=False):
         raise ValueError("If rwl is a Series, method must be 'cook'.")
 
     if method == "cook":
-        return _powt_cook(rwl, is_series, rescale, return_power)
-    return _powt_universal(rwl, rescale, return_power)
+        return _powt_cook(rwl, is_series, rescale, return_power, plot, return_stats)
+    return _powt_universal(rwl, rescale, return_power, plot, return_stats)
 
 
-def _powt_cook(rwl, is_series, rescale, return_power):
+def _finish(result, power, stats, return_power, return_stats, plot):
+    """Assemble powt's return value and draw the diagnostic if requested."""
+    if plot and stats is not None:
+        _powt_diagnostic_plot(stats)
+    if return_power and return_stats:
+        return result, power, stats
+    if return_stats:
+        return result, stats
+    if return_power:
+        return result, power
+    return result
+
+
+def _series_stats(name, raw, transformed, prec, power):
+    """One row of the diagnostics table for a single series."""
+    return {
+        "series": name,
+        "skew_before": _skew(raw),
+        "skew_after": _skew(transformed),
+        "r_before": _spread_level_corr(raw, prec),
+        "r_after": _spread_level_corr(transformed, prec),
+        "power": power,
+    }
+
+
+def _powt_cook(rwl, is_series, rescale, return_power, plot=False, return_stats=False):
     prec = _getprec(rwl.to_numpy())
+    need_stats = plot or return_stats
     if is_series:
-        p = _cook_power(rwl.to_numpy(), prec)
-        out = _apply_power(rwl.to_numpy(), p)
+        raw = rwl.to_numpy()
+        p = _cook_power(raw, prec)
+        out = _apply_power(raw, p)
         if rescale:
-            out = _rescale(out, rwl.to_numpy())
+            out = _rescale(out, raw)
         result = pd.Series(out, index=rwl.index, name=rwl.name)
-        return (result, p) if return_power else result
+        stats = None
+        if need_stats:
+            nm = rwl.name if rwl.name is not None else "series"
+            stats = pd.DataFrame([_series_stats(nm, raw, out, prec, p)]
+                                 ).set_index("series")
+        return _finish(result, p, stats, return_power, return_stats, plot)
 
     powers = {}
     cols = {}
+    rows = []
     for name in rwl.columns:
         col = rwl[name].to_numpy()
         p = _cook_power(col, prec)
@@ -197,13 +336,15 @@ def _powt_cook(rwl, is_series, rescale, return_power):
             out = _rescale(out, col)
         powers[name] = p
         cols[name] = out
+        if need_stats:
+            rows.append(_series_stats(name, col, out, prec, p))
     result = pd.DataFrame(cols, index=rwl.index)
-    if return_power:
-        return result, pd.Series(powers, name="power")
-    return result
+    power = pd.Series(powers, name="power")
+    stats = pd.DataFrame(rows).set_index("series") if need_stats else None
+    return _finish(result, power, stats, return_power, return_stats, plot)
 
 
-def _powt_universal(rwl, rescale, return_power):
+def _powt_universal(rwl, rescale, return_power, plot=False, return_stats=False):
     try:
         import statsmodels.formula.api as smf
     except ImportError as exc:
@@ -238,11 +379,17 @@ def _powt_universal(rwl, rescale, return_power):
     b = float(fit.fe_params["run_M"])
     p = 1.0 - b
 
+    need_stats = plot or return_stats
     cols = {}
+    rows = []
     for name in rwl.columns:
-        out = _apply_power(rwl[name].to_numpy(), p)
+        col = rwl[name].to_numpy()
+        out = _apply_power(col, p)
         if rescale:
-            out = _rescale(out, rwl[name].to_numpy())
+            out = _rescale(out, col)
         cols[name] = out
+        if need_stats:
+            rows.append(_series_stats(name, col, out, prec, p))
     result = pd.DataFrame(cols, index=rwl.index)
-    return (result, p) if return_power else result
+    stats = pd.DataFrame(rows).set_index("series") if need_stats else None
+    return _finish(result, p, stats, return_power, return_stats, plot)

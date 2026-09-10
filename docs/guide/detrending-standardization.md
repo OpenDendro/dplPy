@@ -111,7 +111,11 @@ difference below `mad_threshold`). `preset="crust"` selects the CRUST variant.
   stiffness increases with cambial age. It is also available inside `detrend`
   via `fit="AgeDepSpline"`.
 - **`powt`** applies a power transformation (Cook & Peters) as an alternative to
-  ratio detrending for variance stabilization.
+  ratio detrending for variance stabilization. `plot=True` draws an ARSTAN-style
+  "data transform statistics" diagnostic — per-series skew and spread-vs-level
+  correlation, before and after the transform — and `return_stats=True` returns
+  those numbers as a table, so you can check the transform actually made the
+  series symmetric and decoupled variance from level.
 
 ## Choosing a method
 

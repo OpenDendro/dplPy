@@ -96,3 +96,51 @@ def test_powt_bad_method():
 def test_powt_bad_input():
     with pytest.raises(TypeError):
         dpl.powt("not a frame")
+
+
+# --- diagnostic stats + plot (ARSTAN-style; a dplPy addition) ---------------
+def test_powt_return_stats_shape_and_columns():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    pt, stats = dpl.powt(rwl, return_stats=True)
+    assert isinstance(pt, pd.DataFrame)
+    assert list(stats.columns) == ["skew_before", "skew_after", "r_before",
+                                   "r_after", "power"]
+    assert len(stats) == rwl.shape[1]                 # one row per series
+
+
+def test_powt_transform_reduces_skew_and_spread_level_corr():
+    # the whole point of the diagnostic: after the transform, both the skew and
+    # the spread-vs-level correlation shrink toward zero (median over series)
+    rwl = _read_quiet("tests/data/csv/co021.csv")
+    _, stats = dpl.powt(rwl, return_stats=True)
+    assert stats["skew_after"].abs().median() < stats["skew_before"].abs().median()
+    assert stats["r_after"].abs().median() < stats["r_before"].abs().median()
+
+
+def test_powt_return_power_and_stats_tuple():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    out = dpl.powt(rwl, return_power=True, return_stats=True)
+    assert isinstance(out, tuple) and len(out) == 3   # (data, power, stats)
+    data, power, stats = out
+    # the stats 'power' column matches the returned power Series
+    assert np.allclose(stats["power"].to_numpy(),
+                       power.reindex(stats.index).to_numpy(), equal_nan=True)
+
+
+def test_powt_universal_stats_constant_power():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    _, stats = dpl.powt(rwl, method="universal", return_stats=True)
+    assert stats["power"].nunique() == 1              # one power for all series
+
+
+def test_powt_plot_smoke():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from unittest.mock import patch
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    plt.close("all")
+    with patch("matplotlib.pyplot.show"):
+        dpl.powt(rwl, plot=True)
+    assert len(plt.get_fignums()) >= 1
+    plt.close("all")
