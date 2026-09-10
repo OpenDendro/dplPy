@@ -80,13 +80,20 @@ def test_chron_ars_recovers_ar_order_on_ar2():
 # detrend(ca533, method="Spline") -> chron.ars(biweight=FALSE) -- run entirely
 # in R. dplPy's own detrend + chron_ars reproduces these to ~5e-10, so this
 # encodes the end-to-end dplR validation into CI without requiring R.
+#
+# NOTE: dplR's chron.ars re-reddens each series and then averages, which dplPy
+# exposes as ars_method="dplr". dplPy's default (ars_method="arstan") instead
+# re-reddens the mean of the prewhitened series (Ed Cook's ARSTAN order), so
+# this dplR-parity test pins the "dplr" path explicitly. std and res are the
+# same under both settings.
 # ---------------------------------------------------------------------------
 def test_chron_ars_matches_dplR_reference_ca533():
     data = dpl.readers("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        out = dpl.chron_ars(rwi, biweight=False, prewhiten_method="ar.yw", verbose=False)
+        out = dpl.chron_ars(rwi, biweight=False, prewhiten_method="ar.yw",
+                            ars_method="dplr", verbose=False)
 
     # dplR std/res/ars at three years (atol 1e-6)
     ref = {
@@ -98,6 +105,57 @@ def test_chron_ars_matches_dplR_reference_ca533():
         assert abs(out.loc[yr, "std"] - s) < 1e-6, (yr, "std")
         assert abs(out.loc[yr, "res"] - r) < 1e-6, (yr, "res")
         assert abs(out.loc[yr, "ars"] - a) < 1e-6, (yr, "ars")
+
+
+def test_chron_ars_bad_ars_method():
+    df = _ar2_dataset()
+    with pytest.raises(ValueError) as e:
+        dpl.chron_ars(df, ars_method="bogus", verbose=False)
+    assert "ars_method" in str(e.value)
+
+
+def test_chron_ars_arstan_default_reredden_the_residual_mean():
+    # The default ars_method="arstan" builds ars = postAR(mean(prewhitened
+    # series)) -- average then re-redden -- following Ed Cook's ARSTAN, rather
+    # than dplR's mean(postAR(series_i)). Reconstruct that reference directly
+    # from chron_ars's own internals and assert the ars column matches it.
+    from dplpy.chron_ars import _pooled_ar, _prewhiten_ar_yw, _post_ar, _aggregate
+
+    df = _ar2_dataset(n_series=10, n_years=250, phi=(0.6, -0.25), seed=3)
+    x = df.to_numpy(dtype=float)
+    n_series = x.shape[1]
+
+    out_ar = _pooled_ar(x, max_lag=10, first_aic_min=True)
+    p = out_ar["order"]
+    assert p > 0  # otherwise the two ars_methods coincide trivially
+    phi = -out_ar["arcoefs"][p - 1, :p]
+
+    rwi_clean = np.column_stack([_prewhiten_ar_yw(x[:, s], p) for s in range(n_series)])
+    # ARSTAN order: re-redden the mean of the prewhitened series
+    expected_ars = _post_ar(_aggregate(rwi_clean, biweight=False), phi)
+
+    out = dpl.chron_ars(df, biweight=False, prewhiten_method="ar.yw", verbose=False)
+    v = out["ars"].to_numpy()
+    ok = np.isfinite(expected_ars) & np.isfinite(v)
+    assert ok.any()
+    assert np.allclose(v[ok], expected_ars[ok], atol=1e-10)
+
+
+def test_chron_ars_methods_differ_under_staggered_depth():
+    # average-then-redden and redden-then-average do not commute when sample
+    # depth changes through time, so the two ars_methods should differ here.
+    df = _ar2_dataset(n_series=10, n_years=250, phi=(0.6, -0.25), seed=5)
+    # stagger onsets so early years have shallow depth
+    arr = df.to_numpy(dtype=float)
+    for s in range(arr.shape[1]):
+        arr[: s * 12, s] = np.nan
+    df = pd.DataFrame(arr, index=df.index, columns=df.columns)
+
+    a = dpl.chron_ars(df, biweight=False, ars_method="arstan", verbose=False)["ars"].to_numpy()
+    d = dpl.chron_ars(df, biweight=False, ars_method="dplr", verbose=False)["ars"].to_numpy()
+    ok = np.isfinite(a) & np.isfinite(d)
+    assert ok.any()
+    assert not np.allclose(a[ok], d[ok], atol=1e-8)
 
 
 def test_pooled_acf_matches_dplR_reference_ca533():

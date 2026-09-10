@@ -55,10 +55,12 @@ from scipy.signal import lfilter
 from .tbrm import tbrm_rows
 
 _KNOWN_PREWHITEN_METHODS = ("ar.yw", "arima.CSS-ML")
+_KNOWN_ARS_METHODS = ("arstan", "dplr")
 
 
 def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
-              first_aic_min=True, verbose=True, prewhiten_method="ar.yw"):
+              first_aic_min=True, verbose=True, prewhiten_method="ar.yw",
+              ars_method="arstan"):
     """Build ARSTAN standard, residual, and re-reddened chronologies.
 
     Extended Summary
@@ -71,10 +73,12 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     - **res**: the residual chronology -- each series is prewhitened with a
       pooled AR(p) model, the prewhitened series are averaged, and that mean is
       prewhitened once more to order p, yielding a near-white chronology.
-    - **ars**: the ARSTAN chronology -- the prewhitened series are
-      "re-reddened" by reintroducing the *pooled* autoregressive persistence
-      (postAR), then averaged. This keeps the common red-noise structure while
-      suppressing series-specific noise.
+    - **ars**: the ARSTAN chronology -- the common red-noise persistence
+      (the *pooled* AR model) is reintroduced by "re-reddening" (postAR). How
+      this is done is controlled by ``ars_method`` (see Notes): the default
+      ``"arstan"`` re-reddens the mean of the prewhitened series (average then
+      re-redden, as in Ed Cook's ARSTAN); ``"dplr"`` re-reddens each series and
+      then averages (matching dplR's chron.ars).
 
     The AR order p is chosen from a pooled autocovariance accumulated across all
     series and lags (Cook's pooled-AR approach), converted to AR coefficients
@@ -106,11 +110,37 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     prewhiten_method : str, default "ar.yw"
         "ar.yw" (Yule-Walker, the default and the numerically exact match to
         dplR) or "arima.CSS-ML" (matches dplR within tolerance).
+    ars_method : str, default "arstan"
+        how the ARSTAN (re-reddened) chronology is constructed (see Notes):
+        "arstan" re-reddens the mean of the prewhitened series (average then
+        re-redden -- Ed Cook's ARSTAN order); "dplr" re-reddens each series and
+        then averages (dplR's chron.ars order). The two agree only when every
+        series spans the full period; under staggered sample depth they differ.
 
     Returns
     -------
     out : pandas dataframe indexed by year with columns 'std', 'res', 'ars',
         and 'samp_depth'.
+
+    Notes
+    -----
+    **ARSTAN chronology construction (``ars_method``).** The re-reddening and
+    averaging steps do not commute when sample depth changes through time, so
+    there are two distinct ways to build the ARSTAN chronology:
+
+    - ``"arstan"`` (default): ``ars = postAR(mean(prewhitened series))`` --
+      average the prewhitened series first, then re-redden that single mean
+      series once. This reproduces Ed Cook's ARSTAN FORTRAN, which re-reddens
+      the residual chronology directly (``commie1`` applied to the residual
+      chronology). dplPy defaults to this to be faithful to ARSTAN, from which
+      chron_ars takes its DNA.
+    - ``"dplr"``: ``ars = mean(postAR(prewhitened series_i))`` -- re-redden each
+      prewhitened series and then average. This matches dplR's ``chron.ars`` and
+      was dplPy's behavior before this option existed.
+
+    The ``std`` and ``res`` chronologies, the pooled AR order, and the
+    common-pooled-order prewhitening are identical for both settings; only the
+    ``ars`` column changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
 
     Examples
     --------
@@ -129,6 +159,9 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     if prewhiten_method not in _KNOWN_PREWHITEN_METHODS:
         raise ValueError("prewhiten_method must be one of " + str(_KNOWN_PREWHITEN_METHODS)
                          + ", got '" + str(prewhiten_method) + "'.")
+    if ars_method not in _KNOWN_ARS_METHODS:
+        raise ValueError("ars_method must be one of " + str(_KNOWN_ARS_METHODS)
+                         + ", got '" + str(ars_method) + "'.")
 
     x = rwi_data.to_numpy(dtype=float)
     n_series = x.shape[1]
@@ -152,16 +185,32 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     # residual chronology: mean of prewhitened series, prewhitened again to p
     res_crn = prewhiten(_aggregate(rwi_clean, biweight), p)
 
-    # re-reddened (ARSTAN) chronology: post-redden each prewhitened series,
-    # then aggregate. postAR is called with the pooled AR coefficients.
+    # re-reddened (ARSTAN) chronology. postAR is called with the pooled AR
+    # coefficients. Two constructions are offered (see the docstring):
+    #   "arstan" (default): re-redden the already-built residual-style mean of
+    #      the prewhitened series -- ars = postAR(mean(prewhitened series)) --
+    #      i.e. average THEN re-redden. This is what Ed Cook's ARSTAN does
+    #      (commie1 applied to the residual chronology).
+    #   "dplr": re-redden each prewhitened series, THEN average --
+    #      ars = mean(postAR(prewhitened series_i)) -- matching dplR's chron.ars
+    #      and dplPy's original behavior. These do not commute under staggered
+    #      sample depth.
     if p > 0:
         # out_ar["arcoefs"] holds dplR's negated coefs (ARcoefs); dplR calls
         # postAR with -phi, i.e. the positive AR coefficients.
         phi = -out_ar["arcoefs"][p - 1, :p]
     else:
         phi = np.empty(0)
-    rwi_ar = np.column_stack([_post_ar(rwi_clean[:, s], phi) for s in range(n_series)])
-    ars_crn = _aggregate(rwi_ar, biweight)
+    if ars_method == "arstan":
+        # average then re-redden: re-redden the mean of the prewhitened series.
+        # NOTE: unlike res_crn, this mean is NOT prewhitened again before
+        # re-reddening -- prewhiten-then-postAR to the same order would undo
+        # each other. ARSTAN re-reddens the residual chronology directly.
+        ars_crn = _post_ar(_aggregate(rwi_clean, biweight), phi)
+    else:  # "dplr": re-redden each series then average
+        rwi_ar = np.column_stack(
+            [_post_ar(rwi_clean[:, s], phi) for s in range(n_series)])
+        ars_crn = _aggregate(rwi_ar, biweight)
 
     out = pd.DataFrame(
         {"std": std_crn, "res": res_crn, "ars": ars_crn, "samp_depth": samp_depth},
