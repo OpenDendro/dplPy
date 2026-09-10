@@ -32,13 +32,16 @@ def _gp():
 
 
 # NOTE: there is no dplR reference for signal-free RCS (dplR has no such
-# function). These are dplPy's own converged values on the gp data -- a
-# REGRESSION anchor (does the port keep reproducing itself), NOT a match against
-# an external gold standard. The regional-curve smoother underneath is separately
-# validated against CRUST's compiled spline3 kernel in test_rcs.py.
-_SFC_GP = [1.00975254, 0.91797774, 0.74175436, 1.03246588, 1.22140989, 1.06727725]
-_RC_GP = [1.05662908, 1.29672372, 1.53181446, 1.75210504, 1.95325716, 2.12763972]
-_RWI_01A_GP = [0.439466, 0.489377, 0.480054]
+# function). These are dplPy's own converged values on the gp data at the default
+# settings (biweight_crn=False, matching CRUST's KRB=1) -- a REGRESSION anchor
+# (does the port keep reproducing itself), NOT a match against an external gold
+# standard. The regional-curve smoother underneath is separately validated
+# against CRUST's compiled spline3 kernel in test_rcs.py; and the full iteration
+# matches a headless build of CRUST to ~1e-3 on finnmrg/norwmrg (see
+# dev/sfrcs_testing_2026-09-10.md).
+_SFC_GP = [1.0088354, 0.91715642, 0.74109939, 1.03156439, 1.20396242, 1.04915458]
+_RC_GP = [1.05785466, 1.298724, 1.53274415, 1.74856698, 1.94272965, 2.11017885]
+_RWI_01A_GP = [0.436544, 0.486024, 0.476674]
 
 
 def test_sfrcs_runs_and_converges():

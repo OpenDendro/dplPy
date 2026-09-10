@@ -39,7 +39,7 @@ from .rcs import _sfrcs_run, _plot_rcs, _build_rwca, _crust_regional_curve
 
 
 def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
-          biweight_crn=True, ss=10, rise=None, max_iterations=40, tol=1e-3,
+          biweight_crn=False, ss=10, rise=None, max_iterations=40, tol=1e-3,
           make_plot=True, return_info=False, verbose=True):
     """Signal-Free Regional Curve Standardisation of a set of ring-width series.
 
@@ -79,9 +79,12 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
     biweight_curve : bool, default False
         build the regional curve with Tukey's biweight robust mean by cambial age.
         Default False matches CRUST, which uses the arithmetic mean by age.
-    biweight_crn : bool, default True
-        build the chronology with the biweight robust mean by year (CRUST default);
-        False uses the arithmetic mean.
+    biweight_crn : bool, default False
+        how the chronology mean by year is formed. False (default) uses the
+        arithmetic mean, matching CRUST's ``RCSdefault.fil`` (KRB=1) -- this
+        reproduces a headless build of CRUST to ~1e-3 on CRUST's own sample data.
+        True uses Tukey's biweight robust mean (a robust alternative that departs
+        from CRUST's default).
     ss : int, default 10
         age-dependent spline stiffness offset for the regional curve; per-point
         stiffness is ``ss + cambial age`` (ss=10 -> 11-year minimum), as in CRUST.

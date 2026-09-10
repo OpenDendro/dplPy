@@ -126,7 +126,7 @@ def _build_rwca(X, po_arr, nrow):
 
 
 def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
-               biweight_crn=True, ss=10, rise=None, max_iterations=40,
+               biweight_crn=False, ss=10, rise=None, max_iterations=40,
                tol=1e-3, verbose=True):
     """Single-curve signal-free RCS. Returns (rwi_matrix, crn, samp_depth,
     history, n_iter, converged).
