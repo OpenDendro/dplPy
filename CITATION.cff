@@ -45,10 +45,13 @@ keywords:
   - dplR
   - ARSTAN
   - time series
-# Once the repository is archived on Zenodo, add the CONCEPT DOI here so the
-# citation always resolves to the latest version, e.g.:
-# doi: 10.5281/zenodo.XXXXXXX
-# identifiers:
-#   - type: doi
-#     value: 10.5281/zenodo.XXXXXXX
-#     description: "Concept DOI (all versions)"
+# The concept DOI (all versions) is used as the primary DOI so the citation
+# always resolves to the latest release; the version DOI is listed alongside.
+doi: 10.5281/zenodo.22695105
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22695105
+    description: "Concept DOI (all versions)"
+  - type: doi
+    value: 10.5281/zenodo.22695106
+    description: "Version DOI (v0.6.0)"
