@@ -84,8 +84,10 @@ def test_chron_ars_recovers_ar_order_on_ar2():
 # NOTE: dplR's chron.ars re-reddens each series and then averages, which dplPy
 # exposes as ars_method="dplr". dplPy's default (ars_method="arstan") instead
 # re-reddens the mean of the prewhitened series (Ed Cook's ARSTAN order), so
-# this dplR-parity test pins the "dplr" path explicitly. std and res are the
-# same under both settings.
+# this dplR-parity test pins the "dplr" path explicitly. It also pins
+# backcast=False, because dplPy now defaults to ARSTAN-style backcasting
+# (backcast=True), which fills the first p residuals that dplR leaves as NaN and
+# thereby changes res/ars at years where a young series is within its first p.
 # ---------------------------------------------------------------------------
 def test_chron_ars_matches_dplR_reference_ca533():
     data = dpl.readers("tests/data/csv/ca533.csv")
@@ -93,7 +95,7 @@ def test_chron_ars_matches_dplR_reference_ca533():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         out = dpl.chron_ars(rwi, biweight=False, prewhiten_method="ar.yw",
-                            ars_method="dplr", verbose=False)
+                            ars_method="dplr", backcast=False, verbose=False)
 
     # dplR std/res/ars at three years (atol 1e-6)
     ref = {
@@ -134,7 +136,10 @@ def test_chron_ars_arstan_default_reredden_the_residual_mean():
     # ARSTAN order: re-redden the mean of the prewhitened series
     expected_ars = _post_ar(_aggregate(rwi_clean, biweight=False), phi)
 
-    out = dpl.chron_ars(df, biweight=False, prewhiten_method="ar.yw", verbose=False)
+    # backcast=False so the reference (built with the non-backcast prewhiten)
+    # matches; the arstan-vs-dplr construction is what this test isolates.
+    out = dpl.chron_ars(df, biweight=False, prewhiten_method="ar.yw",
+                        backcast=False, verbose=False)
     v = out["ars"].to_numpy()
     ok = np.isfinite(expected_ars) & np.isfinite(v)
     assert ok.any()
@@ -156,6 +161,59 @@ def test_chron_ars_methods_differ_under_staggered_depth():
     ok = np.isfinite(a) & np.isfinite(d)
     assert ok.any()
     assert not np.allclose(a[ok], d[ok], atol=1e-8)
+
+
+# --- backcasting (ARSTAN bckcst) -------------------------------------------
+# see dev/arstan_backcasting_review_2026-09-10.md
+def test_chron_ars_backcast_default_fills_leading_nan():
+    # default backcast=True: the residual and ARSTAN chronologies are full length
+    # (no leading NaN); backcast=False leaves the first ~p residuals NaN as dplR.
+    df = _ar2_dataset(n_series=8, n_years=200, phi=(0.6, -0.25), seed=1)
+    on = dpl.chron_ars(df, verbose=False)                       # backcast=True
+    off = dpl.chron_ars(df, verbose=False, backcast=False)
+    for col in ("res", "ars"):
+        assert np.isfinite(on[col].to_numpy()).all(), col       # no NaN anywhere
+        assert np.isnan(off[col].to_numpy()).any(), col         # some leading NaN
+    # std has no AR model, so it is unaffected by backcast
+    assert np.allclose(on["std"], off["std"], equal_nan=True)
+
+
+def test_chron_ars_backcast_interior_identical_to_no_backcast():
+    # in the prewhitening core, backcasting fills the first p residuals by
+    # reverse-AR; every year t >= p is byte-for-byte identical to the
+    # non-backcast residual (backcasting only affects the otherwise-NaN front).
+    from dplpy.chron_ars import _prewhiten_ar_yw
+
+    rng = np.random.default_rng(0)
+    s = 1.0 + 0.2 * rng.standard_normal(120)
+    p = 3
+    bc = _prewhiten_ar_yw(s, p, backcast=True)
+    nb = _prewhiten_ar_yw(s, p, backcast=False)
+    assert np.allclose(bc[p:], nb[p:], equal_nan=True)          # interior identical
+    assert np.isfinite(bc[:p]).all()                            # backcast fills front
+    assert np.isnan(nb[:p]).all()                               # dplR leaves NaN
+
+
+def test_chron_ars_backcast_reverse_ar_formula():
+    # the p backcast values are reverse-AR predictions: running the fitted AR
+    # model backward. Verify the residual identity holds at the front, i.e. the
+    # backcast makes resid[0] = xd[0] - sum_j rho_j * xhat(-j) consistent.
+    from dplpy.chron_ars import _prewhiten_ar_yw
+    from statsmodels.regression.linear_model import yule_walker
+
+    rng = np.random.default_rng(2)
+    s = 1.0 + 0.3 * rng.standard_normal(80)
+    p = 2
+    out = _prewhiten_ar_yw(s, p, backcast=True)
+    # refit the same way the function does, then rebuild the backcast by hand
+    xd = s - s.mean()
+    rho, _ = yule_walker(xd, order=p, method="mle", demean=False)
+    ext = np.empty(p + len(xd))
+    ext[p:] = xd
+    for ii in range(p - 1, -1, -1):
+        ext[ii] = sum(rho[j - 1] * ext[ii + j] for j in range(1, p + 1))
+    resid0 = ext[p] - sum(rho[j - 1] * ext[p - j] for j in range(1, p + 1))
+    assert np.isclose(out[0] - s.mean(), resid0, atol=1e-12)
 
 
 # --- stabilize= convenience flag -------------------------------------------
@@ -211,7 +269,7 @@ def test_chron_ars_arstan_ars_vsc_is_stabilize_then_reredden():
                               rwi=resid_matrix)["vsc"].to_numpy()
     expected = _post_ar(rmv, phi)
 
-    out = dpl.chron_ars(df, verbose=False, stabilize="both")  # arstan default
+    out = dpl.chron_ars(df, verbose=False, stabilize="both", backcast=False)
     v = out["ars_vsc"].to_numpy()
     ok = np.isfinite(expected) & np.isfinite(v)
     assert ok.any()
@@ -231,8 +289,9 @@ def test_chron_ars_dplr_ars_vsc_is_posthoc_on_reddened():
     rwi_clean = np.column_stack([_prewhiten_ar_yw(x[:, s], p) for s in range(ns)])
     resid_matrix = pd.DataFrame(rwi_clean, index=df.index, columns=df.columns)
 
-    out = dpl.chron_ars(df, verbose=False, ars_method="dplr", stabilize="both")
-    ars0 = dpl.chron_ars(df, verbose=False, ars_method="dplr")["ars"]
+    out = dpl.chron_ars(df, verbose=False, ars_method="dplr", stabilize="both",
+                        backcast=False)
+    ars0 = dpl.chron_ars(df, verbose=False, ars_method="dplr", backcast=False)["ars"]
     ref = dpl.stabilize_chron(pd.Series(ars0.to_numpy(), index=df.index), "both",
                               rwi=resid_matrix)["vsc"]
     assert np.allclose(out["ars_vsc"], ref, equal_nan=True)

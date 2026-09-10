@@ -60,7 +60,8 @@ _KNOWN_ARS_METHODS = ("arstan", "dplr")
 
 def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
               first_aic_min=True, verbose=True, prewhiten_method="ar.yw",
-              ars_method="arstan", stabilize=None, stabilize_kwargs=None):
+              ars_method="arstan", backcast=True, stabilize=None,
+              stabilize_kwargs=None):
     """Build ARSTAN standard, residual, and re-reddened chronologies.
 
     Extended Summary
@@ -72,7 +73,9 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
       with no autoregressive modeling.
     - **res**: the residual chronology -- each series is prewhitened with a
       pooled AR(p) model, the prewhitened series are averaged, and that mean is
-      prewhitened once more to order p, yielding a near-white chronology.
+      prewhitened once more to order p, yielding a near-white chronology. With
+      ``backcast=True`` (the default) each prewhitening step backcasts its initial
+      values as ARSTAN does, so no years are lost to the AR model (see Notes).
     - **ars**: the ARSTAN chronology -- the common red-noise persistence
       (the *pooled* AR model) is reintroduced by "re-reddening" (postAR). How
       this is done is controlled by ``ars_method`` (see Notes): the default
@@ -116,6 +119,14 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
         re-redden -- Ed Cook's ARSTAN order); "dplr" re-reddens each series and
         then averages (dplR's chron.ars order). The two agree only when every
         series spans the full period; under staggered sample depth they differ.
+    backcast : boolean, default True
+        if True, backcast the initial values of each Yule-Walker prewhitening
+        step (as ARSTAN's ``bckcst``/``albino`` do), so residuals are defined for
+        every year and no leading years are lost to the AR model. If False, the
+        first ``p`` residuals of each series (and of the re-prewhitened mean) are
+        set to NaN, reproducing dplR's ``chron.ars``. See Notes. Applies to the
+        ``"ar.yw"`` path; the ``"arima.CSS-ML"`` path already returns full-length
+        residuals from its state-space filter.
     stabilize : {None, "rbar", "spline", "both"}, default None
         If not None, also variance-stabilize each chronology and return the
         stabilized versions in extra ``*_vsc`` columns (see Notes). This mirrors
@@ -156,6 +167,22 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     The ``std`` and ``res`` chronologies, the pooled AR order, and the
     common-pooled-order prewhitening are identical for both settings; only the
     ``ars`` column changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
+
+    **Backcasting (``backcast``).** An AR(p) filter has no data for its ``p``
+    lagged terms at the start of a series, so ordinarily the first ``p`` residuals
+    are undefined. ARSTAN avoids this by *backcasting*: it synthesizes ``p``
+    pre-sample values by running the AR model in reverse (subroutine ``bckcst``,
+    used by ``albino`` when prewhitening and ``commie`` when re-reddening), so the
+    filter can produce output for every year. dplPy does the same at both
+    prewhitening stages -- the per-series prewhitening and the re-prewhitening of
+    the mean -- when ``backcast=True`` (the default), so the residual and ARSTAN
+    chronologies are full length (no leading NaN) and match ARSTAN's construction
+    more closely: a young series' first ``p`` residuals are now *included* in the
+    robust mean rather than dropped, exactly as ARSTAN includes them. With
+    ``backcast=False`` the first ``p`` residuals are set to NaN, reproducing
+    dplR's ``chron.ars``. The re-reddening step (``postAR``) always backcasts, as
+    in ARSTAN. The backcast values are model-based estimates, so treat the first
+    ``p`` years as slightly less certain than the interior.
 
     **Variance stabilization (``stabilize``).** Following ARSTAN's per-chronology
     rbar convention, ``std_vsc`` uses the rbar of the standard (detrended) RWI
@@ -208,11 +235,15 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
 
     prewhiten = _prewhiten_ar_yw if prewhiten_method == "ar.yw" else _prewhiten_arima
 
-    # prewhiten each series individually to the pooled order
-    rwi_clean = np.column_stack([prewhiten(x[:, s], p) for s in range(n_series)])
+    # prewhiten each series individually to the pooled order (backcasting the
+    # initial values when backcast=True, so no leading years are lost -- ARSTAN's
+    # robar/albino do this per series).
+    rwi_clean = np.column_stack(
+        [prewhiten(x[:, s], p, backcast=backcast) for s in range(n_series)])
 
     # residual chronology: mean of prewhitened series, prewhitened again to p
-    res_crn = prewhiten(_aggregate(rwi_clean, biweight), p)
+    # (again backcasting the mean, as ARSTAN's albino1 does).
+    res_crn = prewhiten(_aggregate(rwi_clean, biweight), p, backcast=backcast)
 
     # re-reddened (ARSTAN) chronology. postAR is called with the pooled AR
     # coefficients. Two constructions are offered (see the docstring):
@@ -383,10 +414,16 @@ def _get_first_min(y):
     return int(increasing[0]) + 1
 
 
-def _prewhiten_ar_yw(series, p):
+def _prewhiten_ar_yw(series, p, backcast=False):
     """Prewhiten one series with a fixed-order Yule-Walker AR(p) model.
-    Matches dplR's ar(..., method="yule-walker") residuals. The first p values
-    become NaN, as in R's ar() residuals."""
+    Matches dplR's ar(..., method="yule-walker") residuals.
+
+    With ``backcast=False`` (dplR behavior) the first p residuals become NaN, as
+    in R's ar() residuals. With ``backcast=True`` (ARSTAN behavior) the p
+    pre-sample values are synthesized by running the AR model in reverse (ARSTAN's
+    ``bckcst``), so residuals are defined for every year. The two agree exactly
+    for years t >= p; they differ only in that backcasting fills the first p
+    years that would otherwise be NaN."""
     from statsmodels.regression.linear_model import yule_walker
 
     if p == 0:
@@ -399,22 +436,44 @@ def _prewhiten_ar_yw(series, p):
     # method="mle" uses the biased autocovariance, matching R's acf default
     rho, _sigma = yule_walker(xd, order=p, method="mle", demean=False)
 
-    # residuals: resid[t] = xd[t] - sum_j rho[j] xd[t-j]; first p are NaN.
-    # vectorized over years, looping only over the (small) lag order.
-    pred = np.zeros(n)
-    for j in range(1, p + 1):
-        pred[j:] += rho[j - 1] * xd[:n - j]
-    resid = np.full(n, np.nan)
-    resid[p:] = xd[p:] - pred[p:]
+    if backcast:
+        # ARSTAN bckcst + albino: prepend p backcast values, each a reverse-AR
+        # prediction from the p values that follow it (x_hat(t) = sum_j rho_j *
+        # x(t+j)), computed back-to-front. Then compute residuals for every
+        # position. ext holds [bc_0..bc_{p-1}, xd_0..xd_{n-1}].
+        ext = np.empty(p + n)
+        ext[p:] = xd
+        for ii in range(p - 1, -1, -1):
+            acc = 0.0
+            for j in range(1, p + 1):
+                acc += rho[j - 1] * ext[ii + j]
+            ext[ii] = acc
+        # resid[t] = ext[p+t] - sum_j rho_j ext[p+t-j], for t = 0..n-1
+        pred = np.zeros(n)
+        for j in range(1, p + 1):
+            pred += rho[j - 1] * ext[p - j:p - j + n]
+        resid = xd - pred
+    else:
+        # residuals: resid[t] = xd[t] - sum_j rho[j] xd[t-j]; first p are NaN.
+        # vectorized over years, looping only over the (small) lag order.
+        pred = np.zeros(n)
+        for j in range(1, p + 1):
+            pred[j:] += rho[j - 1] * xd[:n - j]
+        resid = np.full(n, np.nan)
+        resid[p:] = xd[p:] - pred[p:]
 
     out = series.copy()
     out[~mask] = resid + m
     return out
 
 
-def _prewhiten_arima(series, p):
+def _prewhiten_arima(series, p, backcast=False):
     """Prewhiten one series with an ARIMA(p,0,0) CSS-ML fit. Matches dplR's
-    arima(..., method="CSS-ML") within tolerance (different optimizer)."""
+    arima(..., method="CSS-ML") within tolerance (different optimizer).
+
+    ``backcast`` is accepted for a uniform call signature but has no effect here:
+    the state-space (Kalman) filter already returns full-length residuals, so
+    there are no leading-NaN years to backcast."""
     if p == 0:
         return series.copy()
     from statsmodels.tsa.arima.model import ARIMA

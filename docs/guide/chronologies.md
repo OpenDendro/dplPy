@@ -93,6 +93,26 @@ combined, and they do **not** commute when sample depth changes through time:
 The `std` and `res` chronologies, the pooled AR order, and the prewhitening are
 identical either way; only the `ars` column differs.
 
+### `backcast`: keeping the first years
+
+An AR(p) filter has no data for its `p` lagged terms at the start of a series, so
+the first `p` residuals would normally be undefined. ARSTAN avoids losing them by
+*backcasting* — synthesizing `p` pre-sample values by running the AR model in
+reverse (its `bckcst` routine) — at every prewhitening and re-reddening step.
+`chron_ars` does the same:
+
+- **`backcast=True`** (the default) — the residual and ARSTAN chronologies are
+  **full length**, with no leading `NaN`. This matches ARSTAN, which backcasts
+  both the per-series prewhitening and the re-prewhitening of the mean, so a young
+  series' first `p` residuals are *included* in the robust mean rather than
+  dropped.
+- **`backcast=False`** — the first `p` residuals are set to `NaN`, reproducing
+  dplR's `chron.ars`.
+
+The backcast values are model-based estimates, so treat the first `p` years as
+slightly less certain than the interior. This applies to the `"ar.yw"` path; the
+`"arima.CSS-ML"` path already returns full-length residuals.
+
 ## Variance-stabilizing a chronology
 
 Both builders accept a `stabilize=` argument (`"rbar"`, `"spline"`, or `"both"`)
