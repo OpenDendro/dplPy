@@ -2,7 +2,7 @@
 
 __author__ = "Kevin Anchukaitis"
 __email__ = "kanchukaitis@arizona.edu"
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __copyright__ = """
    dplPy for tree ring width time series analyses

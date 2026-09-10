@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.5.0
+      - v0.6.0
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.5.0
+          ref: v0.6.0
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,57 +37,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.5.0
-          release_name: v0.5.0
+          tag_name: v0.6.0
+          release_name: v0.6.0
           body: |
-            dplPy v0.5.0
+            dplPy v0.6.0
 
-            v0.5.0 extends the crossdating tools toward COFECHA-level output, adds
-            floating-series dating, basal area increment, dataset combination, and
-            LiPD interchange, continues to improve the reader, and completes a deep
-            fidelity audit of the crossdating stack.
+            v0.6.0 adds an ARSTAN-style variance-stabilization option and function,
+            changes the ARSTAN chronology construction in chron_ars to follow Ed
+            Cook's ARSTAN, now includes a full documentation site, and makes dplPy
+            formally citable (CITATION.cff + Zenodo).
 
             New functionality:
-            - Crossdating: xdate() gains a COFECHA emulation mode (preset="COFECHA")
-              -- Burg (maximum-entropy) AR prewhitening, spline variance
-              stabilization, an arithmetic z-scored leave-one-out master, COFECHA
-              segment anchoring and t-based critical values, and "omit absent
-              rings". The dplR-faithful default is unchanged.
-            - xdate_report(): COFECHA-style batch reports for ITRDB files, with
-              per-series and per-segment correlations and a length-weighted summary
-              (both a dplR-faithful and a preset="COFECHA" mode).
-            - xdate_floater(): date a floating (undated) series against a dated
-              reference. Based on dplR's xdate.floater and extended with the t
-              statistic and additional crossdating statistics of Wilson (2026).
-            - bai_out()/bai_in(): basal area increment (ports of dplR's
-              bai.out/bai.in).
-            - combine_rwl(): combine ring-width datasets (port of dplR's
-              combine.rwl).
-            - LiPD: to_lipd()/from_lipd()/lipd_metadata() for LiPD export and
-              import, with NOAA metadata helpers and controlled vocabulary. LiPD is
-              an optional extra: pip install "dplpy[lipd]".
-
-            Input/Output:
-            - read_crn(): negative (BC/BCE) years now parse like dplR, so
-              long chronologies read correctly.
-            - readers(): flexible joining behavior for repeated/duplicate and
-              non-overlapping same-name series (prep for xdate_report); explicit
-              recognition of and informative errors for bogus -noaa.rwl files;
-              strict mode (warn-and-raise) that mirrors dplR; and better handling of
-              excess-value rows and assorted .rwl edge cases.
+            - stabilize_chron(): variance-stabilize ANY already-built chronology
+              (standard, residual, or ARSTAN), decoupled from chronology
+              construction, as in ARSTAN. Offers the rbar / effective-sample-size
+              family (Osborn 1997; Frank 2006; running rbar by default), the
+              ARSTAN spline family, and "both" (rbar then a 67% spline).
+            - chron() and chron_ars() gain a stabilize= convenience flag
+              ("rbar"/"spline"/"both") that adds stabilized *_vsc columns beside
+              each chronology, using ARSTAN's per-chronology rbar convention.
 
             Consistency and correctness:
-            - Yule-Walker AR estimation aligned with dplR across chron(), autoreg(),
-              and stats() (which now reports the ACF at lag 1, as dplR does), and
-              rbar pairwise-missing handling matched to dplR.
-            - Uniform plotting styles across the spaghetti, segment, detrend, and
-              chronology plots.
+            - chron_ars() gains ars_method, defaulting to "arstan": the ARSTAN
+              chronology is now built by averaging the prewhitened series and then
+              re-reddening (Ed Cook's ARSTAN order), rather than re-reddening each
+              series and then averaging. ars_method="dplr" preserves the previous
+              dplR chron.ars behavior. std, res, and the pooled AR order are
+              unchanged.
 
-            Quality:
-            - A deep fidelity audit of the crossdating stack: removed a bug in
-              B-flag identification (the default B flag is now COFECHA-faithful),
-              fixed another segment-floor bug, corrected or qualified
-              docstring fidelity package-wide (grounded in dplR 1.8.0, CRUST,
-              and COFECHA sources), and added more regression tests.
+            Documentation:
+            - A full MkDocs Material documentation site with an auto-generated API
+              reference using mkdocstrings, a user guides, a dplR migration map,
+              and fidelity/background pages.
+
+            Project:
+            - CITATION.cff and .zenodo.json added: dplPy is now citable, and
+              releases are archived on Zenodo with a DOI.
           draft: false
           prerelease: true
