@@ -633,6 +633,22 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
     good = np.array([np.sum(~np.isnan(M[:, i])) > 3 for i in range(nseries)])
     yr_pos = {int(y): k for k, y in enumerate(years)}
 
+    # COFECHA's checkable span: a segment can only be tested where TWO OR MORE
+    # series are present, so that after the current series is removed the
+    # leave-one-out master still has at least one series to correlate against.
+    # COFECHA clips every series to the first/last year with >=2 series before it
+    # lays out segments (cofecha_erc.f: JYM2/LYM2 and the "[*] ... cannot be
+    # checked -- not matched by another series" trim); this is what stops a series
+    # that extends before the multi-series portion from being scored against an
+    # essentially empty master (e.g. ca533's CAM211 before 695, where it is the
+    # only series). We reproduce that clip below. (COFECHA also intersects with the
+    # continuous portion of the master; that refinement is rarely the binding
+    # constraint and is not ported.)
+    depth = np.sum(~np.isnan(M), axis=1)
+    ge2 = np.where(depth >= 2)[0]
+    check_lo = int(years[ge2[0]]) if ge2.size else None
+    check_hi = int(years[ge2[-1]]) if ge2.size else None
+
     # Absent-ring ("omit absent rings") mask, COFECHA's QAC=Y option: years where
     # a series' raw ring width is zero are dropped from that series' segment
     # correlations. Ring widths become non-zero after detrending, so the mask must
@@ -661,6 +677,10 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
         if fin.size == 0:
             continue
         y0, y1 = int(years[fin[0]]), int(years[fin[-1]])
+        # Clip the segmented range to the >=2-series span (see above), so segments
+        # are never anchored to a year the master cannot cover.
+        if check_lo is not None:
+            y0, y1 = max(y0, check_lo), min(y1, check_hi)
         keep = good.copy()
         keep[i] = False
         master = _row_mean(M[:, keep]) if keep.any() else np.full(nyears, np.nan)
@@ -670,7 +690,10 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
 
         ab_col = absent_M[:, i] if absent_M is not None else None
         a_flags, b_flags, seg_list, used_cols = [], [], [], set()
-        for (lo, hi) in _cofecha_segments(y0, y1, seg_len, seg_lag):
+        # No testable span (this series never overlaps the >=2-series portion):
+        # leave it with no segments/flags, as COFECHA drops such a series.
+        seg_ranges = _cofecha_segments(y0, y1, seg_len, seg_lag) if y0 <= y1 else []
+        for (lo, hi) in seg_ranges:
             lag_row, best_lag, best_coeff, r0, n0 = _cofecha_lag_table(
                 col, master, yr_pos, first_year, last_year, lo, hi, seg_len, lag,
                 absent=ab_col)

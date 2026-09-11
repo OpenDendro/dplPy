@@ -162,6 +162,22 @@ def test_xdate_cofecha_preset_smoke():
     assert total == res["n_problems"]
 
 
+def test_cofecha_preset_clips_to_multiseries_span():
+    # COFECHA only tests a segment where TWO OR MORE series overlap, so that after
+    # the current series is removed the leave-one-out master still exists (its
+    # JYM2/LYM2 clip; cofecha_erc.f). On ca533, CAM211 (626-1968) is the sole
+    # series before 695, so its segments must be clipped to start at/after 695 --
+    # no spurious pre-695 correlation against an essentially empty master.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    res = _xdate_quiet(data, preset="COFECHA", show_flags=False)
+    cam211 = res["segments"]["CAM211"]
+    assert cam211 and cam211[0]["lo"] >= 695
+    assert all(s["lo"] >= 695 for s in cam211)
+    # no series anywhere is tested before the multi-series span begins
+    earliest = min(s["lo"] for segs in res["segments"].values() for s in segs)
+    assert earliest >= 695
+
+
 def test_xdate_cofecha_segments_anchor_to_series_ends():
     # COFECHA anchors the first segment to each series' first year (full 50-yr
     # window) rather than snapping to a 25-yr grid multiple.
