@@ -1555,8 +1555,11 @@ def read_rwl(lines, strict=True, join=True):
     # rather than merging them. Done here -- after precision is known (terminated-block
     # detection needs it) and orphans are identified (which are skipped) -- so the
     # accumulation below treats the renamed blocks as independent series.
+    split_sids = set()      # originals split into separate series (not combined)
     if not join:
-        report.extend(_split_disjoint_duplicates(rows, precision, set(orphan_year)))
+        split_records = _split_disjoint_duplicates(rows, precision, set(orphan_year))
+        report.extend(split_records)
+        split_sids = {r["series"] for r in split_records}
 
     rwl_data = {}
     order = []
@@ -1816,6 +1819,9 @@ def read_rwl(lines, strict=True, join=True):
     for sid in order:
         if not rwl_data.get(sid):
             continue
+        if sid in split_sids:
+            continue        # join=False: these blocks were split into separate
+                            # series (recorded in the salvage report), not combined
         is_dup_joined = sid in dup_joined
         if appearances.get(sid, 1) >= 2 or is_dup_joined:
             n = tblock_count.get(sid, 1) if is_dup_joined else appearances.get(sid, 1)

@@ -1218,6 +1218,8 @@ def test_join_true_merges_disjoint_blocks(tmp_path):
     assert list(d.columns) == ["AAA01"]                  # merged into one series
     assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
     assert d.loc[2000, "AAA01"] == pytest.approx(0.4)
+    # a genuine merge IS reported as combined
+    assert [c["series"] for c in d.attrs["dplpy_combined"]] == ["AAA01"]
 
 
 def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
@@ -1230,6 +1232,12 @@ def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
     assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
     assert d.loc[2000, "AAA012"] == pytest.approx(0.4)
     assert np.isnan(d.loc[2000, "AAA01"])                # not merged
+    # a SPLIT must NOT be reported as combined (it is recorded as a split instead);
+    # regression: join=False previously mislabeled the split series as combined.
+    assert d.attrs["dplpy_combined"] == []
+    splits = [r for r in d.attrs["dplpy_salvage"]
+              if r["series"] == "AAA01" and r["action"].startswith("split")]
+    assert len(splits) == 1 and "AAA012" in splits[0]["action"]
 
 
 # --- advisory heads-ups: beyond-column content and short interior gaps ---------
