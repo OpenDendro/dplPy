@@ -244,6 +244,19 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
                   + " segments spanning " + str(c["first_year"]) + " to "
                   + str(c["last_year"]))
 
+    # Report any duplicate-ID series that were kept SEPARATE under join=False (the
+    # counterpart of the merge report above), so the split is visible in both strict
+    # and salvage mode -- it lives in df.attrs["dplpy_salvage"] but is a normal,
+    # successful action, not an error, so it is surfaced here rather than only warned.
+    splits = [r for r in salvage_report if str(r.get("action", "")).startswith("split to ")]
+    if splits:
+        print("  " + str(len(splits)) + " duplicate series ID"
+              + ("s" if len(splits) != 1 else "")
+              + " kept as separate series (join=False):")
+        for s in splits:
+            newid = str(s["action"]).replace("split to ", "")
+            print("    " + str(s["series"]) + ": disjoint block kept as " + newid)
+
     # Advisory heads-ups: the file read fine, but these spots deserve a human eye.
     # 1. Characters beyond the last data column (col 72) that were not parsed --
     #    most importantly a value that overflowed its field and was truncated.

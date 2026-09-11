@@ -1222,7 +1222,7 @@ def test_join_true_merges_disjoint_blocks(tmp_path):
     assert [c["series"] for c in d.attrs["dplpy_combined"]] == ["AAA01"]
 
 
-def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
+def test_join_false_keeps_disjoint_blocks_separate(tmp_path, capsys):
     p = tmp_path / "j.rwl"
     p.write_text(_DISJOINT_DUP)
     with warnings.catch_warnings():
@@ -1238,6 +1238,10 @@ def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
     splits = [r for r in d.attrs["dplpy_salvage"]
               if r["series"] == "AAA01" and r["action"].startswith("split")]
     assert len(splits) == 1 and "AAA012" in splits[0]["action"]
+    # and the split is reported to the user (the counterpart of the merge report)
+    out = capsys.readouterr().out
+    assert "kept as separate series (join=False)" in out
+    assert "AAA01: disjoint block kept as AAA012" in out
 
 
 # --- advisory heads-ups: beyond-column content and short interior gaps ---------
