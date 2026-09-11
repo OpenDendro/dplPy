@@ -407,7 +407,7 @@ def _format_summary_box(s):
     L = []
     fld = lambda label, val: L.append("      %-28s: %s" % (label, val))
     fld("Number of dated series", s["n_series"])
-    fld("Master series", "%d %d %d yrs"
+    fld("Master series", "%d-%d, %d yrs"
         % (s["first_year"], s["last_year"], s["span"]))
     fld("Total rings in all series", s["total_rings"])
     fld("Total dated rings checked", s["dated_rings_checked"])
