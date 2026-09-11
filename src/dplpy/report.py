@@ -48,7 +48,8 @@ def report(inp: pd.DataFrame | str):
         Span (start-end year)
         Mean (Standard Deviation) series intercorrelation
         Mean (Standard Deviation) AR1
-        Years with absent rings listed by series
+        Years with locally absent rings (zero values), with per-series and total counts
+        Years with internal NA (missing measurements), with per-series and total counts
     
     Parameters
     ----------
@@ -95,11 +96,11 @@ def report(inp: pd.DataFrame | str):
     print("Mean (Std dev) AR1:",
           str(round(ar1.mean(), 4)) + " (" + str(round(ar1.std(), 4)) + ")")
     print("-------------")
-    print("Years with absent rings listed by series\n")
-    print_missing_ring_data(missing_rings)
+    print("Years with locally absent rings (zero values) listed by series\n")
+    print_missing_ring_data(missing_rings, "Total locally absent rings")
     print("-------------")
-    print("Years with internal NA values listed by series\n")
-    print_missing_ring_data(internal_nans)
+    print("Years with internal NA (missing measurements) listed by series\n")
+    print_missing_ring_data(internal_nans, "Total internal NA years")
 
 # Analyze the dataframe to generate report on missing data (and internal NAs)
 def get_report_stats(series_data):
@@ -122,8 +123,20 @@ def get_internal_na_years(data):
     within_span = data.loc[first_valid_year:last_valid_year]
     return within_span[within_span.isna()].index.tolist()
 
-# Print data about missing rings
-def print_missing_ring_data(missing_rings):
-    for series, missing in missing_rings.items():
-        if len(missing) != 0:
-            print("     ", series, "--", " ".join(missing))
+# Print data about missing rings.  Each series that has any flagged years is
+# listed with its own count in parentheses, e.g. "CAM031 (14): 1497 1500 ...",
+# followed by a grand total across all series.  An empty section prints "(none)"
+# so a bare header can't be mistaken for missing output.
+def print_missing_ring_data(entries, total_label):
+    total = 0
+    printed = False
+    for series, years in entries.items():
+        if len(years) != 0:
+            print("     ", series, "(%d):" % len(years), " ".join(years))
+            total += len(years)
+            printed = True
+    if not printed:
+        print("      (none)")
+    else:
+        print("      %s: %d" % (total_label, total))
+    return total
