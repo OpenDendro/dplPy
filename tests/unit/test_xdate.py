@@ -29,6 +29,35 @@ def test_xdate_invalid_input():
     assert "Expected dataframe input, got <class 'str'> instead." == str(e.value)
 
 
+def test_xdate_summary_box_cofecha_matches_reference():
+    # The COFECHA preset's header-box statistics reproduce the DPL COFECHA box on
+    # ca533 (34 series, master 626-1983 1358 yrs, 23276 rings, intercorrelation
+    # 0.668, mean sensitivity 0.316, 18 problem segments). Intercorrelation and
+    # sensitivity are length-weighted, as COFECHA does (ZSEN = sum(SEN*N)/sum(N)).
+    raw = _read_quiet("tests/data/rwl/ca533.rwl")
+    res = _xdate_quiet(raw, preset="COFECHA", absent=raw, show_flags=False)
+    s = res["summary"]
+    assert s["n_series"] == 34
+    assert (s["first_year"], s["last_year"], s["span"]) == (626, 1983, 1358)
+    assert s["total_rings"] == 23276
+    assert round(s["intercorrelation"], 3) == 0.669      # COFECHA 0.668 (+/- rounding)
+    assert round(s["mean_sensitivity"], 3) == 0.316
+    assert s["n_problems"] == 18
+
+
+def test_xdate_summary_box_default_is_plain_mean():
+    # The default (dplR) path also returns a summary, but with plain (unweighted)
+    # means -- so its intercorrelation differs from the length-weighted preset.
+    raw = _read_quiet("tests/data/rwl/ca533.rwl")
+    rwi = dpl.detrend(raw, fit="Spline", plot=False)
+    res = _xdate_quiet(rwi, show_flags=False)
+    s = res["summary"]
+    assert s["n_series"] == 34
+    assert s["total_rings"] == 23276
+    ic_plain = float(np.nanmean(res["overall"]["rho"].to_numpy(dtype=float)))
+    assert s["intercorrelation"] == pytest.approx(ic_plain, abs=5e-4)
+
+
 def test_xdate_bad_corr_method():
     df = pd.DataFrame({"A": [1.0, 2, 3], "B": [1.0, 2, 3]},
                       index=pd.Index([1, 2, 3], name="Year"))
@@ -196,12 +225,17 @@ def test_xdate_cofecha_segments_anchor_to_series_ends():
 
 
 def test_xdate_default_path_unchanged_by_preset_plumbing():
-    # the dplR-faithful default still returns the base keys and no COFECHA extras.
+    # the dplR-faithful default returns the base keys plus the shared summary
+    # (n_problems + the header-box dict), but no COFECHA-only keys.
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="Spline", plot=False)
     res = _xdate_quiet(rwi, show_flags=False)
-    assert "segments" not in res and "n_problems" not in res
-    assert set(["seg_corr", "p_val", "overall", "flags", "bins", "rwi"]).issubset(res)
+    assert "segments" not in res and "preset" not in res
+    assert set(["seg_corr", "p_val", "overall", "flags", "bins", "rwi",
+                "n_problems", "summary"]).issubset(res)
+    # n_problems is the total flag count on the default path too
+    assert res["n_problems"] == sum(len(f["A"]) + len(f["B"])
+                                    for f in res["flags"].values())
 
 
 def test_xdate_cofecha_omit_absent_rings():
@@ -239,11 +273,11 @@ def test_xdate_preset_none_vs_cofecha_coexist():
     cof = _xdate_quiet(data, preset="COFECHA", show_flags=False)   # raw; self-detrends
     default_after = _xdate_quiet(rwi, show_flags=False)
 
-    # default path: COFECHA-style A/B split (only CAM131 is a true A flag), no
-    # COFECHA-only keys
+    # default path: COFECHA-style A/B split (only CAM131 is a true A flag), and
+    # none of the COFECHA-only keys (n_problems/summary are shared, not exclusive)
     a_flagged = sorted(k for k, v in default_before["flags"].items() if v["A"])
     assert a_flagged == ["CAM131"]
-    assert not any(k in default_before for k in ("segments", "n_problems", "preset"))
+    assert not any(k in default_before for k in ("segments", "preset"))
 
     # calling the preset in between does not perturb the default result
     assert default_before["seg_corr"].equals(default_after["seg_corr"])

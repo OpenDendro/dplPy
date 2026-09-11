@@ -46,6 +46,7 @@ from matplotlib.patches import Rectangle
 import pandas as pd
 from ._validate import _require_dataframe, _normalize_corr
 from .tbrm import tbrm_rows
+from .sensitivity import sens1
 import numpy as np
 import scipy
 import warnings
@@ -325,6 +326,98 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True, ar_max=None,
 # Main crossdating
 # ---------------------------------------------------------------------------
 
+def _dated_rings_checked(data, seg_corr):
+    """Count ring measurements that actually entered a tested segment.
+
+    A segment is "tested" for a series when it produced a correlation (a
+    non-NaN cell in ``seg_corr``). A ring is counted if it is a real
+    measurement (non-NaN in ``data``) whose year falls inside at least one of
+    that series' tested segments. This is dplPy's analogue of COFECHA's
+    "Total dated rings checked": total rings minus those in never-tested spans
+    (short end pieces, or a series' portion with no overlapping master).
+    """
+    idx = data.index.to_numpy()
+    total = 0
+    for name in seg_corr.index:
+        if name not in data.columns:
+            continue
+        row = seg_corr.loc[name]
+        tested = [c for c in seg_corr.columns if not pd.isna(row[c])]
+        if not tested:
+            continue
+        covered = np.zeros(idx.shape[0], dtype=bool)
+        for c in tested:
+            lo, hi = _bin_bounds(c)
+            covered |= (idx >= lo) & (idx <= hi)
+        colv = data[name].to_numpy(dtype=float)
+        total += int(np.sum(covered & ~np.isnan(colv)))
+    return total
+
+
+def _summary_values(data, overall, seg_corr, first_year, last_year, n_problems,
+                    weighted=False):
+    """The COFECHA header-box statistics, computed the running method's way.
+
+    ``intercorrelation`` is the mean of each series' correlation with its
+    leave-one-out master (``overall['rho']`` -- the same quantity as
+    :func:`dpl.interseries_corr`); ``mean_sensitivity`` is :func:`dpl.sens1`
+    averaged over series. Both are read off whatever ``data`` xdate received, so
+    the default (dplR) path and ``preset="COFECHA"`` each report their own
+    numbers.
+
+    ``weighted`` selects how those two means combine series: the dplR-native
+    default is a plain mean, while COFECHA length-weights every summary statistic
+    (``ZSEN = sum(SEN*N)/sum(N)``), so ``preset="COFECHA"`` passes
+    ``weighted=True`` to reproduce COFECHA's box exactly.
+    """
+    nseries = data.shape[1]
+    total_rings = int(data.count().sum())
+    span = int(last_year) - int(first_year) + 1
+    counts = data.count()                              # rings per series (weights)
+
+    def _combine(vals_series):
+        v = np.asarray(vals_series, dtype=float)
+        w = counts.reindex(vals_series.index).to_numpy(dtype=float)
+        ok = ~np.isnan(v) & ~np.isnan(w)
+        if not ok.any():
+            return float("nan")
+        if weighted:
+            return float(np.sum(v[ok] * w[ok]) / np.sum(w[ok]))
+        return float(np.mean(v[ok]))
+
+    intercorr = _combine(overall["rho"]) if nseries else float("nan")
+    try:
+        ms = _combine(sens1(data))
+    except Exception:
+        ms = float("nan")
+    return {"n_series": nseries, "first_year": int(first_year),
+            "last_year": int(last_year), "span": span,
+            "total_rings": total_rings,
+            "dated_rings_checked": _dated_rings_checked(data, seg_corr),
+            "intercorrelation": intercorr, "mean_sensitivity": ms,
+            "n_problems": int(n_problems),
+            "mean_series_length": (total_rings / nseries) if nseries else float("nan")}
+
+
+def _format_summary_box(s):
+    """Render :func:`_summary_values` as a clean labeled block (no border),
+    matching the header style used by :func:`dpl.xdate_report`."""
+    def z(v, d):
+        return ("%.*f" % (d, v)) if v == v else "NA"   # v == v is False for NaN
+    L = []
+    fld = lambda label, val: L.append("      %-28s: %s" % (label, val))
+    fld("Number of dated series", s["n_series"])
+    fld("Master series", "%d %d %d yrs"
+        % (s["first_year"], s["last_year"], s["span"]))
+    fld("Total rings in all series", s["total_rings"])
+    fld("Total dated rings checked", s["dated_rings_checked"])
+    fld("Series intercorrelation", z(s["intercorrelation"], 3))
+    fld("Avg mean sensitivity", z(s["mean_sensitivity"], 3))
+    fld("Segments, possible problems", s["n_problems"])
+    fld("Mean length of series", z(s["mean_series_length"], 1))
+    return "\n".join(L)
+
+
 def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
           bin_floor=100, p_val=0.05, biweight=True, lag=10, show_flags=True,
           make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None,
@@ -526,8 +619,13 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
 
     avg_seg = seg_corr.mean(axis=0, skipna=True)
     overall["rho"] = overall["rho"].round(3)          # report the master correlation to 3 dp
+    n_problems = sum(len(f["A"]) + len(f["B"]) for f in flags.values())
+    summary = _summary_values(data, overall, seg_corr, first_year, last_year,
+                              n_problems)
 
     if show_flags:
+        print(_format_summary_box(summary))
+        print()
         _print_flags(flags, lag)
     if make_plot:
         _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds, p_val,
@@ -535,7 +633,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
 
     return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
             "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
-            "rwi": ready}
+            "rwi": ready, "n_problems": n_problems, "summary": summary}
 
 
 # ---------------------------------------------------------------------------
@@ -730,10 +828,13 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
     avg_seg = seg_corr.mean(axis=0, skipna=True)
     overall["rho"] = overall["rho"].round(3)          # report the master correlation to 3 dp
     n_problems = sum(len(f["A"]) + len(f["B"]) for f in flags.values())
+    summary = _summary_values(data, overall, seg_corr, first_year, last_year,
+                              n_problems, weighted=True)
 
     if show_flags:
+        print(_format_summary_box(summary))
+        print()
         _print_flags(flags, lag)
-        print("Segments, possible problems: %d" % n_problems)
     if make_plot:
         bin_bounds = [_bin_bounds(b) for b in bins]
         _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds,
@@ -742,7 +843,7 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
     return {"seg_corr": seg_corr, "p_val": seg_pval, "overall": overall,
             "avg_seg_corr": avg_seg, "flags": flags, "bins": bins,
             "rwi": ready, "segments": segments, "n_problems": n_problems,
-            "preset": "COFECHA"}
+            "summary": summary, "preset": "COFECHA"}
 
 
 def _cofecha_lag_table(series, master, yr_pos, first_year, last_year,
