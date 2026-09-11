@@ -110,6 +110,9 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         ``dplpy_interior_gaps`` lists series with a blank year between measured
         years (a short one is flagged as a possible dropped value; a long one is
         recorded only, as it is usually an intentional structural gap).
+        ``df.attrs["dplpy_blank_lines"]`` records the 1-indexed positions of any
+        blank input lines, which are dropped silently (they are harmless -- a
+        trailing newline or a "double-spaced" file -- so they are not warned about).
 
     Examples
     --------
@@ -191,12 +194,14 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     dropped = series_data.attrs.get("dplpy_dropped", 0)
     beyond_column = series_data.attrs.get("dplpy_beyond_column", [])
     interior_gaps = series_data.attrs.get("dplpy_interior_gaps", [])
+    blank_lines = series_data.attrs.get("dplpy_blank_lines", [])
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
     series_data.attrs["dplpy_combined"] = combined
     series_data.attrs["dplpy_dropped"] = dropped
     series_data.attrs["dplpy_beyond_column"] = beyond_column
     series_data.attrs["dplpy_interior_gaps"] = interior_gaps
+    series_data.attrs["dplpy_blank_lines"] = blank_lines
     if hdr_skipped is not None:
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
     if meta is not None:
@@ -358,17 +363,19 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
             warnings.warn(msg + " Returning None.")
             return None
         raise ValueError("Cannot read file -- " + msg)
-    # 1. Drop blank lines (warning about them, as earlier dplPy did) and comment
-    #    lines. A line is a comment (see _is_comment_line) when its first
-    #    non-blank character is '#', or when it contains a '#' anywhere and does
-    #    not parse as a data row -- so real series IDs containing '#' (e.g.
-    #    'SP#1') are kept. Line numbers in the warning are 1-indexed against the
-    #    original input.
+    # 1. Drop blank lines and comment lines. A line is a comment (see
+    #    _is_comment_line) when its first non-blank character is '#', or when it
+    #    contains a '#' anywhere and does not parse as a data row -- so real series
+    #    IDs containing '#' (e.g. 'SP#1') are kept. Blank lines are harmless (a
+    #    trailing newline, or a "double-spaced" ITRDB file), so they are recorded
+    #    silently on df.attrs["dplpy_blank_lines"] (1-indexed against the original
+    #    input) rather than warned about line by line.
     clean_lines = []
+    blank_lines = []
     for lineno, line in enumerate(raw_lines, start=1):
         line = line.rstrip("\r\n")
         if len(line.strip()) == 0:
-            warnings.warn("Empty line found at line " + str(lineno) + "\n")
+            blank_lines.append(lineno)
             continue
         if _is_comment_line(line):
             continue  # a '#'-comment or a '#'-marked note row (not a '#' inside an ID)
@@ -426,6 +433,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
+    df.attrs["dplpy_blank_lines"] = blank_lines      # blank input lines, dropped silently
     # Advisory (non-fatal) data-quality notes -- surfaced in both strict and salvage
     # mode, since these rows parse successfully but a human should eyeball them.
     df.attrs["dplpy_beyond_column"] = _beyond_column_findings(clean_lines)

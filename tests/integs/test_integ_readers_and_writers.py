@@ -93,8 +93,9 @@ def test_read_and_write_weird_rwl(tmp_path):
     pd.testing.assert_frame_equal(wwr, wwr_alt)
 
 def test_read_and_write_rwl_with_blanks(tmp_path):
-    # nm580l contains a blank line (-> "Empty line found" warning); silence it
-    # here -- the blank-line warning is asserted in the unit tests.
+    # nm580l contains a blank line; it is dropped silently and recorded on
+    # df.attrs["dplpy_blank_lines"] (no warning). Other unrelated warnings are
+    # silenced here for a clean round-trip test.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         nm580 = dpl.readers("./tests/data/rwl/nm580l.rwl", header=True)

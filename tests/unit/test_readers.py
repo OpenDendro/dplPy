@@ -151,18 +151,23 @@ def test_correct_rwl_with_headers(mock_open: Mock):
 
 @patch('builtins.open')
 def test_rwl_with_blank_lines(mock_open: Mock):
+    # Blank lines are harmless (a trailing newline, or a "double-spaced" ITRDB
+    # file) and no longer warned about line by line -- they are dropped and their
+    # 1-indexed positions recorded silently on df.attrs["dplpy_blank_lines"].
     mock_open.side_effect = mock_open_output
 
-    expected_warning = "Empty line found at line 2"
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
-                                     index=pd.Index(data=[1, 2, 3, 4], 
+                                     index=pd.Index(data=[1, 2, 3, 4],
                                                     name="Year"))
 
-    with pytest.warns(UserWarning, match=expected_warning):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         results = dpl.readers("valid_rwl_with_blanks.rwl")
-        mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", "r")
-        pd.testing.assert_frame_equal(results, expected_df)
+    mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", "r")
+    pd.testing.assert_frame_equal(results, expected_df)
+    assert not [x for x in w if "Empty line" in str(x.message)]   # no blank-line alarm
+    assert results.attrs["dplpy_blank_lines"] == [2]              # recorded silently
 
 
 # ===========================================================================
