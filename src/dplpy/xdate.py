@@ -327,27 +327,39 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True, ar_max=None,
 
 def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
           bin_floor=100, p_val=0.05, biweight=True, lag=10, show_flags=True,
-          make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None):
+          make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None,
+          stabilize_period=32):
     """Crossdate a set of ring-width series against a leave-one-out master.
 
     The segment correlations mirror dplR's corr.rwl.seg(): each series is
     normalized (divided by its mean), optionally Yule-Walker prewhitened, and
     correlated against a biweight master built from all the *other* series, over
-    segments of ``slide_period`` years that overlap by half; the **A** flag
-    reproduces dplR exactly -- a segment is flagged A when it is not significant
-    (one-tailed p >= p_val).
+    segments of ``slide_period`` years that overlap by half.
 
-    The **B** flag is *not* from dplR (corr.rwl.seg has no lag flag): it is a
-    COFECHA-derived dating-shift screen, flagging a segment when it correlates
-    better with the master at a non-dated lag (best_lag != 0, no margin), using
-    COFECHA's SLSG convention of sliding the master past the fixed segment. The
-    same B rule is used in ``preset="COFECHA"``. The per-segment lag table is
-    printed for flagged segments.
+    Flagged segments are labelled **A** or **B**, COFECHA-style and mutually
+    exclusive:
+
+    * **B** -- the segment correlates better with the master at a NON-dated lag
+      (its best lag != 0): a possible dating shift. This screen is *not* from dplR
+      (corr.rwl.seg has no lag flag); it follows COFECHA's SLSG convention of
+      sliding the master past the fixed segment, with no margin, and is also used
+      by ``preset="COFECHA"``.
+    * **A** -- the dated (lag-0) position is the best match, but the correlation is
+      still not significant (one-tailed p >= p_val): a weak but correctly-placed
+      segment. Its best lag is 0 by definition.
+
+    (dplR flags every non-significant segment and has no lag concept; here those
+    split into A when lag 0 is best and B when a better lag exists, so an A flag
+    never carries a non-zero best lag.) The per-segment lag table is printed for
+    both flag kinds.
 
     Parameters
     ----------
     data : pandas.DataFrame
-        ring-width series (typically detrended RWI from dpl.detrend()).
+        the default (dplR) path expects detrended RWI (e.g. from dpl.detrend());
+        ``preset="COFECHA"`` instead expects the RAW ring-width frame (from
+        dpl.readers()) and detrends it itself -- do NOT pre-detrend for the preset,
+        or the series would be detrended twice.
     prewhiten : bool, default True
         AR-prewhiten each series (Yule-Walker, matching dplR).
     corr : {'spearman','pearson','kendall'}, default 'spearman'
@@ -368,19 +380,26 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         draw the segment-correlation plot.
     preset : str or None, default None
         set to ``"COFECHA"`` to emulate the COFECHA program instead of dplR's
-        ``corr.rwl.seg``. This overrides the transform, correlation, master and
-        segmentation machinery to match COFECHA's FORTRAN: Pearson correlation, an
-        arithmetic leave-one-out master of z-scored series, 50-yr segments on a
-        25-yr grid anchored to each series' first and last year, a critical value
-        derived from the 99%% one-tailed t rather than ``p_val``, COFECHA's spline
-        variance stabilization before AR, Cook/Krusic Burg AR prewhitening
-        (ceiling 10, first-local-AIC-minimum, N>=8), and a lag search that slides
-        the master against the fixed dated segment (COFECHA's SLSG). Returns the
-        extra keys ``segments`` and ``n_problems``. ``corr``, ``biweight``,
-        ``bin_floor`` and ``p_val`` are ignored in this mode.
+        ``corr.rwl.seg``. Pass the RAW ring-width frame: the preset detrends it
+        itself (a rigid ``stabilize_period``-year spline, ratios) before its own
+        variance stabilization and AR, so do not call dpl.detrend() first. It
+        overrides the transform, correlation, master and segmentation machinery to
+        match COFECHA's FORTRAN: Pearson correlation, an arithmetic leave-one-out
+        master of z-scored series, 50-yr segments on a 25-yr grid anchored to each
+        series' first and last year, a critical value derived from the 99%%
+        one-tailed t rather than ``p_val``, COFECHA's spline variance stabilization
+        before AR, Cook/Krusic Burg AR prewhitening (ceiling 10,
+        first-local-AIC-minimum, N>=8), and a lag search that slides the master
+        against the fixed dated segment (COFECHA's SLSG). Returns the extra keys
+        ``segments`` and ``n_problems``. ``corr``, ``biweight``, ``bin_floor`` and
+        ``p_val`` are ignored in this mode.
     seg_lag : int or None, default None
         segment step in years (segment overlap). ``None`` uses
         ``slide_period // 2`` (COFECHA's 50%% overlap). Only used by the preset.
+    stabilize_period : int, default 32
+        COFECHA preset only -- the cubic-spline wavelength (years) used both to
+        detrend the raw series and for the variance-stabilization step. COFECHA
+        uses 32.
     absent : pandas.DataFrame or None, default None
         COFECHA preset only -- its "omit absent rings" option (QAC=Y). A boolean
         DataFrame (years x series) marking absent rings, or a raw ring-width
@@ -400,7 +419,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
 
         - ``seg_corr`` -- DataFrame (series x bins) of segment correlations
         - ``p_val`` -- DataFrame (series x bins) of one-tailed p-values
-        - ``overall`` -- DataFrame (series x ['rho', 'p_val'])
+        - ``overall`` -- DataFrame (series x ['rho', 'p_val']); ``rho`` (the
+          correlation with the leave-one-out master) is rounded to 3 decimals
         - ``avg_seg_corr`` -- Series (bins) mean correlation across series
         - ``flags`` -- dict {series: {'A': [...], 'B': [...]}}, where each A
           (not significant as dated) and B (better at another lag) entry is a
@@ -418,9 +438,8 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     --------
     >>> rwi = dpl.detrend(ca533, fit="spline", plot=False)
     >>> res = dpl.xdate(rwi, corr="spearman", slide_period=50, bin_floor=100)
-    >>> # COFECHA emulation (32-yr spline detrend, then the preset):
-    >>> rwi = dpl.detrend(rwl, fit="Spline", period=32, plot=False)
-    >>> res = dpl.xdate(rwi, preset="COFECHA")
+    >>> # COFECHA emulation -- pass the RAW frame; the preset detrends internally:
+    >>> res = dpl.xdate(rwl, preset="COFECHA")
     >>> res["n_problems"]                      # COFECHA "possible problems" count
 
     References
@@ -435,6 +454,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     if preset is not None and str(preset).strip().lower() == "cofecha":
         return _xdate_cofecha(data, prewhiten=prewhiten, slide_period=slide_period,
                               seg_lag=seg_lag, lag=lag, ar_max=ar_max, absent=absent,
+                              stabilize_period=stabilize_period,
                               show_flags=show_flags, make_plot=make_plot)
 
     method = _normalize_corr(corr)
@@ -483,19 +503,29 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
                                                        slide_period, method, lag)
             entry = {"segment": blabel, "best_lag": best_lag,
                      "best_corr": best_coeff, "lags": lag_row}
-            # (A) significance flag -- independent of (B)
-            if not np.isnan(pv) and pv >= p_val:
-                a_flags.append(dict(entry))
-            # (B) COFECHA-style lag flag: the segment correlates better with the
-            # master at a non-dated position (best_lag != 0), no margin -- exactly
-            # COFECHA's rule (SLSG: IF MXCOR != dated). This is a COFECHA-derived
-            # dating-shift screen; dplR's corr.rwl.seg has no B flag of its own.
+            # Classify each segment as exactly ONE of A or B, COFECHA-style:
+            #   B -- the segment correlates better with the master at a NON-dated
+            #        lag (best_lag != 0): a possible dating shift. This is the
+            #        COFECHA-derived screen (SLSG: IF MXCOR != dated, no margin);
+            #        dplR's corr.rwl.seg has no B flag of its own.
+            #   A -- the dated (lag-0) position IS the best, but the correlation is
+            #        still not significant (one-tailed p >= p_val): a weak segment
+            #        that is nonetheless best where dated ('best' is 0, by
+            #        definition).
+            # A and B are mutually exclusive: a not-significant segment whose best
+            # match is at another lag is a B (the dating shift is the real issue),
+            # not an A. dplR flags every non-significant segment (no lag concept);
+            # here those split into A (lag 0 is best) and B (a better lag exists),
+            # so A never carries a non-zero best lag.
             if best_lag != 0:
                 b_flags.append(dict(entry))
+            elif not np.isnan(pv) and pv >= p_val:
+                a_flags.append(dict(entry))
         if a_flags or b_flags:
             flags[name] = {"A": a_flags, "B": b_flags}
 
     avg_seg = seg_corr.mean(axis=0, skipna=True)
+    overall["rho"] = overall["rho"].round(3)          # report the master correlation to 3 dp
 
     if show_flags:
         _print_flags(flags, lag)
@@ -561,6 +591,10 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
                    make_plot=False):
     """COFECHA-style crossdating (see :func:`xdate` with ``preset="COFECHA"``).
 
+    Takes the RAW ring-width frame and detrends it internally with a rigid
+    ``stabilize_period``-year cubic spline (ratios), the way COFECHA does, so the
+    caller passes raw measurements -- not a pre-detrended index.
+
     Differs from the dplR-faithful default in exactly the ways COFECHA does:
     Pearson correlation, an *arithmetic* leave-one-out master of z-scored series,
     COFECHA's segment anchoring (:func:`_cofecha_segments`), its derived critical
@@ -579,7 +613,17 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
     if ar_max is None:
         ar_max = 10                                     # Cook/Krusic ARSTAN ceiling
 
-    ready = normalize_for_crossdating(data, prewhiten, ar_max=ar_max,
+    # COFECHA works from RAW ring widths: it removes the growth trend itself with a
+    # rigid cubic spline (ratios), then variance-stabilizes, prewhitens, and
+    # z-scores. So detrend here -- the preset takes the raw measurement frame
+    # directly, and callers must NOT pre-detrend (that would detrend twice). The
+    # spline wavelength is ``stabilize_period`` (COFECHA's 32 years), the same
+    # stiffness used for the variance-stabilization step inside
+    # normalize_for_crossdating below.
+    rwi = detrend(data, fit="Spline", period=stabilize_period, plot=False)
+    if isinstance(rwi, (ValueError, TypeError)):
+        raise rwi
+    ready = normalize_for_crossdating(rwi, prewhiten, ar_max=ar_max,
                                       first_aic_min=True, method="burg",
                                       stabilize_period=stabilize_period, zscore=True)
     ready, years, first_year, last_year = dense_year_grid(ready)
@@ -661,6 +705,7 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
             flags[name] = {"A": a_flags, "B": b_flags}
 
     avg_seg = seg_corr.mean(axis=0, skipna=True)
+    overall["rho"] = overall["rho"].round(3)          # report the master correlation to 3 dp
     n_problems = sum(len(f["A"]) + len(f["B"]) for f in flags.values())
 
     if show_flags:

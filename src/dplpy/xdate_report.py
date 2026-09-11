@@ -105,10 +105,11 @@ def _process_one(path, fit, corr, slide_period, bin_floor, p_val,
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if is_cofecha:
-            # COFECHA emulation: a 32-yr spline detrend feeding xdate's COFECHA
-            # preset, with absent rings (zeros in the raw frame) omitted.
-            rwi = detrend(rw, fit="Spline", period=(spline_period or 32), plot=False)
-            res = xdate(rwi, preset="COFECHA", absent=rw, slide_period=slide_period,
+            # COFECHA emulation: xdate's COFECHA preset takes the RAW frame and
+            # detrends it itself (a 32-yr spline), with absent rings (zeros in the
+            # raw frame) omitted. Do NOT pre-detrend here -- that would detrend twice.
+            res = xdate(rw, preset="COFECHA", absent=rw, slide_period=slide_period,
+                        stabilize_period=(spline_period or 32),
                         show_flags=False, make_plot=False)
         else:
             rwi = detrend(rw, fit=fit, plot=False)

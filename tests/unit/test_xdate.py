@@ -49,13 +49,25 @@ def test_xdate_returns_rich_result():
 
 
 def test_xdate_matches_dplR_flags_ca533():
-    # dplR corr.rwl.seg flags exactly these 5 series (segment p-value >= 0.05)
-    # on ca533; the fixed A/B flag separation must reproduce that set as [A].
+    # dplR corr.rwl.seg flags exactly these 5 series (a segment p-value >= 0.05)
+    # on ca533. dplPy still flags all five, but splits them COFECHA-style: a
+    # non-significant segment is an A flag only when the dated (lag-0) position is
+    # its best match; when a non-dated lag correlates higher it is a B flag (a
+    # possible dating shift) instead. On ca533 only CAM131 is a true A flag; the
+    # other four correlate better at another lag, so they are B flags. A and B are
+    # mutually exclusive -- an A flag never carries a non-zero best lag.
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
     res = _xdate_quiet(rwi, corr="spearman", slide_period=50, bin_floor=100, p_val=0.05)
-    a_flagged = sorted(s for s, f in res["flags"].items() if f["A"])
-    assert a_flagged == ["CAM011", "CAM051", "CAM131", "CAM181", "CAM201"]
+    # every series dplR flags is still flagged (as A or B)
+    assert {"CAM011", "CAM051", "CAM131", "CAM181", "CAM201"}.issubset(res["flags"].keys())
+    # only CAM131 is a true A flag (lag 0 is best but not significant)
+    assert sorted(s for s, f in res["flags"].items() if f["A"]) == ["CAM131"]
+    # the other four are B flags, not A, and every A flag's best lag is 0
+    for s in ("CAM011", "CAM051", "CAM181", "CAM201"):
+        assert res["flags"][s]["B"] and not res["flags"][s]["A"]
+    for f in res["flags"].values():
+        assert all(e["best_lag"] == 0 for e in f["A"])
 
 
 def test_xdate_segment_correlation_values_ca533():
@@ -137,10 +149,10 @@ def test_xdate_plot_matches_dplR_semantics_ca533():
 
 
 def test_xdate_cofecha_preset_smoke():
-    # preset="COFECHA" returns the extra COFECHA keys and a sensible problem count.
+    # preset="COFECHA" takes the RAW frame (it detrends internally) and returns the
+    # extra COFECHA keys and a sensible problem count.
     data = _read_quiet("tests/data/csv/ca533.csv")
-    rwi = dpl.detrend(data, fit="Spline", period=32, plot=False)
-    res = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    res = _xdate_quiet(data, preset="COFECHA", show_flags=False)
     for k in ("seg_corr", "flags", "segments", "n_problems", "preset"):
         assert k in res
     assert res["preset"] == "COFECHA"
@@ -154,12 +166,11 @@ def test_xdate_cofecha_segments_anchor_to_series_ends():
     # COFECHA anchors the first segment to each series' first year (full 50-yr
     # window) rather than snapping to a 25-yr grid multiple.
     data = _read_quiet("tests/data/csv/ca533.csv")
-    rwi = dpl.detrend(data, fit="Spline", period=32, plot=False)
-    res = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    res = _xdate_quiet(data, preset="COFECHA", show_flags=False)  # raw; self-detrends
     for name, segs in res["segments"].items():
         if not segs:
             continue
-        col = rwi[name].dropna()
+        col = data[name].dropna()
         y0 = int(col.index.min())
         # first segment starts at the series' first year (when long enough)
         if len(col) >= 50:
@@ -191,10 +202,10 @@ def test_xdate_cofecha_omit_absent_rings():
     raw = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
     # plant a few absent rings (zeros) in one series
     raw.iloc[10:13, 0] = 0.0
-    rwi = dpl.detrend(raw, fit="Spline", period=32, plot=False)
-    base = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
-    r_raw = _xdate_quiet(rwi, preset="COFECHA", absent=raw, show_flags=False)
-    r_bool = _xdate_quiet(rwi, preset="COFECHA", absent=(raw == 0), show_flags=False)
+    # preset takes the raw frame directly (it detrends internally)
+    base = _xdate_quiet(raw, preset="COFECHA", show_flags=False)
+    r_raw = _xdate_quiet(raw, preset="COFECHA", absent=raw, show_flags=False)
+    r_bool = _xdate_quiet(raw, preset="COFECHA", absent=(raw == 0), show_flags=False)
     assert r_raw["n_problems"] == r_bool["n_problems"]     # both forms agree
     assert isinstance(base["n_problems"], int)
 
@@ -209,12 +220,13 @@ def test_xdate_preset_none_vs_cofecha_coexist():
     rwi = dpl.detrend(data, fit="Spline", plot=False)
 
     default_before = _xdate_quiet(rwi, show_flags=False)
-    cof = _xdate_quiet(rwi, preset="COFECHA", show_flags=False)
+    cof = _xdate_quiet(data, preset="COFECHA", show_flags=False)   # raw; self-detrends
     default_after = _xdate_quiet(rwi, show_flags=False)
 
-    # default path: unchanged dplR-faithful flags, no COFECHA-only keys
+    # default path: COFECHA-style A/B split (only CAM131 is a true A flag), no
+    # COFECHA-only keys
     a_flagged = sorted(k for k, v in default_before["flags"].items() if v["A"])
-    assert a_flagged == ["CAM011", "CAM051", "CAM131", "CAM181", "CAM201"]
+    assert a_flagged == ["CAM131"]
     assert not any(k in default_before for k in ("segments", "n_problems", "preset"))
 
     # calling the preset in between does not perturb the default result
