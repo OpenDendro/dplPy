@@ -29,17 +29,31 @@ result["flags"]        # A/B flags per series
 
 ### Reading the flags
 
-- **A flag** — the segment's correlation with the master is not significant at
-  `p_val` (default 0.05). This reproduces dplR exactly: a segment is flagged when
-  its correlation fails to clear the critical value.
-- **B flag** — the correlation is *higher at a non-dated lag* than at the dated
-  position, hinting at a possible dating shift. dplPy's B flag follows COFECHA
-  (it fires whenever the best match is at a non-zero lag, with no extra margin);
-  dplR's `corr.rwl.seg` has no B flag, so this is a deliberate, documented
-  addition that is on in both the default and COFECHA modes.
+The two flags are **mutually exclusive**, COFECHA-style:
 
-Set `make_plot=True` for a dplR-style crossdating plot, or use `series_corr` to
-drill into one series.
+- **B flag** — the segment correlates *better at a non-dated lag* than where it is
+  dated (its best lag ≠ 0), hinting at a possible dating shift. dplPy's B flag
+  follows COFECHA (it fires whenever the best match is at a non-zero lag, with no
+  extra margin); dplR's `corr.rwl.seg` has no B flag, so this is a deliberate,
+  documented addition, on in both the default and COFECHA modes.
+- **A flag** — the dated (lag-0) position *is* the best match, but its correlation
+  is still not significant at `p_val` (default 0.05): a weak but correctly-placed
+  segment. An A flag's best lag is therefore always 0.
+
+dplR flags every non-significant segment and has no lag concept; dplPy splits
+those into A (lag 0 is best) and B (a better lag exists), so a segment is never
+both. The per-segment lag table is printed for both flag kinds.
+
+Set `make_plot=True` (or call `xdate_plot`) for a dplR-style crossdating plot, or
+use `series_corr` to drill into one series.
+
+!!! note "The plot shows significance only — read the text flags too"
+    The crossdating plot is faithful to dplR's `plot.crs`: it colours a segment
+    red purely on **significance** (the A screen). It does **not** show B (lag)
+    flags — dplR's plot has no such concept. A B-flagged segment that still dates
+    *significantly* is drawn blue, so it can look fine on the plot even though
+    `xdate()` reports it as a possible dating shift. Always read the text flag
+    report alongside the plot to catch B flags.
 
 ## COFECHA emulation
 
@@ -50,10 +64,13 @@ instead of dplR:
 result = dpl.xdate(rwl, preset="COFECHA")
 ```
 
-The preset changes the crossdating machinery to match COFECHA:
+Pass the **raw** ring-width frame: unlike the default path (which expects
+detrended RWI), the COFECHA preset detrends the series itself — so do not call
+`detrend` first. The preset changes the crossdating machinery to match COFECHA:
 
+- a **rigid cubic-spline detrend** (32-yr, ratios) of the raw series,
+- **spline variance stabilization** of the detrended series,
 - **Burg** (maximum-entropy) AR prewhitening,
-- **spline variance stabilization** of the series,
 - an **arithmetic, z-scored** leave-one-out master,
 - **Pearson** correlation,
 - COFECHA **segment anchoring** and **t-based critical values**, and

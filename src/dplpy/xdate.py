@@ -1003,6 +1003,15 @@ def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
     draws the green/blue/red segment plot -- green = series extent, blue = a
     segment that correlates significantly with the master, red = a flagged
     segment (p >= ``p_val``). Returns the matplotlib Axes.
+
+    Note: this plot shows only the **significance** screen (dplR's corr.rwl.seg,
+    i.e. the **A** flag) -- red marks a segment whose dated (lag-0) correlation is
+    not significant. It does NOT show the **B** flag (a segment that correlates
+    better at a non-dated lag -- a possible dating shift), which dplR's plot has no
+    concept of. A B-flagged segment that still dates significantly is drawn blue
+    here, so it looks fine on the plot even though :func:`xdate` reports it as a
+    problem. Always read the text ``xdate()`` flag report alongside this plot to
+    catch B (lag) flags.
     """
     res = xdate(data, prewhiten=prewhiten, corr=corr, slide_period=slide_period,
                 bin_floor=bin_floor, p_val=p_val, biweight=biweight,

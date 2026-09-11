@@ -49,7 +49,10 @@ def test_series_corr_returns_results_and_matches_xdate():
             xd = dpl.xdate(rwi, show_flags=False)
     assert set(sc.keys()) == {"moving_corr", "seg_corr", "overall", "lag_table",
                               "ccf", "ccf_bins", "bins"}
-    assert sc["overall"][0] == pytest.approx(xd["overall"].loc["CAM011", "rho"], abs=1e-9)
+    # series_corr and xdate compute the same leave-one-out overall correlation;
+    # xdate rounds its reported rho to 3 decimals (series_corr keeps full precision),
+    # so they agree once series_corr's value is rounded the same way.
+    assert round(sc["overall"][0], 3) == xd["overall"].loc["CAM011", "rho"]
     # dplR-style ccf: 11 lags (-5..5), and a well-dated series peaks at lag 0
     assert list(sc["ccf"].index) == ["lag." + str(k) for k in range(-5, 6)]
     for b in sc["ccf_bins"]:
