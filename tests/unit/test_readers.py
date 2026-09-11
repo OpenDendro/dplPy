@@ -1230,3 +1230,103 @@ def test_join_false_keeps_disjoint_blocks_separate(tmp_path):
     assert d.loc[1900, "AAA01"] == pytest.approx(0.1)
     assert d.loc[2000, "AAA012"] == pytest.approx(0.4)
     assert np.isnan(d.loc[2000, "AAA01"])                # not merged
+
+
+# --- advisory heads-ups: beyond-column content and short interior gaps ---------
+
+def _rwl_row(sid, year, values):
+    """Build one standard Tucson decadal row: 8-char id, 4-char year, then
+    6-char right-justified value fields. Pass "" for a blank (missing) cell."""
+    return sid.ljust(8) + str(year).rjust(4) + "".join(str(v).rjust(6) for v in values)
+
+
+def _read_quiet(path, **kw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return dpl.readers(path, **kw)
+
+
+def test_beyond_column_flags_truncated_value(tmp_path, capsys):
+    # A value that overflows its 6-char field leaves a digit in the separator
+    # column (col 73, 1-indexed): '3035' written with 3 leading spaces puts '5' at
+    # col 72 (0-indexed), so only '303' is read. This must be flagged (ok049 case).
+    p = tmp_path / "ovf.rwl"
+    row = _rwl_row("LIN9A", 1830, [353, 835, 434, 390, 443, 267, 463, 372, 425]) + "   3035"
+    p.write_text(row + "\n" +
+                 _rwl_row("LIN9A", 1840, [88, 102, 145, 35, 65, 57, 110, 123, 328, -9999]) + "\n")
+    d = _read_quiet(str(p), header=False)
+    b = d.attrs["dplpy_beyond_column"]
+    assert len(b) == 1
+    assert b[0]["series"] == "LIN9A"
+    assert b[0]["year"] == 1839                      # the 10th (last) value's year
+    assert b[0]["in_column"] == "303"                # what was actually read
+    assert b[0]["unparsed"] == "5"                   # the dropped digit
+    assert b[0]["kind"] == "truncated_value"
+    out = capsys.readouterr().out
+    assert "beyond the last data column" in out      # announced with the success msg
+    assert "LIN9A 1839" in out
+
+
+def test_beyond_column_ignores_site_id(tmp_path):
+    # A trailing site ID in the optional cols 74-78 (a blank separator column) is
+    # standard ITRDB content and must NOT be flagged.
+    p = tmp_path / "site.rwl"
+    row = _rwl_row("SIT01A", 1900, [353, 835, 434, 390, 443, 267, 463, 372, 425, 353]) + " SITE"
+    p.write_text(row + "\n" +
+                 _rwl_row("SIT01A", 1910, [10, 20, 30, -9999]) + "\n")
+    d = _read_quiet(str(p), header=False)
+    assert d.attrs["dplpy_beyond_column"] == []      # site ID at col 74+ not flagged
+    assert d.loc[1900, "SIT01A"] == pytest.approx(0.353)
+
+
+def test_tab_in_id_padding_not_flagged(tmp_path):
+    # va024 case: a tab replaces one space in the id->year gap. It parses correctly
+    # (byte columns preserved, tab stripped) and must raise NO advisory.
+    p = tmp_path / "tab.rwl"
+    tabrow = "25B" + "\t" + "    " + "1930" + "".join(str(v).rjust(6) for v in
+             [108, 97, 70, 65, 65, 54, 54, 47, 37, 47])
+    p.write_text(_rwl_row("25B", 1920, [140, 162, 168, 195, 120, 142, 123, 130, 54, 76]) + "\n" +
+                 tabrow + "\n" +
+                 _rwl_row("25B", 1940, [41, 75, 51, -9999]) + "\n")
+    d = _read_quiet(str(p), header=False)
+    assert d.attrs["dplpy_beyond_column"] == []
+    assert d.attrs["dplpy_interior_gaps"] == []
+    assert d.loc[1930, "25B"] == pytest.approx(0.108)   # tab row read correctly
+
+
+def test_short_interior_gap_reported(tmp_path, capsys):
+    # A single blank year flanked by measured years (ok049 LIN01A 1939) is a likely
+    # dropped value: recorded AND announced as a short gap.
+    p = tmp_path / "gap.rwl"
+    # 1930 decade with the 1939 cell (last) blank, then 1940 decade continues.
+    p.write_text(
+        _rwl_row("LIN01A", 1930, [1297, 1696, 1587, 1173, 1472, 1272, 1575, 1158, 1206, ""]) + "\n" +
+        _rwl_row("LIN01A", 1940, [1366, 1322, 1332, 867, 886, -9999]) + "\n")
+    d = _read_quiet(str(p), header=False)
+    gaps = d.attrs["dplpy_interior_gaps"]
+    assert len(gaps) == 1
+    assert gaps[0]["series"] == "LIN01A"
+    assert gaps[0]["short_gap_years"] == [1939]
+    assert gaps[0]["max_run"] == 1
+    import numpy as np
+    assert np.isnan(d.loc[1939, "LIN01A"])           # the hole is a NaN
+    out = capsys.readouterr().out
+    assert "short interior gap" in out
+    assert "LIN01A: 1939" in out
+
+
+def test_long_interior_gap_recorded_but_not_announced(tmp_path, capsys):
+    # A long interior gap (8 blank years between measured years) is almost always
+    # structural (rot / disjoint segment), so it is recorded on df.attrs but NOT
+    # surfaced as a heads-up (would be noise across the ITRDB).
+    p = tmp_path / "longgap.rwl"
+    p.write_text(
+        _rwl_row("LNG01A", 1900, [100, "", "", "", "", "", "", "", "", 200]) + "\n" +
+        _rwl_row("OTH01A", 1900, [50, 60, 70, -9999]) + "\n")
+    d = _read_quiet(str(p), header=False)
+    gaps = {g["series"]: g for g in d.attrs["dplpy_interior_gaps"]}
+    assert "LNG01A" in gaps                            # recorded
+    assert gaps["LNG01A"]["max_run"] == 8
+    assert gaps["LNG01A"]["short_gap_years"] == []     # nothing short -> not announced
+    out = capsys.readouterr().out
+    assert "short interior gap" not in out

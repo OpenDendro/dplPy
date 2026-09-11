@@ -102,6 +102,14 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     Returns
     -------
     data : pandas dataframe
+        Year-indexed ring widths. Besides the data, non-fatal advisories about a
+        successfully-read file are attached to ``df.attrs`` (and a concise
+        heads-up is printed): ``dplpy_beyond_column`` lists rows with characters
+        past the last data column (col 72) that were not parsed -- most
+        importantly a value that overflowed its field and was truncated -- and
+        ``dplpy_interior_gaps`` lists series with a blank year between measured
+        years (a short one is flagged as a possible dropped value; a long one is
+        recorded only, as it is usually an intentional structural gap).
 
     Examples
     --------
@@ -181,10 +189,14 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
     meta = series_data.attrs.get("dplpy_metadata", None)
     dropped = series_data.attrs.get("dplpy_dropped", 0)
+    beyond_column = series_data.attrs.get("dplpy_beyond_column", [])
+    interior_gaps = series_data.attrs.get("dplpy_interior_gaps", [])
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
     series_data.attrs["dplpy_combined"] = combined
     series_data.attrs["dplpy_dropped"] = dropped
+    series_data.attrs["dplpy_beyond_column"] = beyond_column
+    series_data.attrs["dplpy_interior_gaps"] = interior_gaps
     if hdr_skipped is not None:
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
     if meta is not None:
@@ -231,6 +243,39 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
             print("    " + str(c["series"]) + ": " + str(c["n_blocks"])
                   + " segments spanning " + str(c["first_year"]) + " to "
                   + str(c["last_year"]))
+
+    # Advisory heads-ups: the file read fine, but these spots deserve a human eye.
+    # 1. Characters beyond the last data column (col 72) that were not parsed --
+    #    most importantly a value that overflowed its field and was truncated.
+    if beyond_column:
+        print("  heads-up: " + str(len(beyond_column)) + " row"
+              + ("s" if len(beyond_column) != 1 else "")
+              + " had characters beyond the last data column (col 72) that were "
+              "not parsed -- check for a truncated value:")
+        for b in beyond_column[:10]:
+            note = ("  (looks like a split value)" if b["kind"] == "truncated_value"
+                    else "")
+            print("    " + str(b["series"]) + " " + str(b["year"]) + ": read "
+                  + repr(b["in_column"]) + ", ignored " + repr(b["unparsed"]) + note)
+        if len(beyond_column) > 10:
+            print("    ... and " + str(len(beyond_column) - 10) + " more "
+                  "(see df.attrs['dplpy_beyond_column']).")
+    # 2. Short interior gaps -- a blank year (or two) between measured years, i.e.
+    #    a value that was probably dropped. Long structural gaps are recorded on
+    #    df.attrs['dplpy_interior_gaps'] but not announced (they are usually real).
+    short_gaps = [g for g in interior_gaps if g["short_gap_years"]]
+    if short_gaps:
+        total = sum(len(g["short_gap_years"]) for g in short_gaps)
+        print("  heads-up: " + str(total) + " short interior gap"
+              + ("s" if total != 1 else "") + " (a blank year between measured "
+              "years -- possibly a dropped value) in " + str(len(short_gaps))
+              + " series:")
+        for g in short_gaps[:10]:
+            yrs = ", ".join(str(y) for y in g["short_gap_years"][:8])
+            print("    " + str(g["series"]) + ": " + yrs)
+        if len(short_gaps) > 10:
+            print("    ... and " + str(len(short_gaps) - 10) + " more series "
+                  "(see df.attrs['dplpy_interior_gaps']).")
     return series_data
 
 
@@ -368,6 +413,10 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
+    # Advisory (non-fatal) data-quality notes -- surfaced in both strict and salvage
+    # mode, since these rows parse successfully but a human should eyeball them.
+    df.attrs["dplpy_beyond_column"] = _beyond_column_findings(clean_lines)
+    df.attrs["dplpy_interior_gaps"] = _interior_gap_findings(df)
     if not strict and report:
         _warn_salvage_summary(source_name, report)
     return df
@@ -631,6 +680,103 @@ def _assemble_dataframe(rwl_data, precision, order):
         col = (pd.Series(rwl_data[series]) / div).reindex(index).to_numpy()
         series_columns.append(pd.Series(data=col, name=series))
     return pd.concat([df] + series_columns, axis=1)
+
+
+# A short interior gap -- a blank year (or two) flanked by measured years within a
+# single series -- is the tell-tale of a value that was probably dropped in data
+# entry (e.g. ok049's LIN01A 1939), and is worth a heads-up. A LONG interior gap
+# (many blank years in a row) is almost always intentional/structural -- a rotten
+# or unmeasurable section, or two disjoint dated segments -- and is common enough
+# across the ITRDB (hundreds of series) that warning about it would only train
+# users to ignore the message. So every interior gap is recorded on df.attrs, but
+# only runs no longer than this are surfaced as an advisory.
+_SHORT_GAP_MAX = 2
+
+
+def _consecutive_runs(sorted_ints):
+    """Group a sorted list of ints into runs of consecutive values, e.g.
+    [1939, 1970, 1971] -> [[1939], [1970, 1971]]."""
+    runs = []
+    cur = []
+    for y in sorted_ints:
+        if cur and y == cur[-1] + 1:
+            cur.append(y)
+        else:
+            if cur:
+                runs.append(cur)
+            cur = [y]
+    if cur:
+        runs.append(cur)
+    return runs
+
+
+def _interior_gap_findings(df):
+    """Find interior NaN gaps: years with no value that fall strictly *between* a
+    series' first and last measured year (so leading/trailing missing years, which
+    are just where a series does not reach, are ignored). Returns a list of
+    {series, gap_years, short_gap_years, max_run} -- one entry per series that has
+    at least one interior gap. ``short_gap_years`` are the years in runs no longer
+    than _SHORT_GAP_MAX (the 'probably a dropped value' subset)."""
+    if df is None or "Year" not in df.columns:
+        return []
+    years = df["Year"].to_numpy()
+    findings = []
+    for col in df.columns:
+        if col == "Year":
+            continue
+        present_mask = df[col].notna().to_numpy()
+        if present_mask.sum() < 2:
+            continue
+        present_years = years[present_mask]
+        lo, hi = int(present_years.min()), int(present_years.max())
+        present = set(int(y) for y in present_years.tolist())
+        missing = [y for y in range(lo, hi + 1) if y not in present]
+        if not missing:
+            continue
+        runs = _consecutive_runs(missing)
+        short_years = [y for r in runs if len(r) <= _SHORT_GAP_MAX for y in r]
+        findings.append({"series": col, "gap_years": missing,
+                         "short_gap_years": short_years,
+                         "max_run": max(len(r) for r in runs)})
+    return findings
+
+
+def _beyond_column_findings(data_lines):
+    """Find fixed-width data rows with non-blank characters in the separator column
+    that follows the ten value fields (1-indexed column 73 / 0-indexed 72 -- the
+    reserved gap before the optional site-ID field at cols 74-78). That column
+    should always be blank; a character there means the last value overflowed its
+    six-character field (e.g. ok049's LIN152A 1839, where '3035' left '5' past the
+    column and only '303' was read) or some other stray content butts against the
+    values -- either way something was written that the fixed-width read does not
+    capture. Content that begins at the site-ID field (col 74+) is NOT flagged: it
+    is the standard optional site ID and is common and legitimate.
+
+    Returns a list of {series, year, in_column, unparsed, kind}. ``year`` is the
+    year of the tenth (last) value field, where the overflow lands; ``kind`` is
+    'truncated_value' when a digit runs contiguously across the boundary (a value
+    was split) or 'unexpected_chars' otherwise."""
+    findings = []
+    for line in data_lines:
+        if not _looks_like_data(line):
+            continue
+        # Same column arithmetic as _parse_fixed (incl. the bunched BC-year case).
+        if len(line) >= 9 and line[7] == '-' and line[8].isdigit():
+            idw, yrw = 7, 5
+        else:
+            idw, yrw = 8, 4
+        boundary = idw + yrw + 60                 # first column after the 10 values
+        if boundary >= len(line) or line[boundary].isspace():
+            continue                               # separator column is blank -> fine
+        sid, row_year, _vals = _parse_fixed(line)
+        last_cell = line[idw + yrw + 54:boundary].strip()   # the 10th value field
+        tail = line[boundary:].rstrip()
+        contiguous_digit = (line[boundary - 1].isdigit() and line[boundary].isdigit())
+        findings.append({"series": sid, "year": row_year + 9,
+                         "in_column": last_cell, "unparsed": tail[:20],
+                         "kind": "truncated_value" if contiguous_digit
+                                 else "unexpected_chars"})
+    return findings
 
 
 def _warn_salvage_summary(basename, report):

@@ -44,6 +44,32 @@ rwl = dpl.readers_url("https://www.ncei.noaa.gov/pub/data/paleo/treering/.../ca5
     an informative error — they are not decadal Tucson data. Use the plain
     `.rwl` file (the same name without `-noaa`).
 
+### Data-quality heads-ups
+
+Some files parse cleanly yet contain small oddities a human should look at.
+`readers` reads them successfully and prints a short, non-fatal heads-up (in
+both strict and salvage mode), with the full detail left on `df.attrs` for
+programmatic use:
+
+- **Characters beyond the last data column.** The ten decadal values occupy
+  fixed columns 13–72; column 73 is a reserved blank separator before the
+  optional site-ID field (columns 74–78). A non-blank character in column 73
+  means the last value overflowed its six-character field and was truncated —
+  for example a `3035` written with three leading spaces leaves `5` past the
+  column, so only `303` is read. dplPy flags these (a human must decide whether
+  the true value was `3035` or the extra digit was a stray keystroke); content
+  that begins at the site-ID columns (74+) is *not* flagged, since that is
+  standard. Detail is on `df.attrs["dplpy_beyond_column"]`.
+- **Short interior gaps.** A blank year (or two) sitting *between* a series'
+  measured years — a hole in an otherwise continuous run — is often a value
+  dropped in data entry, so dplPy flags it. Long interior gaps (many blank years
+  in a row) are almost always intentional (a rotten or unmeasurable section, or
+  two disjoint dated segments) and are only recorded, not announced. Every
+  interior gap, short or long, is on `df.attrs["dplpy_interior_gaps"]`.
+
+These are advisories, not errors: the returned DataFrame is complete, and the
+missing years appear as `NaN`.
+
 ## Chronology files with `read_crn`
 
 `read_crn` reads Tucson chronology (`.crn`) files — the standardized site
