@@ -83,7 +83,7 @@ def report(inp: pd.DataFrame | str):
     ar1 = statistics["ar1"]
     # Mean interseries correlation (each series vs a leave-one-out master --
     # the COFECHA-style statistic; see dpl.interseries_corr()).
-    ic = interseries_corr(series_data)["interseries_corr"]
+    ic = interseries_corr(series_data)[1]["interseries_corr"]   # (mean, per-series df)
 
     print("Number of dated series:", no_of_series)
     print("Number of measurements:", no_of_measurements)

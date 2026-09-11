@@ -37,7 +37,7 @@ def test_interseries_cor_values_no_prewhiten():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
-    result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False)
+    mean_corr, result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False)
 
     expected_df = pd.DataFrame(
         data={"interseries_corr": [0.857, 0.934, 0.929],
@@ -46,6 +46,8 @@ def test_interseries_cor_values_no_prewhiten():
     )
 
     pd.testing.assert_frame_equal(expected_df, result_df)
+    # the mean is returned first, rounded to 3 decimals
+    assert mean_corr == round((0.857 + 0.934 + 0.929) / 3, 3)
 
 
 def test_interseries_cor_values_pearson_no_prewhiten():
@@ -55,11 +57,12 @@ def test_interseries_cor_values_pearson_no_prewhiten():
                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
-    result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False, corr="Pearson")
+    mean_corr, result_df = dpl.interseries_corr(input_df, prewhiten=False, biweight=False, corr="Pearson")
 
     assert list(result_df.index) == ["SeriesA", "SeriesB", "SeriesC"]
     assert (result_df["interseries_corr"] > 0.8).all()
     assert (result_df["p_val"] < 0.05).all()
+    assert 0.8 < mean_corr <= 1.0
 
 
 '''
@@ -78,9 +81,11 @@ def test_interseries_cor_default_settings_sane():
         index=pd.Index(data=list(range(1, 13)), name="Year"),
     )
 
-    result_df = dpl.interseries_corr(input_df)
+    mean_corr, result_df = dpl.interseries_corr(input_df)
 
     assert list(result_df.index) == ["SeriesA", "SeriesB", "SeriesC"]
     assert list(result_df.columns) == ["interseries_corr", "p_val"]
     assert result_df["interseries_corr"].between(-1, 1).all()
     assert result_df["p_val"].between(0, 1).all()
+    assert -1 <= mean_corr <= 1
+    assert mean_corr == round(mean_corr, 3)              # reported to 3 decimals

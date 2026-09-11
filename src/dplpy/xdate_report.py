@@ -295,8 +295,8 @@ def _format_part5(rep, per_block=20):
             row = seg_corr.loc[name]
             if all(pd.isna(row.iloc[c]) for c in cols):
                 continue                                    # nothing in this block
-            # A flags are bin labels; B flags are dicts carrying the bin under "segment"
-            fa = set(flags.get(name, {}).get("A", []))
+            # A and B flags are both dicts carrying the bin label under "segment"
+            fa = set(d["segment"] for d in flags.get(name, {}).get("A", []))
             fb = set(d["segment"] for d in flags.get(name, {}).get("B", []))
             r = rep["_rowmap"][name]
             cells = []
@@ -393,12 +393,13 @@ def _format_report(rep):
 
 def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
                  slide_period=50, bin_floor=100, p_val=0.05,
-                 write=True, verbose=True, preset=None, spline_period=None):
+                 output="both", verbose=True, preset=None, spline_period=None):
     """Generate a COFECHA-style crossdating QA report for one or more .rwl files.
 
     For each file: read (salvage mode), detrend, cross-date with ``dpl.xdate``,
-    collate per-series statistics, and (if ``write``) save a ``<name>.txt`` report
-    in ``out_dir``. Built for batch QA of ITRDB submissions.
+    collate per-series statistics, and print the report and/or save it as a
+    ``<name>.txt`` in ``out_dir`` (see ``output``). Built for batch QA of ITRDB
+    submissions.
 
     By default this is a dplR-faithful report styled after COFECHA (some columns
     match COFECHA closely, others differ by method). Pass ``preset="COFECHA"`` to
@@ -421,10 +422,14 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     corr, slide_period, bin_floor, p_val
         passed through to ``dpl.xdate`` (``corr``, ``bin_floor`` and ``p_val`` are
         ignored when ``preset="COFECHA"``; ``slide_period`` still applies).
-    write : bool, default True
-        write the ``.txt`` files; if False, only the text is returned.
+    output : {"both", "screen", "file"}, default "both"
+        where the full report goes: ``"screen"`` prints it to the notebook/console
+        for immediate reading, ``"file"`` writes a ``<name>.txt`` in ``out_dir``,
+        ``"both"`` does both. The report text is always available in the returned
+        dict regardless of this setting.
     verbose : bool, default True
-        print progress and a final tally.
+        print a one-line per-file progress note and a final tally (separate from
+        ``output``, which controls the full report text).
     preset : str or None, default None
         set to ``"COFECHA"`` to emulate the COFECHA program (see above).
     spline_period : int or None, default None
@@ -437,9 +442,15 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
         ``{path: {"text": str, "report": dict}}`` for files read successfully, or
         ``{path: {"error": str}}`` for files that failed.
     """
+    output = str(output).strip().lower()
+    if output not in ("screen", "file", "both"):
+        raise ValueError("output must be 'screen', 'file', or 'both', got %r." % output)
+    to_screen = output in ("screen", "both")
+    to_file = output in ("file", "both")
+
     if isinstance(files, str):
         files = [files]
-    if write:
+    if to_file:
         os.makedirs(out_dir, exist_ok=True)
     results = {}
     ok = 0
@@ -449,9 +460,11 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
             rep = _process_one(path, fit, corr, slide_period, bin_floor, p_val,
                                preset=preset, spline_period=spline_period)
             text = _format_report(rep)
-            if write:
+            if to_file:
                 with open(os.path.join(out_dir, base + ".txt"), "w") as fh:
                     fh.write(text)
+            if to_screen:
+                print(text)
             results[path] = {"text": text, "report": rep}
             ok += 1
             if verbose:
@@ -464,5 +477,5 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
                 print("  [%d/%d] %s: FAILED -- %s" % (i, len(files), base, str(e)[:80]))
     if verbose:
         print("%d of %d file(s) reported OK%s"
-              % (ok, len(files), (" -> " + out_dir) if write else ""))
+              % (ok, len(files), (" -> " + out_dir) if to_file else ""))
     return results

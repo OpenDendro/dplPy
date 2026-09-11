@@ -100,15 +100,21 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
 
     Returns
     -------
-    result : pandas dataframe with one row per series (indexed by series
-        name), containing the interseries correlation and its (one-sided,
-        "greater") p-value.
+    mean_corr : float
+        the collection-wide mean interseries correlation (rounded to 3
+        decimals) -- the single number most users want.
+    result : pandas dataframe
+        one row per series (indexed by series name) with that series'
+        interseries correlation (3 decimals) and its one-sided ("greater")
+        p-value.
 
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.interseries_corr(data)
+    >>> mean_corr, per_series = dpl.interseries_corr(data)
+    >>> mean_corr                       # the collection-wide mean
+    >>> per_series.head()               # the individual-series table
     >>> dpl.interseries_corr(data, prewhiten=False, corr="Pearson")
 
     References
@@ -159,4 +165,8 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
         index=pd.Index(series_names, name="series"),
     )
 
-    return result_df
+    # The number users most often want is the collection-wide mean interseries
+    # correlation (COFECHA's headline statistic), so return it first, with the
+    # per-series table second. Both correlations are reported to 3 decimals.
+    mean_corr = round(float(result_df["interseries_corr"].mean()), 3)
+    return mean_corr, result_df

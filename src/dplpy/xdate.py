@@ -402,7 +402,10 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         - ``p_val`` -- DataFrame (series x bins) of one-tailed p-values
         - ``overall`` -- DataFrame (series x ['rho', 'p_val'])
         - ``avg_seg_corr`` -- Series (bins) mean correlation across series
-        - ``flags`` -- dict {series: {'A': [...], 'B': [...]}}
+        - ``flags`` -- dict {series: {'A': [...], 'B': [...]}}, where each A
+          (not significant as dated) and B (better at another lag) entry is a
+          dict ``{segment, best_lag, best_corr, lags}`` (``lags`` is the
+          per-lag correlation row printed in the flag table)
         - ``bins`` -- list of "start-end" bin labels
         - ``rwi`` -- DataFrame of the normalized/prewhitened series used
 
@@ -473,18 +476,22 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
             rho, pv = _corr_pval(seg, mas, method)
             seg_corr.loc[name, blabel] = rho
             seg_pval.loc[name, blabel] = pv
+            # The per-lag table is computed for every segment (cheap) so that both
+            # flag kinds can report it (users want to see the lag profile behind an
+            # A flag too, not only a B flag).
+            lag_row, best_lag, best_coeff = _lag_table(series, master, years, lo, hi,
+                                                       slide_period, method, lag)
+            entry = {"segment": blabel, "best_lag": best_lag,
+                     "best_corr": best_coeff, "lags": lag_row}
             # (A) significance flag -- independent of (B)
             if not np.isnan(pv) and pv >= p_val:
-                a_flags.append(blabel)
+                a_flags.append(dict(entry))
             # (B) COFECHA-style lag flag: the segment correlates better with the
             # master at a non-dated position (best_lag != 0), no margin -- exactly
             # COFECHA's rule (SLSG: IF MXCOR != dated). This is a COFECHA-derived
             # dating-shift screen; dplR's corr.rwl.seg has no B flag of its own.
-            lag_row, best_lag, best_coeff = _lag_table(series, master, years, lo, hi,
-                                                       slide_period, method, lag)
             if best_lag != 0:
-                b_flags.append({"segment": blabel, "best_lag": best_lag,
-                                "best_corr": best_coeff, "lags": lag_row})
+                b_flags.append(dict(entry))
         if a_flags or b_flags:
             flags[name] = {"A": a_flags, "B": b_flags}
 
@@ -631,7 +638,8 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
             flag = ""
             if best_lag == 0 and r0 < crit:
                 flag = "A"
-                a_flags.append("%d-%d" % (lo, hi))
+                a_flags.append({"segment": "%d-%d" % (lo, hi), "best_lag": best_lag,
+                                "best_corr": best_coeff, "lags": lag_row})
             elif best_lag != 0:
                 flag = "B"
                 b_flags.append({"segment": "%d-%d" % (lo, hi), "best_lag": best_lag,
@@ -771,21 +779,35 @@ def _lag_table(series, master, years, lo, hi, slide_period, method, lag_max):
 
 
 def _print_flags(flags, lag_max):
+    """Print the per-segment lag tables for the A (not significant as dated) and
+    B (correlates better at another lag) flags. The lag-offset column headers are
+    width-matched to the correlation cells below them so the numbers line up (the
+    same fixed-column style as xdate_report)."""
     if not flags:
         print()
         return
-    header = " ".join(["{0:>+4d}".format(k) if k != 0 else "   0"
-                       for k in range(-lag_max, lag_max + 1)])
+    lags = list(range(-lag_max, lag_max + 1))
+    CW = 6                                        # width of each lag/correlation column
+    axis = "".join((("%+d" % k) if k != 0 else "0").rjust(CW) for k in lags)
+    # Header and data rows share the same-width prefix so columns align exactly.
+    head = "      {0:<11} {1:>4}  {2}".format("Segment", "best", axis)
+
+    def line(e):
+        cells = "".join(str(c).strip().rjust(CW) for c in e["lags"])
+        return "      {0:<11} {1:>+4d}  {2}".format(e["segment"], e["best_lag"], cells)
+
     for name, fl in flags.items():
         print("Flags for", name)
         if fl["A"]:
-            print("  [A] not significant:", ", ".join(fl["A"]))
+            print("  [A] not significant as dated ('best' = lag of highest correlation):")
+            print(head)
+            for e in fl["A"]:
+                print(line(e))
         if fl["B"]:
-            print("  [B] better at a lag:")
-            print("      Segment       High " + header)
-            for b in fl["B"]:
-                lead = (b["segment"]).rjust(12) + " " + "{0:>+4d}".format(b["best_lag"])
-                print("     ", lead, " ".join(b["lags"]))
+            print("  [B] correlates better at another lag ('best' = that lag):")
+            print(head)
+            for e in fl["B"]:
+                print(line(e))
         print()
 
 

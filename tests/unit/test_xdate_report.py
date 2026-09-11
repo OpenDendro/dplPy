@@ -38,10 +38,16 @@ def test_xdate_report_sections_and_structure(tmp_path):
         assert col in r0
 
 
-def test_xdate_report_write_false_returns_text_only(tmp_path):
-    res = _quiet_report(RWL + "ca533.rwl", out_dir=str(tmp_path), write=False)
+def test_xdate_report_screen_only_writes_no_file(tmp_path):
+    # output="screen" prints/returns the report but writes no file
+    res = _quiet_report(RWL + "ca533.rwl", out_dir=str(tmp_path), output="screen")
     assert "text" in res[RWL + "ca533.rwl"]
     assert not os.listdir(str(tmp_path))          # nothing written
+
+
+def test_xdate_report_bad_output_raises():
+    with pytest.raises(ValueError):
+        dpl.xdate_report(RWL + "ca533.rwl", output="bogus")
 
 
 def test_xdate_report_bad_file_is_recorded_not_raised(tmp_path):
@@ -57,8 +63,8 @@ def test_xdate_report_cofecha_preset(tmp_path):
     # (Burg / variance stabilization / omit-absent / length-weighted summary) and
     # still produces a well-formed report. Its summary differs from the default.
     key = RWL + "ca533.rwl"
-    cof = _quiet_report(key, out_dir=str(tmp_path), write=False, preset="COFECHA")
-    dfl = _quiet_report(key, out_dir=str(tmp_path), write=False)
+    cof = _quiet_report(key, out_dir=str(tmp_path), output="screen", preset="COFECHA")
+    dfl = _quiet_report(key, out_dir=str(tmp_path), output="screen")
     assert cof[key]["report"]["preset"] == "COFECHA"
     assert dfl[key]["report"].get("preset") is None
     ctxt, dtxt = cof[key]["text"], dfl[key]["text"]
