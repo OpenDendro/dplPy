@@ -199,6 +199,54 @@ def test_rwl_autodetect_matches_dplR_ca533():
     assert np.isnan(data.loc[1500, "CAM011"])
 
 
+def _flip_case_rwl(tmp_path, terminate_first=False):
+    # One core whose ID case flips mid-series: an uppercase block running into a
+    # lowercase continuation that carries the -9999 stop marker. terminate_first=True
+    # gives the first block its own stop marker too (two properly-terminated
+    # case-variant blocks, which must NOT be merged).
+    first = ("AAA01A  1000   100   200   300   400 -9999\n" if terminate_first
+             else "AAA01A  1000   100   200   300   400   500\n")
+    p = tmp_path / "flip.rwl"
+    p.write_text(first + "AAA01a  1005   150   250   350 -9999\n")
+    return str(p)
+
+
+def test_case_variant_missing_terminator_merges_under_join_true(tmp_path):
+    # Case flip + a missing stop marker + disjoint years -> one core, merged by
+    # default (join=True). The merge is recorded and no case-variant pair remains.
+    df = _read_quiet(_flip_case_rwl(tmp_path))
+    assert "AAA01A" in df.columns and "AAA01a" not in df.columns
+    s = df["AAA01A"].dropna()
+    assert (int(s.index.min()), int(s.index.max())) == (1000, 1007)
+    assert df.attrs["dplpy_case_merged"] == [
+        {"canonical": "AAA01A", "ids": ["AAA01A", "AAA01a"], "n_blocks": 2,
+         "first_year": 1000, "last_year": 1007}]
+    assert df.attrs["dplpy_case_variant_ids"] == []
+
+
+def test_case_variant_kept_separate_under_join_false(tmp_path):
+    # join=False keeps the segments separate (per-segment view) and flags the pair.
+    df = _read_quiet(_flip_case_rwl(tmp_path), join=False)
+    assert "AAA01A" in df.columns and "AAA01a" in df.columns
+    assert df.attrs["dplpy_case_merged"] == []
+    assert df.attrs["dplpy_case_variant_ids"] == [{"ids": ["AAA01A", "AAA01a"]}]
+
+
+def test_case_variant_both_terminated_not_merged(tmp_path):
+    # Two case-variant IDs that are BOTH properly terminated may be distinct cores,
+    # so they are NOT merged even under join=True -- only flagged.
+    df = _read_quiet(_flip_case_rwl(tmp_path, terminate_first=True))
+    assert "AAA01A" in df.columns and "AAA01a" in df.columns
+    assert df.attrs["dplpy_case_merged"] == []
+    assert df.attrs["dplpy_case_variant_ids"] == [{"ids": ["AAA01A", "AAA01a"]}]
+
+
+def test_no_case_variant_flag_for_clean_file():
+    data = _read_quiet(RWL + "ca533.rwl")
+    assert data.attrs["dplpy_case_variant_ids"] == []
+    assert data.attrs["dplpy_case_merged"] == []
+
+
 def test_rwl_header_autodetected_by_default():
     # th001 has a 3-line header; before hardening this failed unless header=True
     # was passed. Auto-detection must now read it with no header argument.

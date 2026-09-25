@@ -110,6 +110,12 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         ``dplpy_interior_gaps`` lists series with a blank year between measured
         years (a short one is flagged as a possible dropped value; a long one is
         recorded only, as it is usually an intentional structural gap).
+        ``dplpy_case_merged`` lists cores that were reassembled from IDs differing
+        only in letter case (e.g. 'FDD08A' / 'FDD08a') when their years are disjoint
+        and a stop marker was missing -- a case flip that had split one core (merged
+        only under ``join=True``). ``dplpy_case_variant_ids`` lists any case-variant
+        ID sets that were NOT merged (e.g. under ``join=False``, or when both blocks
+        were properly terminated) and so remain as separate series.
         ``df.attrs["dplpy_blank_lines"]`` records the 1-indexed positions of any
         blank input lines, which are dropped silently (they are harmless -- a
         trailing newline or a "double-spaced" file -- so they are not warned about).
@@ -189,6 +195,7 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         raise ValueError(errorMsg)
     salvage_report = series_data.attrs.get("dplpy_salvage", [])
     combined = series_data.attrs.get("dplpy_combined", [])
+    case_merged = series_data.attrs.get("dplpy_case_merged", [])
     hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
     meta = series_data.attrs.get("dplpy_metadata", None)
     dropped = series_data.attrs.get("dplpy_dropped", 0)
@@ -198,6 +205,7 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     series_data.set_index('Year', inplace=True, drop=True)
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
     series_data.attrs["dplpy_combined"] = combined
+    series_data.attrs["dplpy_case_merged"] = case_merged
     series_data.attrs["dplpy_dropped"] = dropped
     series_data.attrs["dplpy_beyond_column"] = beyond_column
     series_data.attrs["dplpy_interior_gaps"] = interior_gaps
@@ -206,6 +214,14 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
     if meta is not None:
         series_data.attrs["dplpy_metadata"] = meta
+
+    # Advisory: series IDs that differ only in letter case (e.g. 'FDD08A' vs
+    # 'FDD08a'). A case-sensitive read keeps them as separate series, and a core
+    # whose ID case flips mid-file can leave one block without its stop marker
+    # (which then trips the "no stop marker / assuming precision" fallback).
+    # Almost always one core with an inconsistent-case ID.
+    case_variants = _case_variant_findings(series_data.columns)
+    series_data.attrs["dplpy_case_variant_ids"] = case_variants
 
     basename = os.path.basename(filename)
     first_year = int(series_data.index.min())
@@ -248,6 +264,17 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
             print("    " + str(c["series"]) + ": " + str(c["n_blocks"])
                   + " segments spanning " + str(c["first_year"]) + " to "
                   + str(c["last_year"]))
+
+    # Report case-variant series that were merged into one core (IDs differing only
+    # in letter case, disjoint years, a missing stop marker -- see read_rwl). Shown
+    # so the merge is never silent; the pieces are also on df.attrs['dplpy_case_merged'].
+    if case_merged:
+        print("  " + str(len(case_merged)) + " case-variant series merged (IDs "
+              "differing only in letter case with a missing stop marker -- likely "
+              "one core split by a case change):")
+        for c in case_merged:
+            print("    " + " / ".join(c["ids"]) + " -> " + str(c["canonical"])
+                  + " (" + str(c["first_year"]) + " to " + str(c["last_year"]) + ")")
 
     # Report any duplicate-ID series that were kept SEPARATE under join=False (the
     # counterpart of the merge report above), so the split is visible in both strict
@@ -294,6 +321,21 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         if len(short_gaps) > 10:
             print("    ... and " + str(len(short_gaps) - 10) + " more series "
                   "(see df.attrs['dplpy_interior_gaps']).")
+    # 3. Series IDs that differ only in letter case -- read as separate series but
+    #    usually one core whose ID case flipped mid-file (which can also strip a
+    #    stop marker from one block, tripping the precision fallback). Name the
+    #    real cause so it isn't mistaken for a generic missing-terminator issue.
+    if case_variants:
+        print("  heads-up: " + str(len(case_variants)) + " set"
+              + ("s" if len(case_variants) != 1 else "")
+              + " of series IDs differ only in letter case -- read as separate "
+              "series, but likely one core each (make the case consistent in the "
+              "file if so):")
+        for g in case_variants[:10]:
+            print("    " + " / ".join(g["ids"]))
+        if len(case_variants) > 10:
+            print("    ... and " + str(len(case_variants) - 10) + " more "
+                  "(see df.attrs['dplpy_case_variant_ids']).")
     return series_data
 
 
@@ -420,7 +462,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     parsed = read_rwl(clean_lines, strict=strict, join=join)
     if parsed is None:
         return None
-    rwl_data, precision, order, report, dropped, combined = parsed
+    rwl_data, precision, order, report, dropped, combined, case_merged = parsed
 
     # 4. Assemble the dataframe. The index spans the first to last year with
     #    data; years with no row stay NaN (a deliberate departure from dplR,
@@ -430,6 +472,7 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
         return None
     df.attrs["dplpy_salvage"] = report
     df.attrs["dplpy_combined"] = combined            # duplicate IDs merged from >1 block
+    df.attrs["dplpy_case_merged"] = case_merged      # case-variant IDs merged into one core
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
@@ -729,6 +772,19 @@ def _consecutive_runs(sorted_ints):
     if cur:
         runs.append(cur)
     return runs
+
+
+def _case_variant_findings(columns):
+    """Series IDs that are identical except for letter case (e.g. 'FDD08A' and
+    'FDD08a'). A case-sensitive read keeps them as separate series; almost always
+    they are one core whose ID case flipped mid-file (a data-entry inconsistency),
+    which can also leave one block without its stop marker. Returns a list of
+    ``{"ids": [...]}`` groups, one per set of case-colliding IDs (order preserved),
+    or an empty list when every ID is case-unique."""
+    groups = {}
+    for c in columns:
+        groups.setdefault(str(c).lower(), []).append(str(c))
+    return [{"ids": v} for v in groups.values() if len(v) > 1]
 
 
 def _interior_gap_findings(df):
@@ -1745,6 +1801,62 @@ def read_rwl(lines, strict=True, join=True):
     # is measured at one precision but for rare mixed-precision cases. Only when
     # NO series in the whole file has a terminator is precision truly
     # undeterminable; strict then refuses (naming the series) rather than guess.
+    #
+    # Before that fallback, catch the specific case that motivated it here: a core
+    # whose ID CASE flipped mid-series (e.g. 'FDD08A' then 'FDD08a'). On their own,
+    # case-variant IDs are separate series (and are flagged; see readers()). But
+    # when their years are DISJOINT *and* at least one block has no stop marker,
+    # that combination is a strong sign the case flip split ONE core in two -- the
+    # unterminated block simply ran on into the case-flipped continuation. Under
+    # join=True (the default) merge them into the first-seen ID, inheriting the
+    # terminated block's precision, exactly as disjoint same-ID blocks are joined.
+    # (join=False leaves them separate, like other disjoint splits; and if every
+    # block is already terminated we do NOT merge -- they may be distinct cores.)
+    case_merged = []
+    if join:
+        lower_groups = {}
+        for sid in order:
+            lower_groups.setdefault(sid.lower(), []).append(sid)
+        for low, sids in lower_groups.items():
+            if len(sids) < 2:
+                continue                     # ID case already consistent
+            yearsets = [set(rwl_data.get(s, {})) for s in sids]
+            disjoint = all(not (yearsets[a] & yearsets[b])
+                           for a in range(len(sids))
+                           for b in range(a + 1, len(sids)))
+            terminated = [s for s in sids if s in precision]
+            # require disjoint years, a missing terminator, and a precision source
+            if not disjoint or all(s in precision for s in sids) or not terminated:
+                continue
+            canonical = sids[0]              # first-seen (earliest in `order`)
+            merged_years = {}
+            for s in sids:
+                merged_years.update(rwl_data.get(s, {}))
+            rwl_data[canonical] = merged_years
+            precision[canonical] = precision[terminated[0]]
+            for s in sids:
+                if s != canonical:
+                    rwl_data.pop(s, None)
+                    precision.pop(s, None)
+            order = [s for s in order if s == canonical or s not in sids]
+            case_merged.append({"canonical": canonical, "ids": list(sids),
+                                "n_blocks": len(sids),
+                                "first_year": int(min(merged_years)),
+                                "last_year": int(max(merged_years))})
+            if salvage:
+                report.append({"series": canonical, "issue": "case_variant_id",
+                               "action": "merged",
+                               "detail": "case-variant IDs " + " / ".join(sids)
+                                         + " with a missing stop marker and no "
+                                           "overlapping years joined into one series "
+                                           "(likely one core split by a case change)"})
+            else:
+                warnings.warn(
+                    "case-variant IDs " + " / ".join(sids) + " (differing only in "
+                    "letter case, with a missing stop marker and no overlapping "
+                    "years) merged into '" + canonical + "' -- likely one core split "
+                    "by a case change. Pass join=False to keep them separate.")
+
     known = list(precision.values())
     missing = [sid for sid in order if sid not in precision]
     if missing and not known and not salvage:
@@ -1898,4 +2010,4 @@ def read_rwl(lines, strict=True, join=True):
                           "(read correctly by placing each row at its year): "
                           + ", ".join(str(s) for s in out_of_order))
 
-    return rwl_data, precision, order, report, dropped, combined
+    return rwl_data, precision, order, report, dropped, combined, case_merged
