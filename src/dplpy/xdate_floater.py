@@ -103,6 +103,22 @@ def _as_series_values(series):
     return vals[~np.isnan(vals)]
 
 
+def _series_label(series):
+    """A display name carried by the floating series itself: a named pandas Series,
+    or a one-column DataFrame's column header. Returns None when it carries no
+    usable name (a bare list/array, or a blank/None name), so the caller keeps the
+    default label."""
+    name = None
+    if isinstance(series, pd.DataFrame) and series.shape[1] == 1:
+        name = series.columns[0]
+    elif isinstance(series, pd.Series):
+        name = series.name
+    if name is None:
+        return None
+    name = str(name).strip()
+    return name or None
+
+
 def _build_master(data, transform, biweight):
     """Master chronology from the dated collection: mean-normalize each series,
     apply the high-pass transform, then a robust row mean. Returns (values, years)
@@ -141,7 +157,7 @@ def _abs_ac1(values):
     return abs(float(get_ar1(pd.Series(v))))
 
 
-def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
+def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   min_overlap=50, transform="pw", prewhiten=None, biweight=True,
                   corr="spearman", make_plot=False, return_rwl=False,
                   verbose=True):
@@ -155,8 +171,12 @@ def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
     series : sequence or pandas.Series/DataFrame
         The floating (undated) ring-width series -- just the ring values, oldest
         to youngest; any calendar index is ignored.
-    series_name : str, default "Unknown"
-        A label for the floating series (used in outputs).
+    series_name : str or None, default None
+        A label for the floating series (used in outputs and the plot title). When
+        None (the default), it is taken from the series itself if available -- a
+        named pandas Series, or a one-column DataFrame's column header -- and falls
+        back to "Unknown" for a bare list/array. Pass a string (e.g.
+        "Alaska subfossil") to set it explicitly.
     min_overlap : int, default 50
         Minimum number of overlapping rings required to score an offset.
     transform : {"pw", "fd", "none"}, default "pw"
@@ -205,6 +225,12 @@ def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
     if transform not in _TRANSFORMS:
         raise ValueError("transform must be one of %s, got '%s'."
                          % (str(_TRANSFORMS), transform))
+
+    # No explicit label: take one from the series itself (a named pandas Series, or
+    # a one-column DataFrame's header), falling back to "Unknown" for a bare
+    # list/array. An explicit series_name (e.g. "Alaska subfossil") always wins.
+    if series_name is None:
+        series_name = _series_label(series) or "Unknown"
 
     y_raw = _as_series_values(series)
     n_series = len(y_raw)                        # original (full timber) ring count

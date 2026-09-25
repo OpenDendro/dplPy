@@ -178,3 +178,21 @@ def test_make_plot_runs():
 
 def test_exported():
     assert hasattr(dpl, "xdate_floater")
+
+
+def test_series_name_derived_from_series_object():
+    # When series_name is not given, take it from the floating series itself so the
+    # outputs/plot title show the real name instead of "Unknown".
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    ref = rwl.drop(columns=["CAM021"])
+    col = rwl["CAM021"].dropna()
+    # a named pandas Series and a one-column DataFrame both carry the name
+    assert _quiet(dpl.xdate_floater, ref, col,
+                  verbose=False)["series_name"] == "CAM021"
+    assert _quiet(dpl.xdate_floater, ref, rwl[["CAM021"]].dropna(),
+                  verbose=False)["series_name"] == "CAM021"
+    # an explicit series_name still wins; a bare array has no name to take
+    assert _quiet(dpl.xdate_floater, ref, col, series_name="MYCORE",
+                  verbose=False)["series_name"] == "MYCORE"
+    assert _quiet(dpl.xdate_floater, ref, col.to_numpy(),
+                  verbose=False)["series_name"] == "Unknown"
