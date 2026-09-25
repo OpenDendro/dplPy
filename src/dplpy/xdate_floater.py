@@ -310,12 +310,12 @@ def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
         result["combined"] = data.join(placed, how="outer")
 
     if make_plot:
-        _plot_floater(result)
+        _plot_floater(result, biweight=biweight)
 
     return result
 
 
-def _plot_floater(result, show=True):
+def _plot_floater(result, biweight=True, show=True):
     """A four-panel dating figure after Wilson (2026): the sliding t-value and the
     sliding Bonferroni-adjusted p-value as stacked line plots against calendar
     year, and the distribution of all t-values (with the best marked) to the right.
@@ -358,7 +358,8 @@ def _plot_floater(result, show=True):
                           left=0.06, right=0.98)
     ax_t = fig.add_subplot(gs[0, 0])
     ax_p = fig.add_subplot(gs[1, 0], sharex=ax_t)
-    ax_h = fig.add_subplot(gs[:, 1])
+    ax_h = fig.add_subplot(gs[0, 1])
+    ax_o = fig.add_subplot(gs[1, 1])
 
     # --- (1) sliding t-values ---
     ax_t.axhline(0, ls="--", lw=0.5, color="0.7")
@@ -402,6 +403,40 @@ def _plot_floater(result, show=True):
     style_axes(ax_h, xgrid=False, ygrid=True)
     _titles(ax_h, "T-value density distribution",
             "%d CE    T = %.2f" % (best["max_year"], best["t"]))
+
+    # --- (4) reference chronology vs the best-placed floating series ---
+    # Overlay the display chronology (a mean-normalized robust mean of the
+    # reference series) and the floater placed at its best-fit years, over the
+    # youngest ~50 yr of the overlap plus a short reference tail past the
+    # floater's end. Both are z-scored over the overlap so their common
+    # high-frequency signal is directly comparable regardless of amplitude.
+    ref = result["combined"].drop(columns=[name])
+    mvals, myears = _build_master(ref, "none", biweight)
+    master_s = pd.Series(mvals, index=np.asarray(myears, dtype=int))
+    placed_s = result["placed"][name].dropna()
+    me, ms = int(best["max_year"]), int(best["min_year"])
+    win_lo = max(ms, me - 49)                      # ~50 yr of overlap
+    win_hi = min(int(master_s.index.max()), me + 5)   # + up to 5 yr of reference
+    ov_m = master_s.loc[win_lo:me]
+    ov_f = placed_s.loc[win_lo:me]
+    if len(ov_m) >= 2 and len(ov_f) >= 2 and ov_m.std() > 0 and ov_f.std() > 0:
+        m_disp = (master_s.loc[win_lo:win_hi] - ov_m.mean()) / ov_m.std()
+        f_disp = (ov_f - ov_f.mean()) / ov_f.std()
+        ax_o.axhline(0, ls="--", lw=0.5, color="0.7")
+        ax_o.plot(m_disp.index, m_disp.values, lw=1.0, color=data_c,
+                  label="Reference chronology")
+        ax_o.plot(f_disp.index, f_disp.values, lw=1.0, color=best_c, label=name)
+        if win_hi > me:                            # mark where the floater ends
+            ax_o.axvline(me, ls=":", lw=0.8, color="0.6")
+        ax_o.legend(loc="best", fontsize=8, frameon=False)
+    else:
+        ax_o.text(0.5, 0.5, "insufficient overlap to plot", transform=ax_o.transAxes,
+                  ha="center", va="center", color="0.5", fontsize=9)
+    ax_o.set_xlabel("Calendar years CE")
+    ax_o.set_ylabel("z-score (over overlap)")
+    style_axes(ax_o, xgrid=True, ygrid=True)
+    _titles(ax_o, "Reference vs. best-placed floater",
+            "%d–%d overlap" % (win_lo, me))
 
     fig.suptitle(name, color="0.15", fontweight="bold", fontsize=13, y=1.0)
     finalize_font(fig)
