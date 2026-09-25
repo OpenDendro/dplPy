@@ -71,10 +71,39 @@ def test_xdate_report_cofecha_preset(tmp_path):
     assert "Series intercorrelation" in ctxt and "PART 5" in ctxt and "PART 7" in ctxt
     # the two presets give different summary numbers (different transform)
     assert ctxt != dtxt
-
     # length-weighted intercorrelation in COFECHA mode reproduces the COFECHA run
     # on ca533 (0.668) far better than the plain mean the default reports.
     import re
     def _intercorr(t):
         return float(re.search(r"Series intercorrelation:\s*([0-9.]+)", t).group(1))
     assert abs(_intercorr(ctxt) - 0.668) < 0.01
+
+
+def test_xdate_report_accepts_dataframe(tmp_path):
+    # An already-loaded DataFrame is reported directly (the read step is skipped),
+    # treated as ONE collection -- not iterated into its columns (the bug that
+    # produced "[i/289]" and "No such file: '644011'"). Result matches reading the
+    # same file by path.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(io.StringIO()):
+            frame = dpl.readers(RWL + "ca533.rwl")
+    res = _quiet_report(frame, out_dir=str(tmp_path), name="mem")
+    assert "mem" in res and "text" in res["mem"]
+    rep = res["mem"]["report"]
+    assert rep["n_series"] == frame.shape[1]        # one collection, not 289 "files"
+    assert len(rep["rows"]) == rep["n_series"]
+    # a named DataFrame report writes <name>.txt
+    assert os.path.exists(os.path.join(str(tmp_path), "mem.txt"))
+    # same series count as reading the file by path
+    by_path = _quiet_report(RWL + "ca533.rwl", out_dir=str(tmp_path), output="screen")
+    assert rep["n_series"] == by_path[RWL + "ca533.rwl"]["report"]["n_series"]
+
+
+def test_xdate_report_dataframe_default_name(tmp_path):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(io.StringIO()):
+            frame = dpl.readers(RWL + "ca533.rwl")
+    res = _quiet_report(frame, out_dir=str(tmp_path), output="screen")
+    assert "report" in res                           # default label when no name given

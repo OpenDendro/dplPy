@@ -90,15 +90,22 @@ def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags,
     }
 
 
-def _process_one(path, fit, corr, slide_period, bin_floor, p_val,
-                 preset=None, spline_period=None):
-    """Read + detrend + cross-date one file; return an assembled report dict."""
+def _process_one(source, fit, corr, slide_period, bin_floor, p_val,
+                 preset=None, spline_period=None, name=None):
+    """Read + detrend + cross-date one collection; return an assembled report dict.
+    ``source`` is a .rwl path (read here) or an already-loaded ring-width
+    DataFrame (used directly); ``name`` labels the report for a DataFrame source."""
     is_cofecha = preset is not None and str(preset).strip().lower() == "cofecha"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        # join=False keeps same-ID disjoint blocks as SEPARATE series, matching
-        # COFECHA's per-segment convention (so CM82S / CM86N count as two each).
-        rw = readers(path, strict=False, join=False)
+    if isinstance(source, pd.DataFrame):
+        rw = source
+        path = name or "dataframe"
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # join=False keeps same-ID disjoint blocks as SEPARATE series, matching
+            # COFECHA's per-segment convention (so CM82S / CM86N count as two each).
+            rw = readers(source, strict=False, join=False)
+        path = source
     if rw is None or rw.shape[1] == 0:
         raise ValueError("no usable series")
     meta = rw.attrs.get("dplpy_metadata", {}) or {}
@@ -394,7 +401,8 @@ def _format_report(rep):
 
 def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
                  slide_period=50, bin_floor=100, p_val=0.05,
-                 output="both", verbose=True, preset=None, spline_period=None):
+                 output="both", verbose=True, preset=None, spline_period=None,
+                 name=None):
     """Generate a COFECHA-style crossdating QA report for one or more .rwl files.
 
     For each file: read (salvage mode), detrend, cross-date with ``dpl.xdate``,
@@ -413,8 +421,12 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
 
     Parameters
     ----------
-    files : str or list of str
-        A .rwl path, or a list of them.
+    files : str, pandas.DataFrame, or list
+        A .rwl path, an already-loaded ring-width DataFrame (e.g. from
+        dpl.readers()), or a list mixing either. A DataFrame is treated as one
+        collection and reported directly (the read step is skipped). For the
+        COFECHA preset, pass a RAW frame (zeros marking absent rings), as the
+        preset detrends internally.
     out_dir : str, default "."
         Directory for the ``.txt`` reports (created if needed).
     fit : str, default "Spline"
@@ -436,6 +448,10 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     spline_period : int or None, default None
         spline stiffness (years) for the ``preset="COFECHA"`` detrend; defaults
         to COFECHA's 32.
+    name : str or None, default None
+        Report label for a DataFrame input -- used as the report title and the
+        ``.txt`` filename, and as the key in the returned dict. Ignored for file
+        paths (which use the file's basename). Defaults to "report".
 
     Returns
     -------
@@ -449,34 +465,49 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     to_screen = output in ("screen", "both")
     to_file = output in ("file", "both")
 
-    if isinstance(files, str):
+    # Normalize the input to a list of items, each a .rwl path (str) or an
+    # already-loaded ring-width DataFrame. A single str OR DataFrame becomes a
+    # one-item list, so a DataFrame is treated as ONE collection rather than being
+    # iterated (the pandas gotcha: `for x in df` yields column names, and len(df) is
+    # the row count -- which is what produced "[i/289]" and "No such file: '644011'").
+    if isinstance(files, (str, pd.DataFrame)):
         files = [files]
+    else:
+        files = list(files)
     if to_file:
         os.makedirs(out_dir, exist_ok=True)
     results = {}
     ok = 0
-    for i, path in enumerate(files, start=1):
-        base = os.path.splitext(os.path.basename(path))[0]
+    n = len(files)
+    frame_seq = 0
+    for i, item in enumerate(files, start=1):
+        if isinstance(item, pd.DataFrame):
+            frame_seq += 1
+            base = str(name) if name else ("report" if n == 1 else "report_%d" % frame_seq)
+            key = base                         # a DataFrame is unhashable -> key by label
+        else:
+            base = os.path.splitext(os.path.basename(item))[0]
+            key = item
         try:
-            rep = _process_one(path, fit, corr, slide_period, bin_floor, p_val,
-                               preset=preset, spline_period=spline_period)
+            rep = _process_one(item, fit, corr, slide_period, bin_floor, p_val,
+                               preset=preset, spline_period=spline_period, name=base)
             text = _format_report(rep)
             if to_file:
                 with open(os.path.join(out_dir, base + ".txt"), "w") as fh:
                     fh.write(text)
             if to_screen:
                 print(text)
-            results[path] = {"text": text, "report": rep}
+            results[key] = {"text": text, "report": rep}
             ok += 1
             if verbose:
                 print("  [%d/%d] %s: %d series, %d problem segments"
-                      % (i, len(files), base, rep["n_series"],
+                      % (i, n, base, rep["n_series"],
                          _summary_stats(rep["rows"])["n_flag"]))
         except Exception as e:
-            results[path] = {"error": str(e)}
+            results[key] = {"error": str(e)}
             if verbose:
-                print("  [%d/%d] %s: FAILED -- %s" % (i, len(files), base, str(e)[:80]))
+                print("  [%d/%d] %s: FAILED -- %s" % (i, n, base, str(e)[:80]))
     if verbose:
         print("%d of %d file(s) reported OK%s"
-              % (ok, len(files), (" -> " + out_dir) if to_file else ""))
+              % (ok, n, (" -> " + out_dir) if to_file else ""))
     return results
