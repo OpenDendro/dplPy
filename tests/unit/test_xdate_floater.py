@@ -180,6 +180,21 @@ def test_exported():
     assert hasattr(dpl, "xdate_floater")
 
 
+def test_reference_accepts_series():
+    # The reference (data) may be a single chronology passed as a pandas Series
+    # (e.g. crn["std"] from dpl.read_crn), not only a DataFrame -- and it must give
+    # the same result as the equivalent one-column DataFrame (this used to raise a
+    # TypeError from the DataFrame-only guard).
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    floater = rwl["CAM021"].dropna()
+    master = rwl.drop(columns=["CAM021"]).mean(axis=1).dropna()
+    master.name = "master"
+    r_series = _quiet(dpl.xdate_floater, master, floater, verbose=False)
+    r_frame = _quiet(dpl.xdate_floater, master.to_frame(), floater, verbose=False)
+    assert (r_series["best"]["min_year"], r_series["best"]["max_year"]) == \
+           (r_frame["best"]["min_year"], r_frame["best"]["max_year"])
+
+
 def test_series_name_derived_from_series_object():
     # When series_name is not given, take it from the floating series itself so the
     # outputs/plot title show the real name instead of "Unknown".

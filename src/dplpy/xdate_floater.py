@@ -165,9 +165,13 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
 
     Parameters
     ----------
-    data : pandas.DataFrame
-        A **dated** reference collection (year-indexed ring widths), from which
-        the master chronology is built.
+    data : pandas.DataFrame or pandas.Series
+        The **dated** reference (year-indexed). A DataFrame is treated as a
+        collection of ring-width series and the master chronology is built by
+        averaging them; a Series (or one-column DataFrame) is used directly as the
+        master -- e.g. a single chronology column such as ``crn["std"]`` from
+        ``dpl.read_crn``. For an already-residual/prewhitened chronology (an ARSTAN
+        ``res``/``ars``), pass ``transform="none"`` to avoid prewhitening twice.
     series : sequence or pandas.Series/DataFrame
         The floating (undated) ring-width series -- just the ring values, oldest
         to youngest; any calendar index is ignored.
@@ -218,6 +222,12 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     correlation scoring reuses dplPy's crossdating internals, so results are
     consistent with ``dpl.xdate``.
     """
+    # The reference may be a whole collection (a DataFrame, master built by
+    # averaging its series) or a single pre-built chronology. Accept that single
+    # chronology as a pandas Series too -- e.g. crn["res"] -- coercing it to a
+    # one-column frame so the master is just that series (transformed).
+    if isinstance(data, pd.Series):
+        data = data.to_frame()
     _require_dataframe(data)
     method = _normalize_corr(corr)
     if prewhiten is not None:                   # back-compat alias
