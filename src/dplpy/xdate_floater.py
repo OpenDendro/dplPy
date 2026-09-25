@@ -82,6 +82,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 import scipy.stats
+import datetime
 
 from ._validate import _require_dataframe, _normalize_corr
 from .stats import get_ar1
@@ -234,22 +235,32 @@ def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
         print("Minimum overlap for search:", min_overlap)
 
     # Slide the floating series across the master over every offset with at least
-    # `min_overlap` overlap. Transcribes dplR's three-regime crawl; `i` is dplR's
-    # 1-based offset, converted to 0-based slices here.
+    # `min_overlap` overlapping rings. `d` is the master index (0-based) that the
+    # floater's OLDEST ring aligns to. It runs from the most-old placement (the
+    # floater's youngest ring `min_overlap` rings into the master's old end) to the
+    # most-young placement (the floater's oldest ring `min_overlap` rings from the
+    # master's young end). Expressing the crawl this way handles every regime with
+    # the same clamped slices -- floater inside the master, floater overhanging
+    # either end, and (when the floater is LONGER than the master) the master lying
+    # entirely inside the floater -- with no negative-index slicing. For ny <= nx
+    # it reproduces dplR's three-regime crawl offset-for-offset.
+    def _master_year(j):
+        # calendar year at master index j, extrapolating on the master's 1-yr grid
+        # when j falls beyond either end (an overhang placement).
+        if j < 0:
+            return int(yrs[0]) + j
+        if j >= nx:
+            return int(yrs[nx - 1]) + (j - (nx - 1))
+        return int(yrs[j])
+
     rows = []
-    edge = 0
-    for i in range(nx + (ny - min_overlap), min_overlap - 1, -1):
-        if i > nx:                              # series overhangs the young end
-            xseg, yseg, xyrs = x[i - ny:nx], y[0:ny - (i - nx)], yrs[i - ny:nx]
-            max_year = int(xyrs.max()) + ny - min_overlap + edge
-            edge -= 1
-        elif i >= ny:                           # series fully inside the master
-            xseg, yseg, xyrs = x[i - ny:i], y, yrs[i - ny:i]
-            max_year = int(xyrs.max())
-        else:                                   # series overhangs the old end
-            xseg, yseg, xyrs = x[0:i], y[ny - i:ny], yrs[0:i]
-            max_year = int(xyrs.max())
+    for d in range(nx - min_overlap, min_overlap - ny - 1, -1):
+        lo, hi = max(0, d), min(nx - 1, d + ny - 1)
+        if hi - lo + 1 < min_overlap:           # guard; the extremes hit it exactly
+            continue
+        xseg, yseg = x[lo:hi + 1], y[lo - d:hi - d + 1]
         r, _ = _corr_pval(xseg, yseg, method)
+        max_year = _master_year(d + ny - 1)     # calendar year of the floater's youngest ring
         rows.append({"min_year": max_year - n_series + 1, "max_year": max_year,
                      "r": r, "n": len(xseg)})
 
@@ -287,6 +298,22 @@ def xdate_floater(data: pd.DataFrame, series, series_name="Unknown",
             "one_over_p": (float("inf") if top["p_bonf"] == 0
                            else 1.0 / float(top["p_bonf"])),
             "isolation_factor": isolation, "n": int(top["n"])}
+
+    # dplPy (unlike dplR) also scores placements that run past the reference into
+    # future calendar years. That enriches the null distribution and is a useful
+    # trap -- but if the WINNER lands there, the date is impossible and the match
+    # must be treated as spurious. Flag it and scream (regardless of `verbose`).
+    this_year = datetime.date.today().year
+    best["date_warning"] = "future" if best["max_year"] > this_year else None
+    if best["date_warning"] == "future":
+        line = "=" * 78
+        print("\n" + line)
+        print("  !!!  WARNING: THE BEST-FIT DATE IS IN THE FUTURE  !!!")
+        print("  '%s' dates its youngest ring to %d CE, past the present year (%d)."
+              % (series_name, best["max_year"], this_year))
+        print("  That is an IMPOSSIBLE calendar date -- treat this match as spurious.")
+        print("  Check the series orientation (oldest -> youngest) and the reference.")
+        print(line + "\n")
 
     if verbose:
         if_disp = (">1000" if np.isfinite(isolation) and isolation > 1000
@@ -438,7 +465,12 @@ def _plot_floater(result, biweight=True, show=True):
     _titles(ax_o, "Reference vs. best-placed floater",
             "%d–%d overlap" % (win_lo, me))
 
-    fig.suptitle(name, color="0.15", fontweight="bold", fontsize=13, y=1.0)
+    if best.get("date_warning") == "future":
+        fig.suptitle("%s   —   BEST DATE %d CE IS IN THE FUTURE (LIKELY SPURIOUS)"
+                     % (name, best["max_year"]), color="#b3202c",
+                     fontweight="bold", fontsize=13, y=1.0)
+    else:
+        fig.suptitle(name, color="0.15", fontweight="bold", fontsize=13, y=1.0)
     finalize_font(fig)
     if show:
         plt.show()

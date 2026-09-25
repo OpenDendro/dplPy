@@ -37,6 +37,42 @@ def test_recovers_known_date_co021():
     assert res["best"]["max_year"] == last
 
 
+def test_recovers_date_when_floater_longer_than_reference():
+    # Floating the deepest core (CAM211) removes it from the reference, so the
+    # remaining leave-one-out master is SHORTER than the floater (ny > nx) and the
+    # master lies entirely inside the floater at the correct offset. This used to
+    # raise an IndexError in the sliding-search crawl (a negative-index slice);
+    # it must now date correctly like any other series.
+    first, last, res = _drop_and_recover("tests/data/rwl/ca533.rwl", "CAM211")
+    assert res["best"]["min_year"] == first
+    assert res["best"]["max_year"] == last
+
+
+def test_future_best_date_is_flagged():
+    # dplPy (unlike dplR) scores placements past the reference into future years.
+    # If the WINNER lands past the present calendar year the date is impossible and
+    # must be flagged. Build a floater whose true best placement runs into the
+    # future: its first 60 rings match the reference's most recent 60 years, then
+    # 10 more rings extend past the present.
+    import datetime
+    this = datetime.date.today().year
+    rng = np.random.default_rng(7)
+    s = rng.random(120) + 0.5
+    years = list(range(this - 119, this + 1))          # reference ends at present
+    ref = pd.DataFrame({"R%d" % k: s + rng.normal(0, 1e-3, 120) for k in range(4)},
+                       index=years)
+    floater = np.concatenate([s[60:120], rng.random(10) + 0.5])
+    res = _quiet(dpl.xdate_floater, ref, floater, series_name="FUT01",
+                 min_overlap=50, verbose=False)
+    assert res["best"]["max_year"] > this
+    assert res["best"]["date_warning"] == "future"
+
+
+def test_normal_best_date_has_no_future_warning():
+    _, _, res = _drop_and_recover("tests/data/rwl/ca533.rwl", "CAM011")
+    assert res["best"]["date_warning"] is None
+
+
 def test_fd_transform_recovers_date():
     first, last, res = _drop_and_recover("tests/data/rwl/ca533.rwl", "CAM011",
                                          transform="fd")
