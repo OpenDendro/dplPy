@@ -176,6 +176,27 @@ def test_make_plot_runs():
     plt.close("all")
 
 
+def test_poor_match_plot_keeps_p_thresholds_in_panel():
+    # A poor match (best p ~1) must not push the p=0.05 / p=0.0001 threshold labels
+    # outside the p-value panel (which ballooned the figure with white space). The
+    # inverted-log p-axis should always extend past the most significant threshold.
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    rng = np.random.default_rng(3)
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    res = _quiet(dpl.xdate_floater, rwl, rng.random(250) + 0.5,
+                 series_name="RANDOM", make_plot=True, verbose=False)
+    assert res["best"]["p_bonf"] > 0.05             # genuinely a poor match
+    # find the inverted log-scaled p-axis and confirm it reaches below 1e-4
+    fig = plt.gcf()
+    p_axes = [ax for ax in fig.axes
+              if ax.get_yscale() == "log" and ax.get_ylim()[1] < ax.get_ylim()[0]]
+    assert p_axes, "no inverted log p-axis found"
+    assert min(p_axes[0].get_ylim()) <= 1e-4        # thresholds fit inside the panel
+    plt.close("all")
+
+
 def test_exported():
     assert hasattr(dpl, "xdate_floater")
 

@@ -441,12 +441,18 @@ def _plot_floater(result, biweight=True, show=True):
     pv = np.clip(pval, 1e-300, 1.0)
     ax_p.plot(yr, pv, lw=0.4, color=data_c)
     ax_p.set_yscale("log")
-    ax_p.set_ylim(1.0, max(pv.min(), 1e-300) * 0.2)   # inverted: small p at top
+    # Inverted axis (small p at top). Always extend it past the most significant
+    # reference threshold so the 0.05 / 0.0001 lines and their labels stay INSIDE
+    # the panel -- otherwise, when the best p is poor (e.g. an undated floater with
+    # min p ~0.7), those labels land far above the axis and (with bbox_inches=
+    # "tight") balloon the figure with white space.
+    top = min(pv.min(), 1e-4) * 0.2
+    ax_p.set_ylim(1.0, max(top, 1e-300))
     ax_p.yaxis.set_major_locator(LogLocator(base=10, numticks=12))
     for ref, lab in ((0.05, "p = 0.05"), (1e-4, "p = 0.0001")):
         ax_p.axhline(ref, ls="--", lw=0.7, color=ref_c)
         ax_p.text(yr.min(), ref, " " + lab, va="bottom", ha="left",
-                  fontsize=7, color=ref_c)
+                  fontsize=7, color=ref_c, clip_on=True)
     ax_p.set_ylabel("Adjusted p values")
     ax_p.set_xlabel("Calendar years CE")
     style_axes(ax_p, xgrid=True, ygrid=False)
