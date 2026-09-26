@@ -61,6 +61,7 @@ from .chron_ars import chron_ars
 from .xdate import xdate, xdate_plot
 from .xdate_report import xdate_report
 from .xdate_floater import xdate_floater
+from .xdate_undated import xdate_undated
 from .series_corr import series_corr
 from .interseries_corr import interseries_corr
 from .glk import glk, sgc
@@ -105,6 +106,7 @@ __all__ = [
     "xdate_report",
     "xdate_plot",
     "xdate_floater",
+    "xdate_undated",
     "series_corr",
     "interseries_corr",
     "glk",

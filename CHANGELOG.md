@@ -12,6 +12,21 @@ and commit log.
 
 ### Added
 
+- **`dpl.xdate_undated`** is a new function that crossdates a set of *undated*
+  ("floating") ring-width series against one another and assembles them into a single
+  relatively-dated floating chronology (earliest ring anchored at `anchor_year`,
+  default 1). It is the dplPy analogue of COFECHA's UFLOAT — the routine COFECHA runs
+  when only an undated-series file is supplied — for material that overlaps in time but
+  does not crossdate into any absolutely-dated chronology (e.g. sub-fossil or
+  river-drowned stands). It does the all-pairs matching (`result["pairwise"]`), then
+  grows a master chronology (seed on the strongest pair, add each series at its best
+  position against the running mean), and runs a leave-one-out verification with an
+  isolation score so weak/ambiguous placements are flagged for review
+  (`result["verify"]`) rather than silently misplaced. Returns the pairwise table, the
+  per-series relative offsets, the placed ring-width matrix, the mean floating
+  chronology, the join order, the verification table, and any unplaced series; with
+  `make_plot` it draws a placement chart (each series on the relative axis, coloured by
+  isolation) over the mean chronology.
 - **`dpl.xdate_floater`** gains a segment-consensus dating mode (`segmented=True`),
   in the spirit of COFECHA's UDATE: each overlapping segment of the floater is dated
   against the master independently and the implied youngest-ring years are compared.
