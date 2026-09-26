@@ -28,8 +28,9 @@ Key arguments:
   `strict=False` to fall back to a best-effort parse that returns `None` on
   unrecoverable files instead of raising.
 - `join` (default `True`) — when a series ID appears in more than one block,
-  join the pieces into a single column. dplPy reports duplicated and
-  non-overlapping same-name series so you can see what was merged.
+  join the pieces into a single column (including blocks split by a mid-file
+  letter-case change in the ID; see [Case-flipped series IDs](#case-flipped-series-ids)
+  below). dplPy reports what was merged.
 - `format` — normally auto-detected; override with `"csv"`, `"rwl"`, etc. if
   needed.
 
@@ -69,6 +70,21 @@ programmatic use:
 
 These are advisories, not errors: the returned DataFrame is complete, and the
 missing years appear as `NaN`.
+
+### Case-flipped series IDs
+
+Some files write one core's ID with inconsistent letter case partway through
+(e.g. `FDD08A` for the older decades, then `FDD08a`). A case-sensitive read would
+split that into two separate series. When the case variants have **disjoint years**
+and one block is **missing its stop marker** — together a strong sign of a single
+core split by a case slip — dplPy merges them back into one series under
+`join=True` (the default) and records it on `df.attrs["dplpy_case_merged"]`. The
+merge also resolves the spurious "no stop marker" precision warning that the
+unterminated block would otherwise raise.
+
+Case variants that are *not* merged — under `join=False`, or when both blocks are
+already properly terminated (so they may be genuinely distinct cores) — are kept
+separate and listed on `df.attrs["dplpy_case_variant_ids"]` so you can decide.
 
 ## Chronology files with `read_crn`
 

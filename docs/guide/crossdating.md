@@ -17,8 +17,10 @@ result["seg_corr"]     # per-series, per-segment correlations
 result["flags"]        # A/B flags per series
 ```
 
-`xdate` returns a dictionary: `seg_corr` (a series × segment correlation table),
-`flags`, and `bins`. By default it follows dplR's `corr.rwl.seg`:
+`xdate` returns a dictionary — `seg_corr` (a series × segment correlation table),
+`overall` (each series' correlation with the master), `flags`, `bins`,
+`n_problems`, and a `summary` (see below). By default it follows dplR's
+`corr.rwl.seg`:
 
 - **Prewhitening** with a Yule-Walker AR model (`prewhiten=True`).
 - **Spearman** correlation (`corr="spearman"`).
@@ -26,6 +28,15 @@ result["flags"]        # A/B flags per series
   of the *others*, so a misdated series cannot prop up its own correlation.
 - Overlapping **segments** of `slide_period` years (default 50), stepped by half
   that, with bins floored to `bin_floor` (default 100).
+
+### The summary header
+
+At the top of its output `xdate` prints a compact, COFECHA-style summary of the
+collection — number of dated series, master span, total rings, series
+intercorrelation, mean sensitivity, the count of possible-problem segments, and
+mean series length — and returns the same values in `result["summary"]` for
+programmatic use. Under `preset="COFECHA"` the intercorrelation and mean
+sensitivity are length-weighted, matching COFECHA's box.
 
 ### Reading the flags
 
@@ -88,10 +99,13 @@ correlations and a length-weighted summary:
 report = dpl.xdate_report("ca533.rwl", preset="COFECHA")
 ```
 
-It accepts a single file or a list, takes the same `slide_period` / `bin_floor` /
-`p_val` settings as `xdate`, and offers both a dplR-faithful and a
-`preset="COFECHA"` mode. Set `write=False` to get the report text back without
-writing files.
+It accepts a `.rwl` path, a list of them, or an already-loaded ring-width
+`DataFrame` (pass `name=` to label an in-memory frame); takes the same
+`slide_period` / `bin_floor` / `p_val` settings as `xdate`; and offers both a
+dplR-faithful and a `preset="COFECHA"` mode. The `output=` argument controls where
+the report goes — `"screen"` prints it, `"file"` writes a `<name>.txt`, and
+`"both"` (the default) does both — and the report text is always returned in the
+result dictionary.
 
 ## Diagnostics for one series
 

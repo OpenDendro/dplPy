@@ -9,14 +9,22 @@ reference collection and scoring the fit at every offset.
 
 You need two things:
 
-- a **dated reference** collection (a `DataFrame` from `readers`, indexed by
-  calendar year), and
+- a **dated reference**, either a whole collection (a `DataFrame` from `readers`,
+  indexed by calendar year, from which a master chronology is built by averaging
+  the series) or a single, already-built chronology passed as a `pandas.Series` or
+  a one-column `DataFrame` — for example a column from `read_crn`; and
 - the **floating series** itself (a `pandas.Series` of ring widths; its index
   does not need to be calendar years).
 
-`xdate_floater` builds a master from the reference, transforms the floater the
-same way, and tests every alignment with at least `min_overlap` overlapping
-rings, reporting the correlation and crossdating statistics at each.
+`xdate_floater` builds (or takes) a master from the reference, transforms the
+floater the same way, and tests every alignment with at least `min_overlap`
+overlapping rings, reporting the correlation and crossdating statistics at each.
+The floating series may be longer than the reference.
+
+**Dating against an existing chronology.** A `.crn` read with `read_crn` already
+*is* a master, so pass the column you want (e.g. `crn["std"]`) directly as the
+reference. For an already-prewhitened/residual chronology (an ARSTAN `res`/`ars`),
+also pass `transform="none"` so it is not prewhitened a second time.
 
 ## Example
 
@@ -30,6 +38,15 @@ placed = dpl.xdate_floater(reference, floating_series, series_name="beam1")
 ```text
 Best match for 'beam1': 1727 to 1983  (t = 17.83, r = 0.747, eff_df = 254,
 p_bonf = 8.52e-44, 1/p = >1 million, IF = >1000, overlap n = 254)
+```
+
+If you don't pass `series_name`, it is taken from the series itself (a named
+`Series`, or a one-column `DataFrame`'s column header). To date against a published
+chronology rather than a collection, hand it the column you want:
+
+```python
+crn = dpl.read_crn("reference_site.crn")
+placed = dpl.xdate_floater(crn["std"], floating_series, series_name="beam1")
 ```
 
 The return value is a dictionary:
@@ -62,7 +79,23 @@ degrees of freedom at each overlap. A confident date has a high *t*, a tiny
 - `transform` (default `"pw"`) and `prewhiten` — how the series are detrended and
   prewhitened before correlation.
 - `corr` (default `"spearman"`) — the correlation method.
-- `make_plot=True` — plot the sliding *t* against end year, marking the best fit.
+- `series_name` — a label for the floater used in the outputs and plot title; when
+  omitted it is taken from a named series or one-column frame, else `"Unknown"`.
+- `make_plot=True` — draw the dating figure: the sliding *t* and the
+  Bonferroni-adjusted p-value against calendar year, the distribution of all *t*
+  values with the best marked, and an overlay of the reference chronology against
+  the best-placed floater over the dated overlap.
+
+## When the best date is impossible
+
+dplPy also scores placements that run past the end of the reference into future
+calendar years — this enriches the null distribution of *t* values and acts as a
+sanity check. If the *best* placement lands after the present year, though, the
+date is impossible and the match is almost certainly spurious, so `xdate_floater`
+flags it loudly: `best["date_warning"]` is set to `"future"`, a warning banner is
+printed (even with `verbose=False`), and the returned plot carries a red
+"best date is in the future" banner. Check the series orientation (oldest →
+youngest) and the reference before trusting such a result.
 
 ## Relationship to dplR
 
@@ -70,6 +103,7 @@ degrees of freedom at each overlap. A confident date has a high *t*, a tiny
 statistic and additional crossdating statistics of Wilson (2026). It differs from
 dplR in two documented ways: the best placement is selected by highest *t* (dplR
 uses the highest correlation *r*), and dplPy does not apply dplR's future-year
-trim. See the
+trim — instead it tests those offsets and *warns* when the winning date is an
+impossible future one (see [When the best date is impossible](#when-the-best-date-is-impossible)). See the
 [`xdate_floater` reference](../reference/crossdating.md#xdate_floater) and
 [Coming from dplR](coming-from-dplr.md).
