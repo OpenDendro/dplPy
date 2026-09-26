@@ -118,7 +118,7 @@ version you used. A suggested citation (adjust the version and year to the relea
 you used):
 
 > Anchukaitis, K. J., Ale, I., Bunn, A. G., Swetnam, T. L., & Cook, E. R. (2026).
-> *dplPy: Dendrochronology Program Library for Python* (version 0.6.0) [Computer
+> *dplPy: Dendrochronology Program Library for Python* (version 0.7.0) [Computer
 > software]. Zenodo. https://doi.org/10.5281/zenodo.22695105
 
 In BibTeX:
@@ -129,7 +129,7 @@ In BibTeX:
              Swetnam, Tyson Lee and Cook, Edward R.},
   title   = {dplPy: Dendrochronology Program Library for Python},
   year    = {2026},
-  version = {0.6.0},
+  version = {0.7.0},
   doi     = {10.5281/zenodo.22695105},
   url     = {https://opendendro.github.io/dplPy}
 }

@@ -10,6 +10,8 @@ and commit log.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-26
+
 ### Added
 
 - **`dpl.readers`** now recognizes a core whose series ID changes letter case
@@ -94,4 +96,5 @@ and commit log.
 - Added narrative guides and reference pages (mkdocs + mkdocstrings), and updated
   the README, citation/DOI metadata, and background references.
 
-[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OpenDendro/dplPy/compare/v0.6.0...v0.7.0
