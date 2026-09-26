@@ -216,6 +216,79 @@ def test_reference_accepts_series():
            (r_frame["best"]["min_year"], r_frame["best"]["max_year"])
 
 
+def _ref_and_core(rwl_path, target):
+    """Leave-one-out reference plus the target's bare ring widths (an array), for
+    the segment-consensus tests."""
+    rwl = _quiet(dpl.readers, rwl_path)
+    core = rwl[target].dropna()
+    ref = rwl.drop(columns=[target])
+    return ref, core
+
+
+def test_segmented_clean_has_no_internal_error():
+    # A correctly-measured floater dates internally consistently: every segment
+    # points at the same youngest-ring year, so the consensus is unanimous and no
+    # internal dating error is flagged.
+    first, last, res = _drop_and_recover("tests/data/rwl/ca533.rwl", "CAM011",
+                                         segmented=True)
+    assert res["internal_error"] is None
+    assert not res["segments"].empty
+    assert len(res["consensus"]) >= 1
+    assert int(res["consensus"].index[0]) == last          # dominant vote is the truth
+    # segmented mode does not disturb the whole-series answer
+    assert res["best"]["max_year"] == last
+
+
+def test_segmented_detects_missing_ring():
+    # Drop one interior ring (a locally-absent ring the measurer missed): the rings
+    # OLDER than the gap are now one short, so they date one year EARLY, while the
+    # younger rings still date true. The step between the two blocks is the
+    # signature of a missing ring, which a whole-series slide cannot reveal.
+    ref, core = _ref_and_core("tests/data/rwl/ca533.rwl", "CAM011")
+    clean_last = int(core.index.max())
+    damaged = np.delete(core.to_numpy(), 249)              # remove ring at index 249
+    res = _quiet(dpl.xdate_floater, ref, damaged, series_name="CAM011",
+                 segmented=True, verbose=False)
+    diag = res["internal_error"]
+    assert diag is not None
+    assert diag["kind"] == "missing"
+    assert diag["reliable_end"] == clean_last              # younger rings date true
+    assert diag["other_end"] == diag["reliable_end"] - 1   # older rings one year early
+
+
+def test_segmented_detects_false_ring():
+    # Insert a duplicate ring (a false ring measured as real): the rings OLDER than
+    # the insertion carry one ring too many, so they date one year LATE while the
+    # younger rings date true -- the opposite step from a missing ring.
+    ref, core = _ref_and_core("tests/data/rwl/ca533.rwl", "CAM011")
+    clean_last = int(core.index.max())
+    arr = core.to_numpy()
+    damaged = np.insert(arr, 249, arr[249])               # duplicate ring at index 249
+    res = _quiet(dpl.xdate_floater, ref, damaged, series_name="CAM011",
+                 segmented=True, verbose=False)
+    diag = res["internal_error"]
+    assert diag is not None
+    assert diag["kind"] == "false"
+    assert diag["reliable_end"] == clean_last              # younger rings date true
+    assert diag["other_end"] == diag["reliable_end"] + 1   # older rings one year late
+
+
+def test_segmented_false_by_default_leaves_result_unchanged():
+    # segmented is opt-in: without it the result carries none of the segment keys,
+    # and turning it on must not change the whole-series best placement.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy()
+    ref = rwl.drop(columns=["CAM011"])
+    plain = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                   verbose=False)
+    seg = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                 segmented=True, verbose=False)
+    for key in ("segments", "consensus", "internal_error"):
+        assert key not in plain
+        assert key in seg
+    assert plain["best"] == seg["best"]
+
+
 def test_series_name_derived_from_series_object():
     # When series_name is not given, take it from the floating series itself so the
     # outputs/plot title show the real name instead of "Unknown".

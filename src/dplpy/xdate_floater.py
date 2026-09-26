@@ -157,10 +157,97 @@ def _abs_ac1(values):
     return abs(float(get_ar1(pd.Series(v))))
 
 
+# --- segment-consensus dating (COFECHA UDATE-style) --------------------------
+_SEG_LEN = 50        # segment window scanned across the master
+_SEG_LAG = 25        # step between segments (50% overlap)
+_SEG_TOPK = 5        # best master positions per segment tallied into the consensus
+
+
+def _segment_consensus(x, yrs, y, method, master_year):
+    """Date each overlapping segment of the (transformed) floater independently
+    against the master, in the spirit of COFECHA's UDATE. Each segment votes for a
+    whole-series placement (the implied calendar year of the floater's youngest
+    ring); a single dominant year means the floater is internally consistent, while
+    a coherent one-year step between older and younger segments is the signature of
+    a missing or false ring. Returns (segments_df, consensus_series).
+
+    segments_df has one row per segment (oldest rings first): ``ring_lo``/``ring_hi``
+    (1-based ring positions within the floater), ``impl_end`` (implied youngest-ring
+    calendar year at the segment's best match) and ``best_r``. ``consensus`` tallies
+    the implied end year over each segment's top-K positions."""
+    nx, ny = len(x), len(y)
+    seg_len = min(_SEG_LEN, ny)
+    if ny <= seg_len:
+        starts = [0]
+    else:
+        starts = list(range(0, ny - seg_len + 1, _SEG_LAG))
+        if starts[-1] != ny - seg_len:
+            starts.append(ny - seg_len)      # end anchor: always test the youngest rings
+    rows, votes = [], {}
+    for a in starts:
+        L = min(seg_len, ny - a)
+        seg = y[a:a + L]
+        rs = np.array([_corr_pval(x[j:j + L], seg, method)[0]
+                       for j in range(0, nx - L + 1)], dtype=float)
+        if not np.isfinite(rs).any():
+            continue
+        order = np.argsort(-np.nan_to_num(rs, nan=-9.0))
+        bj = int(order[0])
+        rows.append({"ring_lo": a + 1, "ring_hi": a + L,
+                     "impl_end": master_year((bj - a) + ny - 1),
+                     "best_r": round(float(rs[bj]), 3)})
+        for j in order[:_SEG_TOPK]:
+            j = int(j)
+            if np.isfinite(rs[j]):
+                e = master_year((j - a) + ny - 1)
+                votes[e] = votes.get(e, 0) + 1
+    seg_df = pd.DataFrame(rows, columns=["ring_lo", "ring_hi", "impl_end", "best_r"])
+    consensus = (pd.Series(votes, dtype=int).sort_values(ascending=False)
+                 if votes else pd.Series(dtype=int))
+    return seg_df, consensus
+
+
+def _diagnose_internal_error(seg_df):
+    """Detect a coherent one-year step between older and younger segments -- the
+    fingerprint of an internal dating error in the floater (a missing or false
+    ring), which a whole-series slide cannot reveal. Returns a dict
+    ``{kind, reliable_end, other_end, near_ring, n_older, n_younger}`` or None.
+
+    A missing ring makes the OLDER segments date one year EARLY (their portion is
+    a ring short); a false ring makes them date one year LATE. Junk straddling
+    segments (low best_r) are dropped so the two real blocks stand out."""
+    if len(seg_df) < 4:
+        return None
+    s = seg_df.sort_values("ring_lo").reset_index(drop=True)
+    thr = max(0.35, float(s["best_r"].median()) * 0.5)
+    conf = s[s["best_r"] >= thr].reset_index(drop=True)
+    if len(conf) < 4:
+        return None
+    vc = conf["impl_end"].value_counts()
+    if len(vc) < 2 or int(vc.iloc[1]) < 2:
+        return None
+    e1, e2 = int(vc.index[0]), int(vc.index[1])
+    if abs(e1 - e2) != 1:
+        return None
+    g1 = conf[conf["impl_end"] == e1]
+    g2 = conf[conf["impl_end"] == e2]
+    # which block is older (smaller ring positions)?
+    if g1["ring_lo"].median() < g2["ring_lo"].median():
+        older_end, younger_end, older, younger = e1, e2, g1, g2
+    else:
+        older_end, younger_end, older, younger = e2, e1, g2, g1
+    if not (older["ring_hi"].max() <= younger["ring_lo"].max()):
+        return None                          # blocks not spatially separated
+    kind = "missing" if older_end < younger_end else "false"
+    near = int(round((older["ring_hi"].max() + younger["ring_lo"].min()) / 2))
+    return {"kind": kind, "reliable_end": younger_end, "other_end": older_end,
+            "near_ring": near, "n_older": int(len(older)), "n_younger": int(len(younger))}
+
+
 def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   min_overlap=50, transform="pw", prewhiten=None, biweight=True,
                   corr="spearman", make_plot=False, return_rwl=False,
-                  verbose=True):
+                  segmented=False, verbose=True):
     """Estimate the calendar dating of a floating (undated) ring-width series.
 
     Parameters
@@ -202,6 +289,16 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     return_rwl : bool, default False
         Also return the floating series placed at its best-fit calendar years
         (``placed``) and combined with the reference (``combined``).
+    segmented : bool, default False
+        Also date each overlapping segment of the floater independently against the
+        master (COFECHA UDATE-style) and check that the segments agree. Adds
+        ``result["segments"]`` (per-segment implied end year and correlation),
+        ``result["consensus"]`` (a tally of implied end years), and
+        ``result["internal_error"]`` (a dict describing a detected missing/false
+        ring, or None). A coherent one-year step between older and younger segments
+        flags an internal dating error that the whole-series fit cannot see; with
+        ``make_plot`` it also draws a staircase diagnostic. The single-best-t
+        placement remains the primary result.
     verbose : bool, default True
         Print a short summary of the best-fit dating.
 
@@ -364,6 +461,36 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
 
     result = {"series_name": series_name, "floater_cor_stats": stats, "best": best}
 
+    # Segment-consensus dating (COFECHA UDATE-style): date each overlapping segment
+    # of the floater independently and look for agreement. This catches an internal
+    # dating error (a missing or false ring) that a whole-series slide hides -- the
+    # error splits the floater so older and younger segments date one year apart.
+    if segmented:
+        seg_df, consensus = _segment_consensus(x, yrs, y, method, _master_year)
+        diag = _diagnose_internal_error(seg_df)
+        result["segments"] = seg_df
+        result["consensus"] = consensus
+        result["internal_error"] = diag
+        if diag is not None:
+            article = "a missing" if diag["kind"] == "missing" else "a false"
+            line = "=" * 78
+            print("\n" + line)
+            print("  !!!  POSSIBLE INTERNAL DATING ERROR in '%s'  !!!" % series_name)
+            print("  Segments do not agree on one date: younger rings date to %d CE,"
+                  % diag["reliable_end"])
+            print("  older rings to %d CE (one year %s) -- the signature of %s ring"
+                  % (diag["other_end"],
+                     "earlier" if diag["kind"] == "missing" else "later", article))
+            print("  near ring ~%d of the series. The younger-segment date (%d) is the"
+                  % (diag["near_ring"], diag["reliable_end"]))
+            print("  reliable outer date; re-examine the measurements around that ring.")
+            print(line + "\n")
+        elif verbose:
+            dom = int(consensus.index[0]) if len(consensus) else None
+            print("Segment consensus: %d segments, dominant end year %s "
+                  "(no internal-error split detected)."
+                  % (len(seg_df), dom))
+
     if return_rwl or make_plot:
         placed = pd.DataFrame(
             {series_name: y_raw},
@@ -374,8 +501,54 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
 
     if make_plot:
         _plot_floater(result, biweight=biweight)
+        if segmented:
+            _plot_segment_consensus(result)
 
     return result
+
+
+def _plot_segment_consensus(result, show=True):
+    """Staircase diagnostic: each segment's implied youngest-ring year against its
+    position in the floater. A flat line means the floater dates internally
+    consistently; a one-year step flags a missing/false ring at that ring."""
+    import matplotlib.pyplot as plt
+    from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
+
+    seg = result.get("segments")
+    if seg is None or seg.empty:
+        return None
+    diag = result.get("internal_error")
+    mid = (seg["ring_lo"] + seg["ring_hi"]) / 2.0
+    r = seg["best_r"].to_numpy(dtype=float)
+
+    fig, ax = plt.subplots(figsize=(9, 3.6))
+    # connect the votes, then mark each segment by how well it correlates
+    ax.plot(mid, seg["impl_end"], "-", lw=0.8, color="0.6", zorder=1)
+    sc = ax.scatter(mid, seg["impl_end"], c=r, cmap="viridis", vmin=0, vmax=1,
+                    s=42, zorder=3, edgecolor="white", linewidth=0.4)
+    cb = fig.colorbar(sc, ax=ax, pad=0.01)
+    cb.set_label("segment correlation", fontsize=8)
+    if diag is not None:
+        ax.axhline(diag["reliable_end"], ls="--", lw=0.8, color=ACCENT,
+                   label="reliable end %d" % diag["reliable_end"])
+        ax.axvline(diag["near_ring"], ls=":", lw=1.0, color=ACCENT_WARM)
+        ax.text(diag["near_ring"], ax.get_ylim()[1], " ~ring %d" % diag["near_ring"],
+                va="top", ha="left", color=ACCENT_WARM, fontsize=8)
+        ax.legend(loc="best", fontsize=8, frameon=False)
+    ax.set_xlabel("ring number from pith  (1 = innermost → outer; segment center)")
+    ax.set_ylabel("implied youngest-ring year")
+    title = "Segment consensus: " + str(result["series_name"])
+    if diag is not None:
+        title += "   —   possible %s ring near ring %d" % (diag["kind"],
+                                                                diag["near_ring"])
+    ax.text(0.0, 1.04, title, transform=ax.transAxes, ha="left", va="bottom",
+            fontsize=11, color=("#b3202c" if diag is not None else "0.15"),
+            fontweight="bold")
+    style_axes(ax, xgrid=True, ygrid=True)
+    finalize_font(fig)
+    if show:
+        plt.show()
+    return fig
 
 
 def _plot_floater(result, biweight=True, show=True):
