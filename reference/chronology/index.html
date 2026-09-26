@@ -1,0 +1,2694 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dendrochronology Program Library for Python">
+      
+      
+        <meta name="author" content="Andy Bunn, Kevin Anchukaitis, Tyson Swetnam">
+      
+      
+        <link rel="canonical" href="https://opendendro.github.io/dplPy/reference/chronology/">
+      
+      
+        <link rel="prev" href="../detrending/">
+      
+      
+        <link rel="next" href="../crossdating/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/dplpy.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Chronology - dplPy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chronology" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dplPy" class="md-header__button md-logo" aria-label="dplPy" data-md-component="logo">
+      
+  <img src="../../assets/dplpy.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dplPy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Chronology
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/OpenDendro/dplPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    OpenDendro/dplPy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dplPy" class="md-nav__button md-logo" aria-label="dplPy" data-md-component="logo">
+      
+  <img src="../../assets/dplpy.png" alt="logo">
+
+    </a>
+    dplPy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/OpenDendro/dplPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    OpenDendro/dplPy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/reading-writing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reading & writing data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/detrending-standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detrending & standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/chronologies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building chronologies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/variance-stabilization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variance stabilization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/crossdating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating & COFECHA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/floating-series/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dating a floating series
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/statistics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statistics & agreement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/lipd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiPD interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/coming-from-dplr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from dplR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input & output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../detrending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detrending & standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chronology
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chronology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#chron" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chron_stabilized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron_stabilized
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilize_chron" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stabilize_chron
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chron_ars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron_ars
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autoreg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        autoreg
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ar_func" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ar_func
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crossdating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../statistics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statistics & indices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Background
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Background
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/fidelity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fidelity & departures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/crossdating-methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating: dplR vs COFECHA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#chron" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chron_stabilized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron_stabilized
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilize_chron" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stabilize_chron
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chron_ars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chron_ars
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autoreg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        autoreg
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ar_func" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ar_func
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="chronology">Chronology<a class="headerlink" href="#chronology" title="Permanent link">&para;</a></h1>
+<p>Averaging detrended series into a site chronology, with optional autoregressive
+modelling and variance stabilization. See the
+<a href="../../guide/chronologies/">Building chronologies</a> guide.</p>
+<h2 id="chron">chron<a class="headerlink" href="#chron" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Creates a mean value chronology for a dataset of tree-ring widths.</p>
+
+
+<details class="extended-summary" open>
+  <summary>Extended Summary</summary>
+  <p>Creates a mean value chronology for a dataset, typically the ring width
+indices of a detrended series. Determines whether to find means using Tukey's
+bi-weight robust mean (default 'True'), whether to prewhiten data by fitting
+to an AR model (default 'False'), and whether to plot the results of the
+chronology (default 'True'). When prewhitening, the AR-model order can be
+controlled with <code>max_lag</code> and <code>aic</code> (mirroring dplR's chron(), which
+forwards these to ar() as order.max and aic).</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>rwi_data</code></td>
+            <td>
+                  <code>pandas dataframe</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>a pandas dataframe imported from dpl.readers()</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>biweight</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>use Tukey's bi-weight robust mean</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>prewhiten</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>run pre-whitening on the time series before building
+chronology</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>plot</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>plot the results</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>max_lag</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>when <code>prewhiten</code> is True, the maximum AR order considered. The default
+of 10 follows ARSTAN's convention (and matches chron_ars). dplR's own
+chron() instead forwards to ar() whose default order.max is
+floor(10*log10(n)) (~27 for a 500-yr series), so to reproduce dplR's
+chron() exactly, pass max_lag=floor(10*log10(n)).</p>
+              </div>
+            </td>
+            <td>
+                  <code>10</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>aic</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>when <code>prewhiten</code> is True, select the AR order by AIC up to <code>max_lag</code>
+(dplR's ar() aic=TRUE). If False, fit a fixed AR of order <code>max_lag</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>ar_method</code></td>
+            <td>
+                  <code>(yw, ols)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>AR estimator used for prewhitening. "yw" (Yule-Walker) matches R's ar()
+default and reproduces dplR's residual chronology at the same order;
+"ols" (statsmodels AutoReg, conditional least squares)
+matches R's ar(method="ols"). chron_ars() also uses Yule-Walker.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;yw&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>first_aic_min</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>AR order-selection rule when <code>aic</code> is True. False takes the global AIC
+minimum (R's ar() behaviour, so chron() reproduces dplR's chron()); True
+takes the first local AIC minimum -- ARSTAN's rule, shared with
+chron_ars() -- which is more parsimonious (it rarely selects an order
+above ~7, so <code>max_lag</code> seldom binds) at the cost of a little AIC.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>stabilize</code></td>
+            <td>
+                  <code>(None, <span title="dplpy.rbar">rbar</span>, spline, both)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If not None, also variance-stabilize each chronology and return the
+stabilized versions in extra <code>*_vsc</code> columns (see Notes). This is the
+ARSTAN workflow, where variance stabilization (menu option <code>isb</code>) is
+applied to the finished chronologies. The method families are as in
+:func:<code>stabilize_chron</code>: <code>"rbar"</code> (Osborn/Frank N_eff scaling),
+<code>"spline"</code> (ARSTAN stabit spline), or <code>"both"</code> (rbar then a 67%
+spline; ARSTAN <code>isb=2</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>stabilize_kwargs</code></td>
+            <td>
+                  <code>dict</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Extra keyword arguments forwarded to :func:<code>stabilize_chron</code> when
+<code>stabilize</code> is set (e.g. <code>{"rbar_mode": "constant"}</code>,
+<code>{"win_length": 30}</code>, <code>{"spline_period": 100}</code>). The chronology,
+column, source RWI matrix, and sample depth are supplied automatically
+and may not be overridden here. Defaults (running rbar, 67% spline) match
+Frank (2006) / ARSTAN.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>data</code></td>            <td>
+                  <code>pandas dataframe</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>a mean-value chronology indexed by year. Columns: <code>std</code> (the standard
+chronology), <code>res</code> (the residual/AR-prewhitened chronology; only when
+<code>prewhiten</code> is True), and <code>samp_depth</code> (the sample depth). These
+names match chron_ars() and mirror dplR's std/res/samp.depth. When
+<code>stabilize</code> is set, a stabilized <code>std_vsc</code> (and <code>res_vsc</code> when
+<code>prewhiten</code> is True) column is added next to each base chronology.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p><strong>Variance stabilization (<code>stabilize</code>).</strong> Following ARSTAN's per-chronology
+rbar convention, the standard chronology is stabilized with the rbar of the
+standard (detrended) RWI matrix, and the residual chronology with the rbar of
+the residual (prewhitened) matrix. Both restandardize to the input
+chronology's full period (see :func:<code>stabilize_chron</code>). For the ARSTAN
+(re-reddened) chronology, use :func:<code>chron_ars</code> with <code>stabilize=</code>.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span> 
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">&quot;../tests/data/csv/file.csv&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">rwi_data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">detrend</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">chron</span><span class="p">(</span><span class="n">rwi_data</span><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">chron</span><span class="p">(</span><span class="n">rwi_data</span><span class="p">,</span> <span class="n">prewhiten</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">chron_data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">chron</span><span class="p">(</span><span class="n">rwi_data</span><span class="p">,</span> <span class="n">biweight</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">plot</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https:/opendendro.org/dplpy-man/#chron</p>
+</details>
+    </div>
+
+</div><h2 id="chron_stabilized">chron_stabilized<a class="headerlink" href="#chron_stabilized" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Variance Stabilization functions</p>
+
+
+<details class="extended-summary" open>
+  <summary>Extended Summary</summary>
+  <p>Builds a variance stabilized mean-value chronology from a pandas dataframe
+of detrended ring widths, by multiplying the chronology with the square
+root of the effective independent sample size, Neff, defined as </p>
+<p>Neff = n(t) / 1+(n(t)-1)rbar(t)</p>
+<div class="highlight"><pre><span></span><code>where n(t) is the number of series at time t, and rbar(t) is the
+mean pairwise correlation between all series (not &quot;interseries
+correlation&quot; -- see dpl.interseries_corr() -- which correlates each
+series against a composite chronology of the others, rather than
+against each other series individually).
+</code></pre></div>
+<p>In the limiting cases, when the rbar is zero or unity, Neff obtains 
+values of the true sample size and unity, respectively.
+Neff is calculated over different segments of the data of
+length <code>win_length</code>, and only series with at least <code>min_seg_ratio</code> of
+valid values in the segment are considered.</p>
+<p>This is a port of dplR's chron.stabilized() (see reference below); the
+intent is to match that implementation's behavior as closely as possible,
+including its two independent window-length recommendations and its use
+of an unfiltered overall rbar constant (as opposed to the
+windowed rbar, which does apply the min_seg_ratio overlap filter).</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>rwi_data</code></td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>a Pandas dataset representing detrended tree rings/widths.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>win_length</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>an integer for specifying the window lengths where rbar values
+will be calculated.</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>min_seg_ratio</code></td>
+            <td>
+                  <code>float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the minimum ratio of non-NA values to the window length for a series to be
+considered in an Neff calculation. Defaults to exactly &#8531; to match
+dplR's chron.stabilized(), which drops overlaps below win_length/3.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1/3</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>biweight</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>flag indicating whether or not to use Tukey's bi-weight robust mean when
+calculating the mean-value chronology</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>running_rbar</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>flag indicating whether or not to return the running rbar values
+as part of chronology output (only for method='running_rbar').</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>method</code></td>
+            <td>
+                  <code>str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the variance-stabilization method:</p>
+<ul>
+<li>'running_rbar' : the running-window-rbar effective-signal adjustment
+  (Frank et al. 2006 "RUNNINGr"), a port of dplR's chron.stabilized().
+  The default; uses win_length and min_seg_ratio.</li>
+<li>'briffa' (alias 'mean_rbar') : the same effective-sample-size adjustment
+  but with a single, time-constant rbar computed over all pairwise series
+  overlaps longer than 20 years (Osborn et al. 1997 constant-rbar; Frank
+  et al. 2006 "MEANr"; ARSTAN's Briffa option). Corrects for changing
+  sample size ONLY.</li>
+<li>'spline' : ARSTAN's ad-hoc spline stabilization. Removes any time trend
+  in the ABSOLUTE departures of the chronology with a smoothing spline,
+  so it can stabilize variance even when the heteroscedasticity is NOT a
+  sample-size effect. NOTE (per ARSTAN and Osborn et al. 1997): this is
+  strictly ad hoc and can remove real low-frequency variance -- use with
+  care. Stiffness set by spline_nyrs.</li>
+</ul>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;running_rbar&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>spline_nyrs</code></td>
+            <td>
+                  <code>(int, float or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>stiffness for method='spline'. An int is a fixed spline wavelength in
+years (ARSTAN's fixed-n cutoff); a float in (0, 1) is a fraction of the
+chronology length (ARSTAN's %-n cutoff). None uses 0.5 (half the length).
+Ignored by the rbar methods.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>stabilized_chron</code></td>            <td>
+                  <code>a pandas dataframe of a variance-stabilized mean-value</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>chronology, indexed by year. Columns: <code>vsc</code> (the
+variance-stabilized chronology, matching dplR's naming),
+<code>Running rbar</code> (only when running_rbar=True), and
+<code>samp_depth</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span> 
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">&quot;../tests/data/csv/file.csv&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">chron_stabilized</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">win_length</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span> <span class="n">min_seg_ratio</span><span class="o">=</span><span class="mf">0.4</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">returns</span> <span class="n">mean</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="go">                                        value chronology with stabilized</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="go">                                        variance.</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="go">References</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="go">----------</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="go">.. [1] https://rdrr.io/cran/dplR/man/chron.stabilized.html</span>
+</code></pre></div>
+
+    </div>
+
+</div><h2 id="stabilize_chron">stabilize_chron<a class="headerlink" href="#stabilize_chron" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Variance-stabilize an already-built chronology.</p>
+<p>Unlike :func:<code>chron_stabilized</code> (a port of dplR's chron.stabilized(), which
+takes the RWI matrix and builds its own standard mean-value chronology
+internally), this operates on a chronology you already built with
+:func:<code>chron</code> or :func:<code>chron_ars</code> -- standard, residual, or ARSTAN -- which
+is how ARSTAN itself is organized (variance stabilization is a post-
+construction step, menu option <code>isb</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>chron</code></td>
+            <td>
+                  <code><span title="pandas.Series">Series</span> or <span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The chronology to stabilize. A Series is used directly; a DataFrame (e.g.
+the output of chron()/chron_ars()) uses <code>column</code> and, if present, its
+<code>samp_depth</code> column.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>method</code></td>
+            <td>
+                  <code>(<span title="dplpy.rbar">rbar</span>, spline, both)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Required, explicit (the families do different things):</p>
+<ul>
+<li><code>"rbar"</code>   -- Osborn (1997) / Frank (2006) N_eff scaling; corrects
+  variance driven by changing sample size (and, with running rbar,
+  changing interseries correlation). Needs sample depth + rbar (see
+  <code>rwi</code> / the precomputed inputs).</li>
+<li><code>"spline"</code> -- ARSTAN's ad-hoc absolute-departure spline (stabit):
+  flattens all time-varying variance whatever the cause; needs only the
+  chronology. Can remove real low-frequency variance (Osborn 1997).</li>
+<li><code>"both"</code>   -- ARSTAN <code>isb=2</code> / Frank: <code>"rbar"</code> then a 67%
+  <code>"spline"</code>, in sequence.</li>
+</ul>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;rbar&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>column</code></td>
+            <td>
+                  <code>str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which column to stabilize when <code>chron</code> is a DataFrame.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;std&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>rwi</code></td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The source ring-width-index matrix for the chronology (for the <code>"rbar"</code>
+family). When given, rbar, the running rbar, and sample depth are derived
+from it. For a residual or ARSTAN chronology this should be the residual
+(prewhitened) matrix -- following ARSTAN, which uses the residual rbar for
+the ARSTAN chronology.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>rbar</code></td>
+            <td>
+                  <code>float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Precomputed scalar rbar (for <code>rbar_mode="constant"</code> without <code>rwi</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>running_rbar</code></td>
+            <td>
+                  <code>array - like</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Precomputed per-year running rbar (for <code>rbar_mode="running"</code> without
+<code>rwi</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>samp_depth</code></td>
+            <td>
+                  <code>array - like</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Per-year sample depth. Taken from the DataFrame's <code>samp_depth</code> column or
+from <code>rwi</code> when not given.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>rbar_mode</code></td>
+            <td>
+                  <code>(running, constant)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Running rbar (Frank RUNNINGr; the widely used default) or a single
+time-constant rbar (Osborn/ARSTAN Briffa MEANr).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;running&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>win_length</code></td>
+            <td>
+                  <code>(int, float)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Running-rbar window length and minimum overlap ratio (as in
+chron_stabilized).</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>min_seg_ratio</code></td>
+            <td>
+                  <code>(int, float)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Running-rbar window length and minimum overlap ratio (as in
+chron_stabilized).</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>spline_period</code></td>
+            <td>
+                  <code>(int, float or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Spline stiffness for the <code>"spline"</code>/<code>"both"</code> families. <code>None</code> = the
+67% spline (<code>floor(0.67*n)</code> years, ARSTAN's default for the combined
+method); an int &gt; 1 is a fixed wavelength in years; a float in (0, 1) is a
+fraction of length; a negative value is a percent spline.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>f</code></td>
+            <td>
+                  <code>float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Spline frequency response (50% amplitude cutoff).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.5</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>clip_negative</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Clamp the stabilized chronology at &gt;= 0 (ARSTAN behavior).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>return_info</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Also return a dict of diagnostics (rbar used, N_eff, sample depth).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Indexed by year, with the stabilized chronology in column <code>vsc</code> and, when
+known, <code>samp_depth</code>. If <code>return_info</code> is True, returns
+<code>(DataFrame, info_dict)</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>Both families restandardize to the input chronology's <strong>full-period</strong> mean and
+SD. This differs from ARSTAN's <code>stabbm</code>, which rescales to a user-chosen
+reference period; the full-period convention keeps the stabilized chronology on
+the same overall scale as the input while removing the time-varying variance.</p>
+<p>For the <strong>ARSTAN</strong> chronology, ARSTAN stabilizes the residual chronology and
+<em>then</em> re-reddens, so faithful ARSTAN stabilization of the ARSTAN chronology is
+produced by <code>chron_ars(stabilize=...)</code> (which does it in that order), not by
+calling this function on an already re-reddened series.</p>
+</details>
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>Osborn, Briffa &amp; Jones (1997) Dendrochronologia 15, 89-99.
+Frank, Esper &amp; Cook (2006) TRACE 4, 56-66.</p>
+</details>
+    </div>
+
+</div><h2 id="chron_ars">chron_ars<a class="headerlink" href="#chron_ars" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Build ARSTAN standard, residual, and re-reddened chronologies.</p>
+
+
+<details class="extended-summary" open>
+  <summary>Extended Summary</summary>
+  <p>Produces the three ARSTAN chronologies of Cook (1985) from a set of
+detrended ring-width indices:</p>
+<ul>
+<li><strong>std</strong>: the standard chronology -- the (robust) mean of the RWI series,
+  with no autoregressive modeling.</li>
+<li><strong>res</strong>: the residual chronology -- each series is prewhitened with a
+  pooled AR(p) model, the prewhitened series are averaged, and that mean is
+  prewhitened once more to order p, yielding a near-white chronology. With
+  <code>backcast=True</code> (the default) each prewhitening step backcasts its initial
+  values as ARSTAN does, so no years are lost to the AR model (see Notes).</li>
+<li><strong>ars</strong>: the ARSTAN chronology -- the common red-noise persistence
+  (the <em>pooled</em> AR model) is reintroduced by "re-reddening" (postAR). How
+  this is done is controlled by <code>ars_method</code> (see Notes): the default
+  <code>"arstan"</code> re-reddens the mean of the prewhitened series (average then
+  re-redden, as in Ed Cook's ARSTAN); <code>"dplr"</code> re-reddens each series and
+  then averages (matching dplR's chron.ars).</li>
+</ul>
+<p>The AR order p is chosen from a pooled autocovariance accumulated across all
+series and lags (Cook's pooled-AR approach), converted to AR coefficients
+(Durbin-Levinson) and selected by AIC.</p>
+<p>This is a port of dplR's chron.ars(). The pooled-AR accumulation -- the
+step the dplR authors flagged as a "time killer" -- is vectorized with numpy
+here (a per-series-pair loop of vectorized lag dot-products, replacing
+dplR's triple loop with per-iteration cbind/rowSums), while following
+dplR/FORTRAN's behavior, including its practice of compressing each
+series pair to its common overlap and then lagging by position. The
+re-reddening (postAR) forward filter is applied with scipy.signal.lfilter.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>rwi_data</code></td>
+            <td>
+                  <code>pandas dataframe</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>detrended ring-width indices (e.g. from dpl.detrend()), with years as
+the index and series as columns.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>biweight</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, aggregate series with Tukey's biweight robust mean (tbrm);
+if False, use the arithmetic mean.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>max_lag</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>maximum AR lag considered when selecting the pooled AR order.</p>
+              </div>
+            </td>
+            <td>
+                  <code>10</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>first_aic_min</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, select the order at the first local AIC minimum (dplR's
+default); if False, select the global AIC minimum.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>verbose</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, print the pooled ACF, AR coefficients, AIC, and selected order.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>prewhiten_method</code></td>
+            <td>
+                  <code>str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"ar.yw" (Yule-Walker, the default and the numerically exact match to
+dplR) or "arima.CSS-ML" (matches dplR within tolerance).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ar.yw&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>ars_method</code></td>
+            <td>
+                  <code>str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how the ARSTAN (re-reddened) chronology is constructed (see Notes):
+"arstan" re-reddens the mean of the prewhitened series (average then
+re-redden -- Ed Cook's ARSTAN order); "dplr" re-reddens each series and
+then averages (dplR's chron.ars order). The two agree only when every
+series spans the full period; under staggered sample depth they differ.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;arstan&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>backcast</code></td>
+            <td>
+                  <code>boolean</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, backcast the initial values of each Yule-Walker prewhitening
+step (as ARSTAN's <code>bckcst</code>/<code>albino</code> do), so residuals are defined for
+every year and no leading years are lost to the AR model. If False, the
+first <code>p</code> residuals of each series (and of the re-prewhitened mean) are
+set to NaN, reproducing dplR's <code>chron.ars</code>. See Notes. Applies to the
+<code>"ar.yw"</code> path; the <code>"arima.CSS-ML"</code> path already returns full-length
+residuals from its state-space filter.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>stabilize</code></td>
+            <td>
+                  <code>(None, <span title="dplpy.rbar">rbar</span>, spline, both)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If not None, also variance-stabilize each chronology and return the
+stabilized versions in extra <code>*_vsc</code> columns (see Notes). This mirrors
+ARSTAN, where variance stabilization (menu option <code>isb</code>) is applied to
+the finished chronologies. The method families are as in
+:func:<code>stabilize_chron</code>: <code>"rbar"</code> (Osborn/Frank N_eff scaling),
+<code>"spline"</code> (ARSTAN stabit spline), or <code>"both"</code> (rbar then a 67%
+spline; ARSTAN <code>isb=2</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>stabilize_kwargs</code></td>
+            <td>
+                  <code>dict</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Extra keyword arguments forwarded to :func:<code>stabilize_chron</code> when
+<code>stabilize</code> is set (e.g. <code>{"rbar_mode": "constant"}</code>). The
+chronology, column, source matrix, and sample depth are supplied
+automatically and may not be overridden here.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>out</code></td>            <td>
+                  <code>pandas dataframe indexed by year with columns &#39;std&#39;, &#39;res&#39;, &#39;ars&#39;,</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>and 'samp_depth'. When <code>stabilize</code> is set, a stabilized <code>std_vsc</code>,
+<code>res_vsc</code>, and <code>ars_vsc</code> column is added next to each base
+chronology.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p><strong>ARSTAN chronology construction (<code>ars_method</code>).</strong> The re-reddening and
+averaging steps do not commute when sample depth changes through time, so
+there are two distinct ways to build the ARSTAN chronology:</p>
+<ul>
+<li><code>"arstan"</code> (default): <code>ars = postAR(mean(prewhitened series))</code> --
+  average the prewhitened series first, then re-redden that single mean
+  series once. This reproduces Ed Cook's ARSTAN FORTRAN, which re-reddens
+  the residual chronology directly (<code>commie1</code> applied to the residual
+  chronology). dplPy defaults to this to be faithful to ARSTAN, from which
+  chron_ars takes its DNA.</li>
+<li><code>"dplr"</code>: <code>ars = mean(postAR(prewhitened series_i))</code> -- re-redden each
+  prewhitened series and then average. This matches dplR's <code>chron.ars</code> and
+  was dplPy's behavior before this option existed.</li>
+</ul>
+<p>The <code>std</code> and <code>res</code> chronologies, the pooled AR order, and the
+common-pooled-order prewhitening are identical for both settings; only the
+<code>ars</code> column changes. Use <code>ars_method="dplr"</code> to reproduce dplR exactly.</p>
+<p><strong>Backcasting (<code>backcast</code>).</strong> An AR(p) filter has no data for its <code>p</code>
+lagged terms at the start of a series, so ordinarily the first <code>p</code> residuals
+are undefined. ARSTAN avoids this by <em>backcasting</em>: it synthesizes <code>p</code>
+pre-sample values by running the AR model in reverse (subroutine <code>bckcst</code>,
+used by <code>albino</code> when prewhitening and <code>commie</code> when re-reddening), so the
+filter can produce output for every year. dplPy does the same at both
+prewhitening stages -- the per-series prewhitening and the re-prewhitening of
+the mean -- when <code>backcast=True</code> (the default), so the residual and ARSTAN
+chronologies are full length (no leading NaN) and match ARSTAN's construction
+more closely: a young series' first <code>p</code> residuals are now <em>included</em> in the
+robust mean rather than dropped, exactly as ARSTAN includes them. With
+<code>backcast=False</code> the first <code>p</code> residuals are set to NaN, reproducing
+dplR's <code>chron.ars</code>. The re-reddening step (<code>postAR</code>) always backcasts, as
+in ARSTAN. The backcast values are model-based estimates, so treat the first
+<code>p</code> years as slightly less certain than the interior.</p>
+<p><strong>Variance stabilization (<code>stabilize</code>).</strong> Following ARSTAN's per-chronology
+rbar convention, <code>std_vsc</code> uses the rbar of the standard (detrended) RWI
+matrix, and both <code>res_vsc</code> and the ARSTAN chronology use the rbar of the
+residual (prewhitened) matrix. The ARSTAN column is stabilized in the ARSTAN
+order: with <code>ars_method="arstan"</code> the residual-style mean of the prewhitened
+series is stabilized <strong>before</strong> re-reddening (ARSTAN stabilizes the residual
+chronology, then <code>commie1</code>), so <code>ars_vsc</code> stays consistent with the
+unstabilized <code>ars</code>. With <code>ars_method="dplr"</code> the ARSTAN chronology is
+already built by re-reddening each series, so <code>ars_vsc</code> is stabilized
+post-hoc on the reddened chronology (not the ARSTAN order). All columns
+restandardize to their own full period (see :func:<code>stabilize_chron</code>).</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">rwi</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">detrend</span><span class="p">(</span><span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">&quot;../tests/data/csv/file.csv&quot;</span><span class="p">),</span> <span class="n">plot</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">chron_ars</span><span class="p">(</span><span class="n">rwi</span><span class="p">)</span>
+</code></pre></div>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://rdrr.io/cran/dplR/man/chron.ars.html
+.. [2] Cook, E.R. (1985) A time series analysis approach to tree-ring
+       standardization. PhD dissertation, University of Arizona.</p>
+</details>
+    </div>
+
+</div><h2 id="autoreg">autoreg<a class="headerlink" href="#autoreg" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Auto Regressive (AR) functions</p>
+
+
+<details class="extended-summary" open>
+  <summary>Extended Summary</summary>
+  <p>Selects the best AR model with a specified maximum order for the given data,
+and returns the parameters for the model. The best model is selected based 
+on AIC value.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>data</code></td>
+            <td>
+                  <code><span title="pandas.Series">Series</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>an individual (Pandas) series representing tree rings/widths.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>max_lag</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>max lag to consider when selecting the AR model.</p>
+              </div>
+            </td>
+            <td>
+                  <code>5</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>params</code></td>            <td>
+                  <code>array containing the parameters of best-fit AR model in order.</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span> 
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">&quot;../tests/data/csv/file.csv&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">autoreg</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;series name&#39;</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">returns</span> <span class="n">parameters</span> <span class="n">of</span> <span class="n">best</span> <span class="n">fit</span> <span class="n">AR</span> <span class="n">model</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="go">                                        with maxlag of 5 (default) or other </span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="go">                                        specified number</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="go">References</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="go">----------</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="go">.. [1] https:/opendendro.org/dplpy-man/#autoreg</span>
+</code></pre></div>
+
+    </div>
+
+</div><h2 id="ar_func">ar_func<a class="headerlink" href="#ar_func" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Auto Regressive (AR) functions </p>
+
+
+<details class="extended-summary" open>
+  <summary>Extended Summary</summary>
+  <p>Fits a given data to an the best-fit autoregressive model, returns the residuals
+of AR fit relative to the original data + the mean of the original data.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>data</code></td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> | <span title="pandas.Series">Series</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>a pandas dataframe imported from dpl.readers() or a series extracted
+from such a dataframe.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>max_lag</code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>max lag to consider when selecting the AR model.</p>
+              </div>
+            </td>
+            <td>
+                  <code>5</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>res</code></td>            <td>
+                  <code>pandas dataframe or series of AR-modeled data, depending on which was given as input.</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span> 
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">&quot;../tests/data/csv/file.csv&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">ar_func</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;series name&#39;</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">returns</span> <span class="n">residuals</span> <span class="n">plus</span> <span class="n">mean</span> <span class="n">of</span> <span class="n">best</span> <span class="n">fit</span> 
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="go">                                        from AR models with max lag of either 5 </span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="go">                                        (default) or specified number</span>
+</code></pre></div>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https:/opendendro.org/dplpy-man/#ar_func</p>
+</details>
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2021 - 2026 OpenDendro
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/opendendro" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.indexes", "toc.follow", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

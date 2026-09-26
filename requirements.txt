@@ -1,0 +1,4 @@
+# Documentation build dependencies (mkdocs site).
+# Installed by the docs deploy workflow before `mkdocs build`.
+mkdocs-material>=9.5
+mkdocstrings[python]>=0.25
