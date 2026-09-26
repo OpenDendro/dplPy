@@ -75,6 +75,10 @@ and commit log.
   floater); the sliding-offset search was rewritten to handle every overlap regime
   and reproduces prior results offset-for-offset when the floater is the shorter
   series.
+- **`dpl.xdate_floater`** plot no longer balloons with white space when the best
+  match is poor: the p-value panel's inverted-log axis always extends past the
+  `p = 0.05` / `p = 0.0001` thresholds, so their reference lines and labels stay
+  inside the panel instead of landing far above it.
 - **`dpl.xdate_report`** given an in-memory `DataFrame` no longer misfires by
   treating the frame's columns as file paths (the previous
   "No such file or directory" flood); it is now handled as one collection.
