@@ -21,8 +21,10 @@ and commit log.
   signature of a missing/locally-absent ring, one year late a false ring). The
   result gains `result["segments"]` (per-segment implied end year and correlation),
   `result["consensus"]` (a vote count of each segment's single-best implied end year,
-  matching the staircase plot), and `result["internal_error"]` (a dict describing a
-  detected missing/false ring, or `None`). At least four segments are needed to test
+  matching the staircase plot), `result["segment_candidates"]` (each segment's top few
+  placements, controlled by `segment_topk=`, so a near-tie between dates is visible
+  rather than hidden behind the winner), and `result["internal_error"]` (a dict
+  describing a detected missing/false ring, or `None`). At least four segments are needed to test
   for an internal error, so short floaters report the per-segment dates without a
   verdict, and the printed summary flags a weak whole-series match rather than
   asserting a confident date. A detected error prints a banner regardless of

@@ -317,6 +317,28 @@ def test_segmented_consensus_matches_plotted_segments():
     assert int(res["consensus"].sum()) == len(res["segments"])
 
 
+def test_segmented_candidates_expose_top_placements():
+    # segment_candidates lists each segment's top placements; rank 1 must equal the
+    # single-best recorded in res["segments"], r must fall with rank so a near-tie is
+    # visible, and segment_topk caps the rows per segment.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    ref = rwl.drop(columns=["CAM011"])
+    truth = rwl["CAM011"].dropna().to_numpy()
+    res = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                 segmented=True, segment_topk=3, verbose=False)
+    cand = res["segment_candidates"]
+    assert list(cand.columns) == ["ring_lo", "ring_hi", "rank", "impl_end", "r"]
+    seg = res["segments"]
+    for (lo, hi), g in cand.groupby(["ring_lo", "ring_hi"]):
+        assert len(g) <= 3                                   # capped by segment_topk
+        assert list(g["rank"]) == list(range(1, len(g) + 1))
+        assert list(g["r"]) == sorted(g["r"], reverse=True)  # best-first
+        row = seg[(seg["ring_lo"] == lo) & (seg["ring_hi"] == hi)].iloc[0]
+        top = g[g["rank"] == 1].iloc[0]
+        assert top["impl_end"] == row["impl_end"]            # rank 1 == single best
+        assert top["r"] == row["best_r"]
+
+
 def test_segmented_floater_name_collision_builds_combined():
     # If the floater's name already exists in the reference collection (a leave-one-out
     # test that did not drop the column), building "combined" must not crash on the

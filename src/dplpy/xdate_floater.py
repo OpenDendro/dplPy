@@ -162,19 +162,21 @@ _SEG_LEN = 50        # segment window scanned across the master
 _SEG_LAG = 25        # step between segments (50% overlap)
 
 
-def _segment_consensus(x, yrs, y, method, master_year):
+def _segment_consensus(x, yrs, y, method, master_year, topk=5):
     """Date each overlapping segment of the (transformed) floater independently
     against the master, in the spirit of COFECHA's UDATE. Each segment votes for a
     whole-series placement (the implied calendar year of the floater's youngest
     ring); a single dominant year means the floater is internally consistent, while
     a coherent one-year step between older and younger segments is the signature of
-    a missing or false ring. Returns (segments_df, consensus_series).
+    a missing or false ring. Returns (segments_df, consensus_series, candidates_df).
 
     segments_df has one row per segment (oldest rings first): ``ring_lo``/``ring_hi``
     (1-based ring positions within the floater), ``impl_end`` (implied youngest-ring
     calendar year at the segment's best match) and ``best_r``. ``consensus`` is a vote
     count of those single-best implied end years (the value shown for each segment on
-    the staircase plot), most-supported first."""
+    the staircase plot), most-supported first. ``candidates_df`` lists, for each
+    segment, its ``topk`` best placements (``rank`` 1..topk, ``impl_end``, ``r``) --
+    so a near-tie between two dates is visible instead of hidden behind the winner."""
     nx, ny = len(x), len(y)
     seg_len = min(_SEG_LEN, ny)
     if ny <= seg_len:
@@ -183,25 +185,34 @@ def _segment_consensus(x, yrs, y, method, master_year):
         starts = list(range(0, ny - seg_len + 1, _SEG_LAG))
         if starts[-1] != ny - seg_len:
             starts.append(ny - seg_len)      # end anchor: always test the youngest rings
-    rows = []
+    rows, cand_rows = [], []
     for a in starts:
         L = min(seg_len, ny - a)
         seg = y[a:a + L]
         rs = np.array([_corr_pval(x[j:j + L], seg, method)[0]
                        for j in range(0, nx - L + 1)], dtype=float)
-        if not np.isfinite(rs).any():
+        finite = np.where(np.isfinite(rs))[0]
+        if finite.size == 0:
             continue
-        bj = int(np.argmax(np.nan_to_num(rs, nan=-9.0)))
+        order = finite[np.argsort(-rs[finite])]          # best-first, NaNs excluded
+        bj = int(order[0])
         rows.append({"ring_lo": a + 1, "ring_hi": a + L,
                      "impl_end": master_year((bj - a) + ny - 1),
                      "best_r": round(float(rs[bj]), 3)})
+        for rank, j in enumerate(order[:topk], start=1):
+            j = int(j)
+            cand_rows.append({"ring_lo": a + 1, "ring_hi": a + L, "rank": rank,
+                              "impl_end": master_year((j - a) + ny - 1),
+                              "r": round(float(rs[j]), 3)})
     seg_df = pd.DataFrame(rows, columns=["ring_lo", "ring_hi", "impl_end", "best_r"])
+    candidates = pd.DataFrame(cand_rows,
+                              columns=["ring_lo", "ring_hi", "rank", "impl_end", "r"])
     # the consensus is a vote count of each segment's single best placement -- the
     # same implied end years the diagnostic uses and the staircase plot shows, so
     # the reported dominant year always corresponds to a point on the plot.
     consensus = (seg_df["impl_end"].value_counts() if not seg_df.empty
                  else pd.Series(dtype=int))
-    return seg_df, consensus
+    return seg_df, consensus, candidates
 
 
 def _diagnose_internal_error(seg_df):
@@ -273,7 +284,7 @@ def _consensus_summary(seg_df, best):
 def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   min_overlap=50, transform="pw", prewhiten=None, biweight=True,
                   corr="spearman", make_plot=False, return_rwl=False,
-                  segmented=False, verbose=True):
+                  segmented=False, segment_topk=5, verbose=True):
     """Estimate the calendar dating of a floating (undated) ring-width series.
 
     Parameters
@@ -320,13 +331,20 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         master (COFECHA UDATE-style) and check that the segments agree. Adds
         ``result["segments"]`` (per-segment implied end year and correlation),
         ``result["consensus"]`` (a vote count of each segment's single-best implied
-        end year), and ``result["internal_error"]`` (a dict describing a detected
-        missing/false ring, or None). At least four segments are needed to test for an
-        internal error, so short floaters report the per-segment dates without a
-        verdict. A coherent one-year step between older and younger segments
+        end year), ``result["segment_candidates"]`` (each segment's top few placements;
+        see ``segment_topk``), and ``result["internal_error"]`` (a dict describing a
+        detected missing/false ring, or None). At least four segments are needed to
+        test for an internal error, so short floaters report the per-segment dates
+        without a verdict. A coherent one-year step between older and younger segments
         flags an internal dating error that the whole-series fit cannot see; with
         ``make_plot`` it also draws a staircase diagnostic. The single-best-t
         placement remains the primary result.
+    segment_topk : int, default 5
+        With ``segmented``, how many best placements to record per segment in
+        ``result["segment_candidates"]`` (a tidy DataFrame with columns
+        ``ring_lo``, ``ring_hi``, ``rank``, ``impl_end`` and ``r``). Lets you see
+        whether a segment's best date is decisive or a near-tie. Does not affect the
+        consensus or the error diagnostic, which use each segment's single best.
     verbose : bool, default True
         Print a short summary of the best-fit dating.
 
@@ -494,10 +512,12 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     # dating error (a missing or false ring) that a whole-series slide hides -- the
     # error splits the floater so older and younger segments date one year apart.
     if segmented:
-        seg_df, consensus = _segment_consensus(x, yrs, y, method, _master_year)
+        seg_df, consensus, candidates = _segment_consensus(
+            x, yrs, y, method, _master_year, topk=segment_topk)
         diag = _diagnose_internal_error(seg_df)
         result["segments"] = seg_df
         result["consensus"] = consensus
+        result["segment_candidates"] = candidates
         result["internal_error"] = diag
         if diag is not None:
             article = "a missing" if diag["kind"] == "missing" else "a false"
