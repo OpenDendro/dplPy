@@ -14,16 +14,27 @@ and commit log.
 
 - **`dpl.xdate_floater`** gains a segment-consensus dating mode (`segmented=True`),
   in the spirit of COFECHA's UDATE: each overlapping segment of the floater is dated
-  against the master independently and the implied youngest-ring years are tallied.
+  against the master independently and the implied youngest-ring years are compared.
   A single dominant year means the floater is internally consistent; a coherent
   one-year step between older and younger segments flags an internal dating error a
   whole-series slide cannot reveal (older rings dating one year early is the
   signature of a missing/locally-absent ring, one year late a false ring). The
   result gains `result["segments"]` (per-segment implied end year and correlation),
-  `result["consensus"]` (a tally of implied end years), and
-  `result["internal_error"]` (a dict describing a detected missing/false ring, or
-  `None`); a detected error prints a banner regardless of `verbose`, and `make_plot`
-  adds a staircase diagnostic (implied end year vs. ring position).
+  `result["consensus"]` (a vote count of each segment's single-best implied end year,
+  matching the staircase plot), and `result["internal_error"]` (a dict describing a
+  detected missing/false ring, or `None`). At least four segments are needed to test
+  for an internal error, so short floaters report the per-segment dates without a
+  verdict, and the printed summary flags a weak whole-series match rather than
+  asserting a confident date. A detected error prints a banner regardless of
+  `verbose`, and `make_plot` adds a staircase diagnostic (implied end year vs. ring
+  number, counted from the pith).
+
+### Fixed
+
+- **`dpl.xdate_floater`** no longer crashes building `result["combined"]` when the
+  floating series shares its name with a column already in the reference collection
+  (e.g. a leave-one-out test that did not drop the column); the placed copy is
+  suffixed on the overlap instead.
 
 ## [0.7.0] - 2026-09-26
 

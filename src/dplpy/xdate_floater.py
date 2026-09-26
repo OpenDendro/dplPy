@@ -160,7 +160,6 @@ def _abs_ac1(values):
 # --- segment-consensus dating (COFECHA UDATE-style) --------------------------
 _SEG_LEN = 50        # segment window scanned across the master
 _SEG_LAG = 25        # step between segments (50% overlap)
-_SEG_TOPK = 5        # best master positions per segment tallied into the consensus
 
 
 def _segment_consensus(x, yrs, y, method, master_year):
@@ -173,8 +172,9 @@ def _segment_consensus(x, yrs, y, method, master_year):
 
     segments_df has one row per segment (oldest rings first): ``ring_lo``/``ring_hi``
     (1-based ring positions within the floater), ``impl_end`` (implied youngest-ring
-    calendar year at the segment's best match) and ``best_r``. ``consensus`` tallies
-    the implied end year over each segment's top-K positions."""
+    calendar year at the segment's best match) and ``best_r``. ``consensus`` is a vote
+    count of those single-best implied end years (the value shown for each segment on
+    the staircase plot), most-supported first."""
     nx, ny = len(x), len(y)
     seg_len = min(_SEG_LEN, ny)
     if ny <= seg_len:
@@ -183,7 +183,7 @@ def _segment_consensus(x, yrs, y, method, master_year):
         starts = list(range(0, ny - seg_len + 1, _SEG_LAG))
         if starts[-1] != ny - seg_len:
             starts.append(ny - seg_len)      # end anchor: always test the youngest rings
-    rows, votes = [], {}
+    rows = []
     for a in starts:
         L = min(seg_len, ny - a)
         seg = y[a:a + L]
@@ -191,19 +191,16 @@ def _segment_consensus(x, yrs, y, method, master_year):
                        for j in range(0, nx - L + 1)], dtype=float)
         if not np.isfinite(rs).any():
             continue
-        order = np.argsort(-np.nan_to_num(rs, nan=-9.0))
-        bj = int(order[0])
+        bj = int(np.argmax(np.nan_to_num(rs, nan=-9.0)))
         rows.append({"ring_lo": a + 1, "ring_hi": a + L,
                      "impl_end": master_year((bj - a) + ny - 1),
                      "best_r": round(float(rs[bj]), 3)})
-        for j in order[:_SEG_TOPK]:
-            j = int(j)
-            if np.isfinite(rs[j]):
-                e = master_year((j - a) + ny - 1)
-                votes[e] = votes.get(e, 0) + 1
     seg_df = pd.DataFrame(rows, columns=["ring_lo", "ring_hi", "impl_end", "best_r"])
-    consensus = (pd.Series(votes, dtype=int).sort_values(ascending=False)
-                 if votes else pd.Series(dtype=int))
+    # the consensus is a vote count of each segment's single best placement -- the
+    # same implied end years the diagnostic uses and the staircase plot shows, so
+    # the reported dominant year always corresponds to a point on the plot.
+    consensus = (seg_df["impl_end"].value_counts() if not seg_df.empty
+                 else pd.Series(dtype=int))
     return seg_df, consensus
 
 
@@ -242,6 +239,35 @@ def _diagnose_internal_error(seg_df):
     near = int(round((older["ring_hi"].max() + younger["ring_lo"].min()) / 2))
     return {"kind": kind, "reliable_end": younger_end, "other_end": older_end,
             "near_ring": near, "n_older": int(len(older)), "n_younger": int(len(younger))}
+
+
+def _consensus_summary(seg_df, best):
+    """One honest sentence describing what the segments agreed on -- phrased to match
+    the staircase plot (each segment's single-best implied end year) and to avoid
+    over-claiming when there are too few segments or the whole-series match is weak."""
+    ends = [int(e) for e in seg_df["impl_end"]]
+    n = len(ends)
+    if n == 0:
+        return "no segments could be scored."
+    vc = seg_df["impl_end"].value_counts()
+    top_end, top_n = int(vc.index[0]), int(vc.iloc[0])
+    if top_n == n:
+        head = "all %d segments imply end year %d" % (n, top_end)
+    elif top_n > n - top_n:
+        others = ", ".join(str(e) for e in ends if e != top_end)
+        head = ("%d of %d segments imply end year %d (the rest: %s)"
+                % (top_n, n, top_end, others))
+    else:
+        head = ("the %d segments do not agree (implied end years %s)"
+                % (n, ", ".join(str(e) for e in ends)))
+    if n < 4:
+        tail = "; too few segments to test for an internal dating error"
+    else:
+        tail = "; no coherent one-year split, so no internal dating error is flagged"
+    if best["t"] < 3.5 or best["p_bonf"] > 0.05:
+        tail += (". Note the whole-series match itself is weak (t = %.2f, p = %.2g), "
+                 "so the segment dates are unreliable" % (best["t"], best["p_bonf"]))
+    return head + tail + "."
 
 
 def xdate_floater(data: pd.DataFrame, series, series_name=None,
@@ -293,9 +319,11 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         Also date each overlapping segment of the floater independently against the
         master (COFECHA UDATE-style) and check that the segments agree. Adds
         ``result["segments"]`` (per-segment implied end year and correlation),
-        ``result["consensus"]`` (a tally of implied end years), and
-        ``result["internal_error"]`` (a dict describing a detected missing/false
-        ring, or None). A coherent one-year step between older and younger segments
+        ``result["consensus"]`` (a vote count of each segment's single-best implied
+        end year), and ``result["internal_error"]`` (a dict describing a detected
+        missing/false ring, or None). At least four segments are needed to test for an
+        internal error, so short floaters report the per-segment dates without a
+        verdict. A coherent one-year step between older and younger segments
         flags an internal dating error that the whole-series fit cannot see; with
         ``make_plot`` it also draws a staircase diagnostic. The single-best-t
         placement remains the primary result.
@@ -486,10 +514,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
             print("  reliable outer date; re-examine the measurements around that ring.")
             print(line + "\n")
         elif verbose:
-            dom = int(consensus.index[0]) if len(consensus) else None
-            print("Segment consensus: %d segments, dominant end year %s "
-                  "(no internal-error split detected)."
-                  % (len(seg_df), dom))
+            print("Segment consensus: " + _consensus_summary(seg_df, best))
 
     if return_rwl or make_plot:
         placed = pd.DataFrame(
@@ -497,7 +522,10 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
             index=pd.Index(range(best["min_year"], best["min_year"] + n_series),
                            name=data.index.name or "Year"))
         result["placed"] = placed
-        result["combined"] = data.join(placed, how="outer")
+        # a floater whose name already exists in the reference collection (e.g. a
+        # leave-one-out test that did not drop the column) would otherwise crash the
+        # join on the overlapping name; suffix the placed copy in that case.
+        result["combined"] = data.join(placed, how="outer", rsuffix="_floater")
 
     if make_plot:
         _plot_floater(result, biweight=biweight)
@@ -535,7 +563,7 @@ def _plot_segment_consensus(result, show=True):
         ax.text(diag["near_ring"], ax.get_ylim()[1], " ~ring %d" % diag["near_ring"],
                 va="top", ha="left", color=ACCENT_WARM, fontsize=8)
         ax.legend(loc="best", fontsize=8, frameon=False)
-    ax.set_xlabel("ring number from pith  (1 = innermost → outer; segment center)")
+    ax.set_xlabel("ring number from pith  (1 = innermost, outward to bark; segment center)")
     ax.set_ylabel("implied youngest-ring year")
     title = "Segment consensus: " + str(result["series_name"])
     if diag is not None:

@@ -289,6 +289,46 @@ def test_segmented_false_by_default_leaves_result_unchanged():
     assert plain["best"] == seg["best"]
 
 
+def test_segmented_short_floater_reports_without_verdict():
+    # A short floater yields fewer than four segments -- too few to test for an
+    # internal dating error. The result must still carry the per-segment dates but
+    # leave internal_error None rather than over-claiming a clean verdict.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    short = rwl["CAM011"].dropna().to_numpy()[:82]
+    res = _quiet(dpl.xdate_floater, rwl, short, series_name="SHORT82",
+                 segmented=True, verbose=False)
+    assert len(res["segments"]) < 4
+    assert res["internal_error"] is None
+    assert not res["consensus"].empty
+
+
+def test_segmented_consensus_matches_plotted_segments():
+    # Regression: the reported consensus must be a vote count of the segments' own
+    # single-best implied end years (what the staircase plot shows), so every year in
+    # the consensus corresponds to a plotted point and the votes sum to one per
+    # segment. The previous top-K tally could report a dominant year no segment placed.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    ref = rwl.drop(columns=["CAM011"])
+    truth = rwl["CAM011"].dropna().to_numpy()
+    res = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                 segmented=True, verbose=False)
+    plotted = set(int(e) for e in res["segments"]["impl_end"])
+    assert set(int(e) for e in res["consensus"].index) == plotted
+    assert int(res["consensus"].sum()) == len(res["segments"])
+
+
+def test_segmented_floater_name_collision_builds_combined():
+    # If the floater's name already exists in the reference collection (a leave-one-out
+    # test that did not drop the column), building "combined" must not crash on the
+    # overlapping column name.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy()
+    res = _quiet(dpl.xdate_floater, rwl, truth, series_name="CAM011",
+                 return_rwl=True, verbose=False)          # rwl still contains CAM011
+    assert "combined" in res
+    assert list(res["placed"].columns) == ["CAM011"]
+
+
 def test_series_name_derived_from_series_object():
     # When series_name is not given, take it from the floating series itself so the
     # outputs/plot title show the real name instead of "Unknown".
