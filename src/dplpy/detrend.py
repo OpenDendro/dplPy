@@ -217,6 +217,24 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
 # Can specify what type of alternate curve-fits, or if the user
 # would like to detrend by using differences
 # Need to add series names to the top of the plots, and display the plots side by side
+def _nonpositive_spline_fallback(yi, y, method, fit, series_name, return_info):
+    """A flexible spline fit can dip to <= 0. Division ('ratio') detrending cannot
+    divide by a non-positive curve, so fall back to the series mean -- but ONLY in
+    ratio mode. 'difference' detrending subtracts the curve, which handles a
+    non-positive fit perfectly well (e.g. log-transformed or isotope series), so the
+    spline is kept. Either way the fallback, when it happens, is announced.
+    Returns (yi, model_info_or_None, fell_back)."""
+    if np.any(yi <= 0) and method == "ratio":
+        warnings.warn("Fits from fit='" + str(fit) + "' are not all positive for "
+                      + str(series_name) + "; detrending by the mean instead "
+                      "(ratio/division cannot use a non-positive curve; use "
+                      "method='difference' to keep the fit).\n")
+        yi = np.full_like(y, np.mean(y))
+        info = {"method": "Mean", "mean": float(np.mean(y))} if return_info else None
+        return yi, info, True
+    return yi, None, False
+
+
 def detrend_series(data: pd.Series, fit, method, plot, period=None,
                    nyrs0=50, pos_slope=False, f=0.5, verbose=False,
                    return_info=False):
@@ -256,9 +274,11 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     model_info = None
     if fit == "Spline":
         yi = spline(x, y, period, f)
+        yi, mi_fb, fell_back = _nonpositive_spline_fallback(
+            yi, y, method, "Spline", series_name, return_info)
         if return_info:
-            model_info = {"method": "Spline", "nyrs": get_period(period, len(x)),
-                          "f": f}
+            model_info = mi_fb if fell_back else {
+                "method": "Spline", "nyrs": get_period(period, len(x)), "f": f}
     elif fit == "ModNegExp":
         if return_info:
             yi, model_info = curvefit.mod_neg_exp(x, y, pos_slope, series_name,
@@ -302,17 +322,13 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
             model_info = {"method": "Mean", "mean": float(np.mean(y))}
     elif fit == "AgeDepSpline":
         yi = ads(y, nyrs0=nyrs0, pos_slope=pos_slope)
-        # dplR: if the age-dependent spline is not all-positive (very rare),
-        # fall back to detrending by the series mean.
-        if np.any(yi <= 0):
-            warnings.warn("Fits from fit='AgeDepSpline' are not all positive for "
-                          + str(series_name) + "; detrending by the mean instead.\n")
-            yi = np.full_like(y, np.mean(y))
-            if return_info:
-                model_info = {"method": "Mean", "mean": float(np.mean(y))}
-        elif return_info:
-            model_info = {"method": "Age-Dep Spline", "nyrs0": nyrs0,
-                          "pos_slope": pos_slope}
+        # An age-dependent spline can dip non-positive (rare); fall back to the
+        # series mean only for ratio detrending (difference mode keeps the fit).
+        yi, mi_fb, fell_back = _nonpositive_spline_fallback(
+            yi, y, method, "AgeDepSpline", series_name, return_info)
+        if return_info:
+            model_info = mi_fb if fell_back else {
+                "method": "Age-Dep Spline", "nyrs0": nyrs0, "pos_slope": pos_slope}
 
     if method == "ratio":
         detrended_data = ratio(y, yi)

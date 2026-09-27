@@ -56,6 +56,13 @@ and commit log.
   rings (that series drops to order 6). Both parameters are exposed, so
   `ar_max=None, first_aic_min=False` restores the previous dplR-default behavior. This
   changes `xdate_floater`'s reported t-values slightly; recovered dates are unaffected.
+- **`dpl.detrend`** now falls back from a non-positive spline fit to detrending by the
+  series mean *only* for `method="ratio"` (division, which cannot use a non-positive
+  curve). For `method="difference"` (subtraction) the fit is kept, since a non-positive
+  curve subtracts fine — the correct behavior for log-transformed or isotope series
+  (cf. dplR issue #22). The regular `fit="Spline"` now uses this same guard, so a
+  non-positive spline in ratio mode falls back to the mean (previously it produced
+  negative indices silently) instead of passing them through.
 
 ### Fixed
 
@@ -63,6 +70,9 @@ and commit log.
   floating series shares its name with a column already in the reference collection
   (e.g. a leave-one-out test that did not drop the column); the placed copy is
   suffixed on the overlap instead.
+- **`dpl.detrend`** curve-fit fallbacks are now uniformly announced: every fall back to
+  a linear fit or the series mean emits a warning, including a previously-silent
+  degenerate case in the `GeneralExp` fit.
 
 ## [0.7.0] - 2026-09-26
 

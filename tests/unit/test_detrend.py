@@ -226,6 +226,51 @@ def test_detrend_difference(mock_spline: Mock):
     pd.testing.assert_frame_equal(expected_df, result_df)
 
 
+def _mock_spline_nonpositive(x, inp_arr, period, f=0.5):
+    import numpy as np
+    c = np.asarray(inp_arr, dtype=float).copy()
+    c[1] = -0.5                      # force one non-positive fitted value
+    return c
+
+
+@patch.object(_m_detrend, 'spline')
+def test_spline_nonpositive_falls_back_only_in_ratio(mock_spline: Mock):
+    # A non-positive spline fit can't be used for ratio (division) detrending, so
+    # dplPy falls back to the series mean AND says so. In difference (subtraction)
+    # mode the non-positive fit is fine, so the spline is kept and nothing warns.
+    import numpy as np
+    mock_spline.side_effect = _mock_spline_nonpositive
+    vals = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+    df = pd.DataFrame({"S": vals}, index=pd.Index(range(1, 7), name="Year"))
+    mean = float(np.mean(vals))
+
+    with pytest.warns(UserWarning, match="not all positive"):
+        r = dpl.detrend(df, fit="Spline", method="ratio", plot=False)
+    assert np.allclose(r["S"].to_numpy(), np.array(vals) / mean)   # detrended by mean
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        d = dpl.detrend(df, fit="Spline", method="difference", plot=False)
+    assert not any("not all positive" in str(wi.message) for wi in w)  # no fallback
+    curve = np.array(vals, dtype=float); curve[1] = -0.5
+    assert np.allclose(d["S"].to_numpy(), np.array(vals) - curve)      # kept the spline
+
+
+def test_nonpositive_spline_fallback_helper():
+    import numpy as np
+    from dplpy.detrend import _nonpositive_spline_fallback
+    y = np.array([1., 2, 3, 4, 5, 6])
+    yneg = np.array([1., -0.2, 0.5, 1., 2., 3.])
+    with pytest.warns(UserWarning, match="not all positive"):
+        yi, mi, fell = _nonpositive_spline_fallback(yneg, y, "ratio", "Spline", "S", True)
+    assert fell and np.all(yi > 0) and mi["method"] == "Mean"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        yi2, mi2, fell2 = _nonpositive_spline_fallback(yneg, y, "difference", "Spline",
+                                                       "S", True)
+    assert (not fell2) and np.array_equal(yi2, yneg) and mi2 is None and not w
+
+
 # add assertion to make sure none of the curvefit methods are called
 def test_detrend_invalid_fit():
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],

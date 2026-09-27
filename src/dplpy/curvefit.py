@@ -336,6 +336,8 @@ def general_exp(x, y, name="", info=False):
     z = np.log(y[ok]) - np.log(tk)             # ln(y/t)
     sxx = float(np.sum((tk - tk.mean()) ** 2))
     if sxx == 0:
+        warnings.warn("GeneralExp has no spread in ring position for " + str(name)
+                      + "; detrending by the series mean instead.\n")
         return out(*_mean_curve(y))
     b = float(np.sum((tk - tk.mean()) * (z - z.mean())) / sxx)   # OLS slope
     a = float(np.exp(z.mean() - b * tk.mean()))                  # ln-intercept -> a
