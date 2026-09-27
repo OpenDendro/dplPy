@@ -119,11 +119,13 @@ def _series_label(series):
     return name or None
 
 
-def _build_master(data, transform, biweight):
+def _build_master(data, transform, biweight, ar_max=None, first_aic_min=False):
     """Master chronology from the dated collection: mean-normalize each series,
     apply the high-pass transform, then a robust row mean. Returns (values, years)
-    with NaN rows dropped."""
-    ready = normalize_for_crossdating(data, prewhiten=(transform == "pw"))
+    with NaN rows dropped. ``ar_max``/``first_aic_min`` control AR order selection
+    when ``transform=="pw"`` (see :func:`_ar_yw_prewhiten`)."""
+    ready = normalize_for_crossdating(data, prewhiten=(transform == "pw"),
+                                      ar_max=ar_max, first_aic_min=first_aic_min)
     ready, years, _, _ = dense_year_grid(ready)
     M = ready.to_numpy(dtype=float)
     if transform == "fd":                       # first difference; label by later year
@@ -138,11 +140,13 @@ def _build_master(data, transform, biweight):
     return master[ok], years[ok].astype(int)
 
 
-def _transform_series(y_raw, transform):
-    """Mean-normalize then transform the floating series; return its values."""
+def _transform_series(y_raw, transform, ar_max=None, first_aic_min=False):
+    """Mean-normalize then transform the floating series; return its values.
+    ``ar_max``/``first_aic_min`` control AR order selection when ``transform=="pw"``
+    (see :func:`_ar_yw_prewhiten`)."""
     y = y_raw / np.nanmean(y_raw)
     if transform == "pw" and len(y) > 3:
-        y = _ar_yw_prewhiten(y)
+        y = _ar_yw_prewhiten(y, ar_max=ar_max, first_aic_min=first_aic_min)
     elif transform == "fd":
         y = np.diff(y)
     return y[~np.isnan(y)]
@@ -283,7 +287,8 @@ def _consensus_summary(seg_df, best):
 
 def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   min_overlap=50, transform="pw", prewhiten=None, biweight=True,
-                  corr="spearman", make_plot=False, return_rwl=False,
+                  corr="spearman", ar_max=10, first_aic_min=True,
+                  make_plot=False, return_rwl=False,
                   segmented=False, segment_topk=5, verbose=True):
     """Estimate the calendar dating of a floating (undated) ring-width series.
 
@@ -321,6 +326,13 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         Build the master with a Tukey biweight robust mean (else arithmetic mean).
     corr : {"spearman", "pearson", "kendall"}, default "spearman"
         Correlation used to score each offset (one-sided, alternative "greater").
+    ar_max : int or None, default 10
+        AR order ceiling for ``transform="pw"`` prewhitening. The default follows
+        COFECHA/ARSTAN (cap at 10); pass ``None`` for dplR's ``floor(10*log10(n))``,
+        which can select very high orders and discard many early rings of a series.
+    first_aic_min : bool, default True
+        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
+        default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
     make_plot : bool, default False
         Plot the sliding t-value against the series' end year, marking the best fit.
     return_rwl : bool, default False
@@ -390,9 +402,11 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     if n_series == 0:
         raise ValueError("`series` contains no finite ring-width values.")
 
-    x, yrs = _build_master(data, transform, biweight)
+    x, yrs = _build_master(data, transform, biweight,
+                           ar_max=ar_max, first_aic_min=first_aic_min)
     nx = len(x)
-    y = _transform_series(y_raw, transform)
+    y = _transform_series(y_raw, transform,
+                          ar_max=ar_max, first_aic_min=first_aic_min)
     ny = len(y)
 
     if min_overlap > ny:

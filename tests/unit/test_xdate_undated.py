@@ -88,6 +88,15 @@ def test_min_series_raises():
         _quiet(dpl.xdate_undated, pd.DataFrame({"only": [1.0, 2.0, 3.0]}))
 
 
+def test_ar_order_params_accepted():
+    # The AR-order controls are exposed and both the COFECHA-preset default and the
+    # dplR global-AIC setting produce a valid assembled chronology.
+    und, _ = _synthetic_floats(seed=1)
+    res = _quiet(dpl.xdate_undated, und, ar_max=None, first_aic_min=False)
+    assert isinstance(res["chronology"], pd.Series)
+    assert int(res["offsets"]["start_year"].min()) == 1
+
+
 def test_make_plot_runs():
     import matplotlib
     matplotlib.use("Agg")

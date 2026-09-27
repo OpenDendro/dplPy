@@ -351,6 +351,21 @@ def test_segmented_floater_name_collision_builds_combined():
     assert list(res["placed"].columns) == ["CAM011"]
 
 
+def test_ar_order_controls_affect_prewhitening():
+    # The COFECHA-preset default (ar_max=10, first_aic_min=True) selects a lower AR
+    # order than dplR's global-AIC rule for a high-order series like CAM011, so it
+    # trims fewer early rings (more overlap) while recovering the same date.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    ref = rwl.drop(columns=["CAM011"])
+    truth = rwl["CAM011"].dropna().to_numpy()
+    cof = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011", verbose=False)
+    dplr = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                  ar_max=None, first_aic_min=False, verbose=False)
+    assert cof["best"]["n"] > dplr["best"]["n"]              # fewer early rings trimmed
+    assert (cof["best"]["min_year"], cof["best"]["max_year"]) == \
+           (dplr["best"]["min_year"], dplr["best"]["max_year"])   # same recovered date
+
+
 def test_series_name_derived_from_series_object():
     # When series_name is not given, take it from the floating series itself so the
     # outputs/plot title show the real name instead of "Unknown".

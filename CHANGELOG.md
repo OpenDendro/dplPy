@@ -46,6 +46,18 @@ and commit log.
   `verbose`, and `make_plot` adds a staircase diagnostic (implied end year vs. ring
   number, counted from the pith).
 
+### Changed
+
+- **`dpl.xdate_floater`** and **`dpl.xdate_undated`** now prewhiten with the
+  COFECHA/ARSTAN AR-order convention by default (`ar_max=10`, `first_aic_min=True`:
+  cap the order at 10 and take the first local AIC minimum) instead of dplR's
+  global-AIC rule with a `floor(10*log10(n))` ceiling. The dplR rule can select very
+  high orders (e.g. 23 for a ~450-ring series) and trim that many early rings before
+  matching, shrinking the usable overlap; the COFECHA convention keeps far more early
+  rings (that series drops to order 6). Both parameters are exposed, so
+  `ar_max=None, first_aic_min=False` restores the previous dplR-default behavior. This
+  changes `xdate_floater`'s reported t-values slightly; recovered dates are unaffected.
+
 ### Fixed
 
 - **`dpl.xdate_floater`** no longer crashes building `result["combined"]` when the

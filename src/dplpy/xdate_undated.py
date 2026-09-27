@@ -91,13 +91,14 @@ def _t_from_r(r, n):
     return rr * np.sqrt((n - 2) / (1 - rr * rr))
 
 
-def _tr_aligned(raw, transform):
+def _tr_aligned(raw, transform, ar_max=None, first_aic_min=False):
     """Transform a series but keep it at RAW ring length, so array index == ring
     position. Prewhitening/differencing drop the oldest rings (residuals are
     end-aligned), so pad the front with NaN to keep every series on the same footing.
     Without this, series with different AR orders would be mis-registered by a few
     rings."""
-    w = _transform_series(raw, transform)          # front-trimmed, end-aligned
+    w = _transform_series(raw, transform, ar_max=ar_max,
+                          first_aic_min=first_aic_min)   # front-trimmed, end-aligned
     out = np.full(len(raw), np.nan)
     if len(w):
         out[len(raw) - len(w):] = w
@@ -150,6 +151,7 @@ def _coerce_collection(data):
 
 def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
                   crit_t=4.0, anchor_year=1, min_isolation=1.0,
+                  ar_max=10, first_aic_min=True,
                   make_plot=False, verbose=True):
     """Crossdate a set of undated ("floating") ring-width series against one another
     and assemble a single relatively-dated floating chronology (COFECHA UFLOAT-style).
@@ -180,6 +182,14 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     min_isolation : float, default 1.0
         A placement whose leave-one-out isolation (the t gap to the next-best,
         well-separated position) falls below this is flagged for review.
+    ar_max : int or None, default 10
+        AR order ceiling for ``transform="pw"`` prewhitening. The default follows
+        COFECHA/ARSTAN (cap at 10), which keeps more early rings available for
+        matching; pass ``None`` for dplR's ``floor(10*log10(n))`` (can pick very high
+        orders and trim many early rings).
+    first_aic_min : bool, default True
+        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
+        default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
     make_plot : bool, default False
         Draw a placement chart (each series positioned on the relative axis, coloured
         by isolation) with the mean floating chronology beneath it.
@@ -206,7 +216,8 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
         raise ValueError("transform must be one of %s" % (_TRANSFORMS,))
     raw = _coerce_collection(data)
     names = list(raw)
-    tr = {nm: _tr_aligned(raw[nm], transform) for nm in names}
+    tr = {nm: _tr_aligned(raw[nm], transform, ar_max=ar_max,
+                          first_aic_min=first_aic_min) for nm in names}
     R = 6   # local refine half-window (rings) around a pairwise-predicted position
 
     # 1) all-pairs best offsets (full scan, once)
