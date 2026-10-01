@@ -5,6 +5,8 @@ import pytest
 import io
 import warnings
 from unittest.mock import patch, Mock
+import importlib
+_readers_mod = importlib.import_module("dplpy.readers")
 
 '''
     An unrecognized suffix is no longer rejected outright -- the content is
@@ -81,7 +83,7 @@ def test_correct_csv_format(mock_read_csv: Mock):
     Given input file valid_rwl_correct_format.rwl, test that readers produces
     the expected dataframe.
 '''
-@patch('dplpy.readers._read_text')
+@patch.object(_readers_mod, '_read_text')
 def test_correct_rwl_format(mock_open: Mock):
     mock_open.side_effect = mock_read_text_output
 
@@ -99,7 +101,7 @@ def test_correct_rwl_format(mock_open: Mock):
     Given input valid_rwl_correct_format.rwl, and skip_lines=1, test that readers
     produces the expected dataframe.
 '''
-@patch('dplpy.readers._read_text')
+@patch.object(_readers_mod, '_read_text')
 def test_correct_rwl_skip_lines(mock_open: Mock):
     mock_open.side_effect = mock_read_text_output
 
@@ -116,7 +118,7 @@ def test_correct_rwl_skip_lines(mock_open: Mock):
     Given input valid_rwl_correct_format.rwl, and header=True, test that readers
     correctly skips header lines to produce the expected dataframe.
 '''
-@patch('dplpy.readers._read_text')
+@patch.object(_readers_mod, '_read_text')
 def test_correct_rwl_with_headers(mock_open: Mock):
     mock_open.side_effect = mock_read_text_output
 
@@ -129,7 +131,7 @@ def test_correct_rwl_with_headers(mock_open: Mock):
                                                     name="Year"))
     pd.testing.assert_frame_equal(results, expected_df)
 
-@patch('dplpy.readers._read_text')
+@patch.object(_readers_mod, '_read_text')
 def test_rwl_with_blank_lines(mock_open: Mock):
     # Blank lines are harmless (a trailing newline, or a "double-spaced" ITRDB
     # file) and no longer warned about line by line -- they are dropped and their
