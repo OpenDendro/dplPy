@@ -12,6 +12,16 @@ and commit log.
 
 ### Added
 
+- **`dpl.readers`** gains an `encoding=` argument and no longer crashes on a file
+  that is not valid UTF-8. A non-UTF-8 byte (e.g. an accented investigator name in a
+  header comment, common in European ITRDB files) previously raised
+  `UnicodeDecodeError`; the reader now falls back to latin1 (lossless) with a warning,
+  records the encoding in `df.attrs["dplpy_encoding"]`, and accepts an explicit
+  `encoding=` to set it exactly. Prompted by the parallel fix in dplR 1.8.0.
+- **`dpl.readers`** records each series' measurement precision (0.01 or 0.001 mm) in
+  `df.attrs["dplpy_precision"]`, with `df.attrs["dplpy_mixed_precision"]` flagging a
+  file that mixes the two.
+
 - **`dpl.xdate_undated`** is a new function that crossdates a set of *undated*
   ("floating") ring-width series against one another and assembles them into a single
   relatively-dated floating chronology (earliest ring anchored at `anchor_year`,
@@ -73,6 +83,10 @@ and commit log.
 - **`dpl.detrend`** curve-fit fallbacks are now uniformly announced: every fall back to
   a linear fit or the series mean emits a warning, including a previously-silent
   degenerate case in the `GeneralExp` fit.
+- **`dpl.interseries_corr`** no longer crashes (or returns a spurious ±1) on a series
+  that overlaps the master by fewer than 3 years, or has no values at all; such a
+  series now gets an `NaN` correlation and is named in a warning, matching
+  `dpl.series_corr` and dplR 1.8.0. The collection mean skips the `NaN`s.
 
 ## [0.7.0] - 2026-09-26
 

@@ -89,3 +89,34 @@ def test_interseries_cor_default_settings_sane():
     assert result_df["p_val"].between(0, 1).all()
     assert -1 <= mean_corr <= 1
     assert mean_corr == round(mean_corr, 3)              # reported to 3 decimals
+
+
+def test_short_and_empty_series_get_nan_not_crash():
+    # A series that overlaps the master by fewer than 3 years (or not at all) used
+    # to crash interseries_corr (pearsonr on n<2) or return a spurious +/-1. It must
+    # now get an NaN correlation and a naming warning, and must not drag the mean.
+    import io, contextlib, warnings
+    import numpy as np, pandas as pd
+    import dplpy as dpl
+
+    def _quiet(fn, *a, **k):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return fn(*a, **k)
+
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    sub = rwl[["CAM011", "CAM021", "CAM031"]].copy()
+    yrs = sub.dropna(how="all").index
+    short = pd.Series(np.nan, index=sub.index)
+    short.loc[yrs[:2]] = [0.5, 0.6]                 # only 2 overlapping years
+    sub["SHORT1"] = short
+    sub["EMPTY1"] = np.nan                           # no values at all
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        mean_corr, tbl = _quiet(dpl.interseries_corr, sub)
+
+    assert np.isnan(tbl.loc["SHORT1", "interseries_corr"])
+    assert np.isnan(tbl.loc["EMPTY1", "interseries_corr"])
+    assert not np.isnan(tbl.loc["CAM011", "interseries_corr"])   # real series unaffected
+    assert np.isfinite(mean_corr)                                # mean skips the NaNs
+    assert any("fewer than 3 years" in str(x.message) for x in w)

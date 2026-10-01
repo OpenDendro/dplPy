@@ -55,7 +55,31 @@ import pandas as pd
 import numpy as np
 
 
-def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, join=True):
+def _read_text(filename, encoding=None):
+    """Read a text file as a string, resolving its character encoding.
+
+    UTF-8 is tried first -- it is self-validating and ASCII passes, so virtually
+    every clean ITRDB file takes this path unchanged. If the bytes are not valid
+    UTF-8 and the caller named an ``encoding``, that is used; otherwise the file is
+    read as latin1, which decodes all 256 byte values losslessly, so a wrong guess
+    discards nothing and the file can be re-read with ``encoding=`` set. This keeps
+    a single accented byte in a header comment (an investigator's name, the ITRDB
+    norm for European sites) from crashing the reader with a UnicodeDecodeError.
+
+    Returns ``(text, used_encoding, assumed)`` where ``assumed`` is True only when
+    the latin1 fallback was taken without the caller naming an encoding."""
+    with open(filename, "rb") as fh:
+        raw = fh.read()
+    if encoding is not None:
+        return raw.decode(encoding), encoding, False
+    try:
+        return raw.decode("utf-8"), "utf-8", False
+    except UnicodeDecodeError:
+        return raw.decode("latin1"), "latin1", True
+
+
+def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
+            join=True, encoding=None):
     """Imports a common ring width data file
 
     Extended Summary
@@ -98,6 +122,14 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
         same-ID blocks (e.g. 1651-1774 and 1800-1974) into one series. ``False``
         keeps them as SEPARATE series, renaming the 2nd+ block to a unique ID --
         the per-segment view a crossdating QA (COFECHA-style) needs.
+    encoding : str or None, default None
+        Character encoding of the file. ``None`` reads it as UTF-8 (which also
+        covers ASCII); a file that is not valid UTF-8 -- e.g. an accented
+        investigator name in a header comment, common in European ITRDB files --
+        then falls back to latin1 (lossless) with a warning, instead of crashing.
+        Pass an explicit encoding (e.g. ``"latin1"``, ``"cp1252"``) to silence the
+        warning and set it exactly. The encoding used is recorded in
+        ``df.attrs["dplpy_encoding"]``.
 
     Returns
     -------
@@ -169,14 +201,28 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
 
     # open the input file and read its data into a pandas dataframe
     if fmt == "csv":
-        series_data = pd.read_csv(filename, skiprows=skip_lines)  # pandas reads paths and URLs
+        try:
+            series_data = pd.read_csv(filename, skiprows=skip_lines,
+                                      encoding=encoding)   # None -> pandas default (utf-8)
+            csv_encoding, csv_assumed = (encoding or "utf-8"), False
+        except UnicodeDecodeError:
+            # not valid UTF-8 and no encoding given: fall back to latin1 (lossless)
+            series_data = pd.read_csv(filename, skiprows=skip_lines, encoding="latin1")
+            csv_encoding, csv_assumed = "latin1", True
+        if series_data is not None:
+            series_data.attrs["dplpy_encoding"] = csv_encoding
+            series_data.attrs["dplpy_encoding_assumed"] = csv_assumed
     else:  # tucson
         if is_url:
             raw_lines = _fetch_url_lines(filename)
             series_data = _lines_to_dataframe(raw_lines, skip_lines, header, strict,
                                               os.path.basename(filename), join=join)
+            if series_data is not None:
+                series_data.attrs["dplpy_encoding"] = "utf-8"
+                series_data.attrs["dplpy_encoding_assumed"] = False
         else:
-            series_data = process_rwl_pandas(filename, skip_lines, header, strict, join=join)
+            series_data = process_rwl_pandas(filename, skip_lines, header, strict,
+                                             join=join, encoding=encoding)
 
     # If no data is returned, then an error was encountered when reading the file.
     if series_data is None:
@@ -202,7 +248,15 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     beyond_column = series_data.attrs.get("dplpy_beyond_column", [])
     interior_gaps = series_data.attrs.get("dplpy_interior_gaps", [])
     blank_lines = series_data.attrs.get("dplpy_blank_lines", [])
+    enc_used = series_data.attrs.get("dplpy_encoding", "utf-8")
+    enc_assumed = series_data.attrs.get("dplpy_encoding_assumed", False)
+    precision = series_data.attrs.get("dplpy_precision", {})
+    mixed_precision = series_data.attrs.get("dplpy_mixed_precision", False)
     series_data.set_index('Year', inplace=True, drop=True)
+    series_data.attrs["dplpy_encoding"] = enc_used                 # re-attach
+    series_data.attrs["dplpy_encoding_assumed"] = enc_assumed
+    series_data.attrs["dplpy_precision"] = precision
+    series_data.attrs["dplpy_mixed_precision"] = mixed_precision
     series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
     series_data.attrs["dplpy_combined"] = combined
     series_data.attrs["dplpy_case_merged"] = case_merged
@@ -224,6 +278,15 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
     series_data.attrs["dplpy_case_variant_ids"] = case_variants
 
     basename = os.path.basename(filename)
+
+    # Advisory: the file was not valid UTF-8 and no encoding was named, so it was
+    # read as latin1 (lossless, but non-ASCII header text may be approximate).
+    if series_data.attrs.get("dplpy_encoding_assumed"):
+        warnings.warn(
+            basename + " is not valid UTF-8; read as latin1. Non-ASCII text (e.g. "
+            "accented names in the header) may be approximate -- pass encoding= to "
+            "set it explicitly. Ring-width values are unaffected.")
+
     first_year = int(series_data.index.min())
     last_year = int(series_data.index.max())
 
@@ -343,7 +406,8 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None, 
 # .rwl (Tucson) reading
 # ---------------------------------------------------------------------------
 
-def process_rwl_pandas(filename, skip_lines, header, strict=True, join=True):
+def process_rwl_pandas(filename, skip_lines, header, strict=True, join=True,
+                       encoding=None):
     """Read a Tucson (.rwl/.raw) file into a Year-indexed dataframe.
 
     Returns a dataframe with a ``Year`` column (the public ``readers`` wrapper
@@ -351,10 +415,14 @@ def process_rwl_pandas(filename, skip_lines, header, strict=True, join=True):
     salvage mode (strict=False) the returned frame carries a report of what
     was dropped/renamed on ``df.attrs["dplpy_salvage"]``.
     """
-    with open(filename, "r") as rwl_file:
-        raw_lines = rwl_file.readlines()
-    return _lines_to_dataframe(raw_lines, skip_lines, header, strict,
-                               os.path.basename(filename), join=join)
+    text, enc, assumed = _read_text(filename, encoding)
+    raw_lines = text.splitlines(keepends=True)
+    df = _lines_to_dataframe(raw_lines, skip_lines, header, strict,
+                             os.path.basename(filename), join=join)
+    if df is not None:
+        df.attrs["dplpy_encoding"] = enc
+        df.attrs["dplpy_encoding_assumed"] = assumed
+    return df
 
 
 # A Tucson .rwl has at most 3 header/metadata lines before the first data row (the
@@ -474,6 +542,13 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     df.attrs["dplpy_combined"] = combined            # duplicate IDs merged from >1 block
     df.attrs["dplpy_case_merged"] = case_merged      # case-variant IDs merged into one core
     df.attrs["dplpy_dropped"] = dropped              # non-integer + anomalous-negative cells set to NaN
+    # Measurement precision per series, in mm: divisor 100 -> 0.01, 1000 -> 0.001
+    # (what each series was measured at; the raw integers were divided by it). A
+    # file that mixes the two is flagged, since it changes the scale between series.
+    prec_mm = {sid: (0.001 if div == 1000 else 0.01)
+               for sid, div in precision.items() if sid in df.columns}
+    df.attrs["dplpy_precision"] = prec_mm
+    df.attrs["dplpy_mixed_precision"] = (len(set(prec_mm.values())) > 1)
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
     df.attrs["dplpy_blank_lines"] = blank_lines      # blank input lines, dropped silently
@@ -665,8 +740,7 @@ def metadata(filename, header=None, skip_lines=0):
     if is_url:
         raw = _fetch_url_lines(filename)
     else:
-        with open(filename, "r") as fh:
-            raw = fh.read().split("\n")
+        raw = _read_text(filename)[0].split("\n")
     clean = []
     for line in raw:
         line = line.rstrip("\r\n")
@@ -701,8 +775,7 @@ def _sniff_format(filename, is_url):
     if is_url:
         lines = _fetch_url_lines(filename)
     else:
-        with open(filename, "r") as fh:
-            lines = fh.read().split("\n")
+        lines = _read_text(filename)[0].split("\n")
     sample = []
     for ln in lines:
         ln = ln.rstrip("\r\n")

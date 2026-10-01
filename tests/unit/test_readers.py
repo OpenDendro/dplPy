@@ -28,58 +28,38 @@ def test_bad_format_argument_raises():
     Mocks output of pd.read_csv to return appropriate dataframe only if the
     parameter used is the expected file name.
 '''
-def mock_read_csv_output(file_path, skiprows=0):
+def mock_read_csv_output(file_path, skiprows=0, encoding=None):
     if file_path == "correct_file.csv":
-        return pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8], 
+        return pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8],
                                   "Year": [1, 2, 3, 4]})
     return None
 
 '''
-    Mocks output of builtins.open to return an io.TextIOWrapper object that contains the lines
-    that will be read for processing
+    Mocks dplpy.readers._read_text, the single seam the reader now uses to read a
+    file's text (binary read + encoding resolution). Returns (text, encoding,
+    assumed), matching the real helper, so the parser downstream is unchanged.
 '''
-def mock_open_output(file_path, open_type):
-    # Verify that file is opened in read mode and read mode only
-    if open_type != "r":
-        wrapper = io.TextIOWrapper(
-            io.UnsupportedOperation(),
-            encoding='cp1252',
-            line_buffering=True,
-        )
+_MOCK_RWL_TEXT = {
+    "valid_rwl_correct_format.rwl": (
+        "SeriesA 1       10    30    50    70   999\n"
+        "SeriesB 1      200   400   600   800 -9999\n"),
+    "valid_rwl_with_headers.rwl": (
+        "Header line 1\n"
+        "Header line 2\n"
+        "Header line 3\n"
+        "SeriesA 1       10    30    50    70   999\n"
+        "SeriesB 1      200   400   600   800 -9999\n"),
+    "valid_rwl_with_blanks.rwl": (
+        "SeriesA 1       10    30    50    70   999\n"
+        "                                          \n"
+        "SeriesB 1      200   400   600   800 -9999\n"),
+}
 
-        wrapper.mode = open_type
-        return wrapper
-    
-    output  = io.BytesIO()
-    wrapper = io.TextIOWrapper(
-        output,
-        encoding='cp1252',
-        line_buffering=True,
-    )
-
-    if file_path == "valid_rwl_correct_format.rwl":
-        wrapper.write("SeriesA 1       10    30    50    70   999\n")
-        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
-        wrapper.seek(0,0)
-    elif file_path == "valid_rwl_with_headers.rwl":
-        wrapper.write("Header line 1\n")
-        wrapper.write("Header line 2\n")
-        wrapper.write("Header line 3\n")
-        wrapper.write("SeriesA 1       10    30    50    70   999\n")
-        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
-        wrapper.seek(0,0)
-    elif file_path == "valid_rwl_with_blanks.rwl":
-        wrapper.write("SeriesA 1       10    30    50    70   999\n")
-        wrapper.write("                                          \n")
-        wrapper.write("SeriesB 1      200   400   600   800 -9999\n")
-        wrapper.seek(0,0)
-    else:
-        raise OSError("File not found")
-
-    wrapper.mode = open_type
-
-    return wrapper 
+def mock_read_text_output(file_path, encoding=None):
+    if file_path in _MOCK_RWL_TEXT:
+        return _MOCK_RWL_TEXT[file_path], "utf-8", False
+    raise OSError("File not found")
 
 '''
     Given input file.csv, test that readers produces the expected dataframe.
@@ -88,7 +68,7 @@ def mock_open_output(file_path, open_type):
 def test_correct_csv_format(mock_read_csv: Mock):
     mock_read_csv.side_effect = mock_read_csv_output
     results = dpl.readers("correct_file.csv")
-    mock_read_csv.assert_called_once_with("correct_file.csv", skiprows=0)
+    mock_read_csv.assert_called_once_with("correct_file.csv", skiprows=0, encoding=None)
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]}, 
@@ -101,12 +81,12 @@ def test_correct_csv_format(mock_read_csv: Mock):
     Given input file valid_rwl_correct_format.rwl, test that readers produces
     the expected dataframe.
 '''
-@patch('builtins.open')
+@patch('dplpy.readers._read_text')
 def test_correct_rwl_format(mock_open: Mock):
-    mock_open.side_effect = mock_open_output
+    mock_open.side_effect = mock_read_text_output
 
     results = dpl.readers("valid_rwl_correct_format.rwl")
-    mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", "r")
+    mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", None)
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
@@ -119,13 +99,13 @@ def test_correct_rwl_format(mock_open: Mock):
     Given input valid_rwl_correct_format.rwl, and skip_lines=1, test that readers
     produces the expected dataframe.
 '''
-@patch('builtins.open')
+@patch('dplpy.readers._read_text')
 def test_correct_rwl_skip_lines(mock_open: Mock):
-    mock_open.side_effect = mock_open_output
+    mock_open.side_effect = mock_read_text_output
 
     results = dpl.readers("valid_rwl_correct_format.rwl", skip_lines=1)
     print(results)
-    mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", "r")
+    mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", None)
 
     expected_df = pd.DataFrame(data={"SeriesB": [0.2, 0.4, 0.6, 0.8]},
                                      index=pd.Index(data=[1, 2, 3, 4], 
@@ -136,12 +116,12 @@ def test_correct_rwl_skip_lines(mock_open: Mock):
     Given input valid_rwl_correct_format.rwl, and header=True, test that readers
     correctly skips header lines to produce the expected dataframe.
 '''
-@patch('builtins.open')
+@patch('dplpy.readers._read_text')
 def test_correct_rwl_with_headers(mock_open: Mock):
-    mock_open.side_effect = mock_open_output
+    mock_open.side_effect = mock_read_text_output
 
     results = dpl.readers("valid_rwl_with_headers.rwl", header=True)
-    mock_open.assert_called_once_with("valid_rwl_with_headers.rwl", "r")
+    mock_open.assert_called_once_with("valid_rwl_with_headers.rwl", None)
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
@@ -149,12 +129,12 @@ def test_correct_rwl_with_headers(mock_open: Mock):
                                                     name="Year"))
     pd.testing.assert_frame_equal(results, expected_df)
 
-@patch('builtins.open')
+@patch('dplpy.readers._read_text')
 def test_rwl_with_blank_lines(mock_open: Mock):
     # Blank lines are harmless (a trailing newline, or a "double-spaced" ITRDB
     # file) and no longer warned about line by line -- they are dropped and their
     # 1-indexed positions recorded silently on df.attrs["dplpy_blank_lines"].
-    mock_open.side_effect = mock_open_output
+    mock_open.side_effect = mock_read_text_output
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
@@ -164,7 +144,7 @@ def test_rwl_with_blank_lines(mock_open: Mock):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         results = dpl.readers("valid_rwl_with_blanks.rwl")
-    mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", "r")
+    mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", None)
     pd.testing.assert_frame_equal(results, expected_df)
     assert not [x for x in w if "Empty line" in str(x.message)]   # no blank-line alarm
     assert results.attrs["dplpy_blank_lines"] == [2]              # recorded silently
@@ -1395,3 +1375,45 @@ def test_long_interior_gap_recorded_but_not_announced(tmp_path, capsys):
     assert gaps["LNG01A"]["short_gap_years"] == []     # nothing short -> not announced
     out = capsys.readouterr().out
     assert "short interior gap" not in out
+
+
+def test_non_utf8_file_reads_with_latin1_fallback(tmp_path):
+    # A non-UTF-8 byte in a header comment (e.g. an accented investigator name,
+    # the ITRDB norm for European sites) must not crash the reader. It falls back
+    # to latin1 (lossless), warns, and records the encoding used.
+    p = tmp_path / "latin1.rwl"
+    lines = [
+        "ABC01   invest. M\xfcller",                       # 0xFC in latin1
+        "ABC01   1990   100   110   120   130   140   999",
+    ]
+    p.write_bytes(("\n".join(lines) + "\n").encode("latin1"))
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        df = dpl.readers(str(p))
+    assert df.attrs["dplpy_encoding"] == "latin1"
+    assert df.attrs["dplpy_encoding_assumed"] is True
+    assert any("not valid UTF-8" in str(x.message) for x in w)
+    assert "ABC01" in df.columns                           # data read fine
+
+    # an explicit encoding is obeyed and does not warn
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        df2 = dpl.readers(str(p), encoding="latin1")
+    assert df2.attrs["dplpy_encoding"] == "latin1"
+    assert df2.attrs["dplpy_encoding_assumed"] is False
+    assert not any("not valid UTF-8" in str(x.message) for x in w)
+
+
+def test_precision_recorded_in_provenance():
+    # The measurement precision each series was read at (0.01 or 0.001 mm) is now
+    # recorded in df.attrs, with a flag when a file mixes the two.
+    import io, contextlib
+    def _quiet(fn, *a, **k):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return fn(*a, **k)
+    df = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    prec = df.attrs["dplpy_precision"]
+    assert set(df.columns) <= set(prec)               # one entry per series
+    assert set(prec.values()) == {0.01}               # ca533 is 0.01 mm throughout
+    assert df.attrs["dplpy_mixed_precision"] is False

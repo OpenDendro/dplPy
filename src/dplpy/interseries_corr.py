@@ -43,6 +43,8 @@ __license__ = "GNU GPLv3"
 from .xdate import normalize_for_crossdating, _row_mean
 from .tbrm import tbrm_rows
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe, _normalize_corr
@@ -139,6 +141,7 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
     series_names = []
     interseries_corrs = []
     p_values = []
+    too_short = []
 
     for series_name in sorted(names):
         i = names.index(series_name)
@@ -147,6 +150,20 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
         master = aggregate(M[:, keep])                      # master of all the others
         series = M[:, i]
         ok = ~np.isnan(series) & ~np.isnan(master)          # overlap (both present)
+        n_overlap = int(ok.sum())
+
+        # Too few overlapping years to correlate: an empty series, or one sharing
+        # fewer than 3 years with its master (which can happen after prewhitening
+        # drops a series' first few values, or at the ends of a record). scipy would
+        # either raise (pearsonr, n<2) or return a spurious +/-1 (spearman, n=2), so
+        # record NaN and name the series instead -- matching series_corr and dplR.
+        if n_overlap < 3:
+            series_names.append(series_name)
+            interseries_corrs.append(np.nan)
+            p_values.append(np.nan)
+            too_short.append("%s (%d yr%s overlap)"
+                             % (series_name, n_overlap, "" if n_overlap == 1 else "s"))
+            continue
 
         # alternative="greater": matches dplR's cor.test(..., alternative="greater")
         # -- a one-sided test, since a series is expected to correlate
@@ -159,6 +176,12 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
         series_names.append(series_name)
         interseries_corrs.append(round(test_result.statistic, 3))
         p_values.append(test_result.pvalue)
+
+    if too_short:
+        warnings.warn(
+            "interseries_corr: %d series had fewer than 3 years overlapping the "
+            "master and were given an NaN correlation: %s"
+            % (len(too_short), ", ".join(too_short)))
 
     result_df = pd.DataFrame(
         data={"interseries_corr": interseries_corrs, "p_val": p_values},
