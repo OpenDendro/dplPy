@@ -10,6 +10,8 @@ and commit log.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-12
+
 ### Changed
 - **BREAKING -- `dpl.rcs` and `dpl.sfrcs` inputs are harmonized with
   `dpl.detrend` (dplPy 0.8.0).** The regional-curve inputs now use the same

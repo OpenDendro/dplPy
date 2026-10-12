@@ -6,7 +6,7 @@ on:
     types:
       - completed
     branches:
-      - v0.7.0
+      - v0.8.0
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
         with:
-          ref: v0.7.0
+          ref: v0.8.0
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
@@ -37,63 +37,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: v0.7.0
-          release_name: v0.7.0
+          tag_name: v0.8.0
+          release_name: v0.8.0
           body: |
-            dplPy v0.7.0
-            
-            v0.7.0 improves crossdating and data QA/QC: xdate now prints a COFECHA-style
-            summary, the crossdating and floating-series tools accept more flexible inputs,
-            readers handles messier ITRDB files, and several ARSTAN-style detrending and
-            standardization options are added. It is also the first release tracked in a
-            CHANGELOG.
-            
-            Crossdating and QA/QC:
-            - xdate() prints a COFECHA-style summary header (number of series, master span,
-              total rings, intercorrelation, mean sensitivity, problem-segment count, mean
-              series length) and returns it as res["summary"]; the default path also returns
-              n_problems.
-            - xdate_report() accepts an already-loaded ring-width DataFrame (with an optional
-              name=) in addition to .rwl paths and lists of them.
-            - xdate_floater() accepts a single chronology as a pandas Series or one-column
-              DataFrame (e.g. a column from read_crn) as the reference, auto-derives the
-              series name from a named series, and its plot adds an overlay of the reference
-              chronology against the best-placed floater.
-            - xdate_floater() raises an impossible/future-date alarm - a warning, a
-              best["date_warning"] flag, and a red plot banner - when the best-fit date falls
-              after the present calendar year.
-            
-            Reading data:
-            - readers() detects a core whose series-ID letter case flips mid-file (e.g.
-              FDD08A -> FDD08a): when the pieces have disjoint years and a stop marker is
-              missing it merges them into one series (join=True), recorded on
-              df.attrs["dplpy_case_merged"]; case variants that are not merged are listed on
-              df.attrs["dplpy_case_variant_ids"].
-            - readers() flags characters beyond the last data column and truncated values on
-              df.attrs["dplpy_beyond_column"].
-            
-            Detrending and standardization:
-            - detrend() now exposes ARSTAN curve fits: NegExp, Hugershoff, GeneralExp, LinearAny,
-              and LinearNegative.
-            - powt() reports ARSTAN-like spread-vs-level and skewness statistics with a plot.
-            - chron_ars() supports ARSTAN-style backcasting.
-            - sfrcs() defaults to a simple (not biweight) mean, following Melvin.
-            
-            Fixes:
-            - xdate_floater() no longer raises an IndexError when the floating series is
-              longer than the reference master.
-            - xdate_floater()'s plot no longer balloons with white space on a poor match; the
-              p-value panel keeps the significance thresholds inside the panel.
-            - xdate_report() given a DataFrame no longer misreads its columns as file paths.
-            - xdate(preset="COFECHA") no longer emits spurious early segments for a series
-              that extends before the multi-series portion of a collection.
-            
-            Also: report() now shows per-series and total counts for locally absent rings and
-            internal NA, with clearer labels; interseries_corr() returns a (mean, per-series)
-            tuple; and a CHANGELOG.md now tracks changes going forward.
-            
-            Note for upgrading: interseries_corr() now returns (mean, per-series) rather than
-            just the per-series frame, and xdate_report() uses output="screen"/"file"/"both"
-            in place of the former write= argument.
-          draft: false
-          prerelease: true
+            dplPy v0.8.0
+
+            v0.8.0 is a breaking release that harmonizes the Regional Curve Standardization
+            API (rcs, sfrcs) with detrend(), redefines the pith offset to a true offset, and
+            standardizes the plotting keyword across the package. dplPy 0.7.0 remains on PyPI
+            for existing code; 0.8.0 is the more consistent and flexible RCS, on the path to
+            1.0.
+
+            Breaking changes:
+            - rcs()/sfrcs() inputs now match detrend(): the regional curve is chosen with
+              fit= (was method="caps"/"ads"), the arithmetic with method="ratio"/"difference"
+              (was the boolean ratios=), and spline stiffness with period= (was nyrs=). The
+              default regional curve is now fit="AgeDepSpline" (ARSTAN's recommended RCS
+              curve, with a non-increasing old-age end; pos_slope defaults to False). Use
+              fit="Spline", period=0.1 to reproduce the previous default exactly.
+            - The pith offset is now a true offset: pith_offset is the number of rings
+              between the pith and the first measured ring, so 0 = pith present (was 1, the
+              cambial age of the first ring, following dplR). This matches ARSTAN's nshft
+              exactly; a dplR po table must have 1 subtracted first. po_to_wc/wc_to_po were
+              updated to match.
+            - The figure keyword is now plot= everywhere (rcs, sfrcs, xdate, series_corr,
+              xdate_floater, xdate_undated, common_interval); make_plot= still works for one
+              release with a DeprecationWarning.
+
+            New:
+            - rcs() can fit the regional curve with any detrend() curve - the two splines,
+              the parametric growth curves (ModNegExp, NegExp, Hugershoff, GeneralExp,
+              LinearAny, LinearNegative, Mean) - or with no smoothing (fit=None, the
+              age-aligned mean itself), mirroring how ARSTAN and CRUST build the RC.
+            - period=-10 gives the ARSTAN percent-of-length spline.
+            - rcs(rescale_difference=True) puts difference indices on the ratio (~1) scale,
+              per series, following ARSTAN's calind.
+            - rcs() warns (rather than halting) when the regional curve goes non-positive.
+            - readers() gains encoding= (latin1 fallback for non-UTF-8 ITRDB files) and
+              records measurement precision; xdate_undated() crossdates floating series into
+              a relatively-dated chronology; xdate_floater() gains a segment-consensus mode.
+
+            Upgrading from 0.7.0: replace rcs/sfrcs ratios=True/False with
+            method="ratio"/"difference", method="caps"/"ads" with fit="Spline"/"AgeDepSpline",
+            nyrs= with period=, and make_plot= with plot=; subtract 1 from any dplR-style
+            pith-offset table. See CHANGELOG.md for the full list.
