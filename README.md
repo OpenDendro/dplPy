@@ -314,7 +314,7 @@ This will load the package and its functions, allowing them to be accessed with 
     - `bin_floor`: default `100`, determines the minimum bin year. The minimum bin year is calculated as $ \lceil (min\_yr/bin\_floor)\rceil*bin.floor $ where `min_yr` is the first year in the dataset.
     - `p_val`: default `0.05`, determines the critical value below which interseries correlations are flagged.
     - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
-    - `make_plot`: default `False`; when `True`, also draws the dplR-style crossdating overview (`corr.rwl.seg` / `plot.crs`).
+    - `plot`: default `False`; when `True`, also draws the dplR-style crossdating overview (`corr.rwl.seg` / `plot.crs`). (The former name `make_plot` still works as a deprecated alias.)
 - Usage examples:
     ```
     >>> ca533_rwi = dpl.detrend(ca533, plot=False)
@@ -324,7 +324,7 @@ This will load the package and its functions, allowing them to be accessed with 
 
     # Crossdating with Pearson correlation, plus the overview plot
     # (other options set to defaults when not specified).
-    >>> dpl.xdate(ca533_rwi, corr="Pearson", make_plot=True)
+    >>> dpl.xdate(ca533_rwi, corr="Pearson", plot=True)
     ```
 - Related: `dpl.xdate_plot(rwi)` draws the crossdating overview on its own; `dpl.series_corr(rwi, "SERIES_1")` gives the per-series moving-correlation and cross-correlation diagnostics; `dpl.interseries_corr(rwi)` returns the mean interseries correlation.
 
@@ -340,22 +340,26 @@ This will load the package and its functions, allowing them to be accessed with 
 ### Date a floating series with `xdate_floater`
 
 - Description: finds the best calendar placement for an **undated (floating)** ring-width series against a dated master collection, reporting a t-value, autocorrelation-adjusted degrees of freedom, Bonferroni-adjusted p-value and isolation factor for each candidate position (after Wilson 2026).
-- Key arguments: `data` (the dated master collection), `series` (the undated series), `min_overlap` (default `50`), `make_plot=True` for the Wilson-style dating figure.
+- Key arguments: `data` (the dated master collection), `series` (the undated series), `min_overlap` (default `50`), `plot=True` for the Wilson-style dating figure.
 - Usage Example:
     ```
     # 'master' is a dated rwl/rwi collection; 'floater' is an undated series
-    >>> result = dpl.xdate_floater(master, floater, series_name="UNK01", make_plot=True)
+    >>> result = dpl.xdate_floater(master, floater, series_name="UNK01", plot=True)
     >>> result["best"]["max_year"], result["best"]["t"]   # best end year and its t-value
     ```
 
 ### Regional Curve Standardization with `rcs`
 
 - Description: detrends by the Regional Curve method — aligning all series by cambial age, fitting one common growth curve, and dividing each series by it (preserves low-frequency/long-timescale variance that per-series detrending removes).
-- Options: `po` (a pith-offset table aligning series to cambial age), `nyrs`/`f` (curve stiffness), `make_plot` (default `True`).
+- Options: `po` (a pith-offset table aligning series to cambial age — the offset is the number of rings between the pith and the first measured ring, so `0` means the pith is present; omit `po` to assume `0` for all series), `fit` (the regional-curve type, from the same vocabulary as `detrend` — default `"AgeDepSpline"`, ARSTAN's recommended RCS curve), `method` (`"ratio"` or `"difference"`), `period`/`nyrs0`/`f` (curve stiffness), `pos_slope` (default `False`: a non-increasing old-age end, as in ARSTAN/CRUST), and `plot` (default `True`).
 - Usage Example:
     ```
-    >>> rwi = dpl.rcs(data, po=pith_offsets)     # po: DataFrame of series -> years-to-pith
+    # po: DataFrame of series -> pith offset (0 = pith present)
+    >>> rwi = dpl.rcs(data, po=pith_offsets)                           # default: age-dependent spline, ratios
+    >>> rwi = dpl.rcs(data, po=pith_offsets, fit="Spline", period=-10) # fixed 10%-of-length spline
+    >>> rwi = dpl.rcs(data, po=pith_offsets, method="difference")      # subtractive index
     ```
+- Related: `dpl.sfrcs(data, po=pith_offsets)` is **signal-free** RCS (a port of CRUST's single-curve algorithm), taking the same `method`/`plot` arguments.
 
 ### Read chronology files with `read_crn`
 
