@@ -11,6 +11,10 @@ and commit log.
 ## [Unreleased]
 
 ### Added
+- **`dpl.rcs`** now warns when the regional curve is non-positive at one or
+  more cambial ages (where ratio indices would blow up or go negative). ARSTAN
+  halts in this case; dplPy warns and continues so batch runs are uninterrupted,
+  and points to a stiffer smoothing, `method='ads'`, or `ratios=False`.
 
 - **`dpl.readers`** gains an `encoding=` argument and no longer crashes on a file
   that is not valid UTF-8. A non-UTF-8 byte (e.g. an accented investigator name in a
@@ -107,6 +111,13 @@ and commit log.
   `detrend` docstring and the detrending guide note were corrected: `AgeDepSpline`
   is *not* gap-safe (it fits on ring position, like the parametric curves); only
   `Spline` spans a gap in calendar time.
+- Documented the **pith-offset convention** for `dpl.rcs`/`dpl.sfrcs` (and in the
+  detrending guide): `pith_offset` is the cambial age of the first measured ring
+  (1 = pith present) = ARSTAN's `nshft` + 1, so an ARSTAN pith-offset file must be
+  shifted by 1. Added a guide section comparing dplPy's single-curve RCS to ARSTAN
+  (regional-curve smoothing options, difference-index scaling, non-positive-curve
+  behavior, pith convention).
+
 
 
 ## [0.7.0] - 2026-09-26

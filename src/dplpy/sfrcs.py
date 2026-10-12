@@ -73,7 +73,10 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
         pith offsets, columns ``series`` and ``pith_offset`` (cambial age of each
-        series' first measured ring). None assumes a pith offset of 1 for all.
+        series' first measured ring; 1 = pith present). None assumes a pith offset
+        of 1 for all. **Convention:** this is ARSTAN's ``nshft`` (years between
+        pith and first ring) **plus one** -- shift an ARSTAN pith-offset file by 1
+        before use here.
     ratios : bool, default True
         form indices by division (ratios); if False, by subtraction (difference).
     biweight_curve : bool, default False

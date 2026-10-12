@@ -98,6 +98,14 @@ rwi = dpl.rcs(rwl, po=pith_offsets, biweight=True)
 `po` is a pith-offset table (see [`po_to_wc`/`wc_to_po`](../reference/utilities.md)).
 `preset="crust"` builds the regional curve the CRUST way (Melvin & Briffa 2014).
 
+!!! note "Pith-offset convention"
+
+    dplPy's `pith_offset` is the **cambial age of the first measured ring**
+    (`1` = the pith is present). This is ARSTAN's `nshft` (the number of years
+    *missing* between pith and first ring) **plus one**. If you reuse a pith-offset
+    file written for ARSTAN, add 1 to each value first. With no `po` given, dplPy
+    assumes `pith_offset = 1` for every series.
+
 ## `sfrcs`: signal-free RCS
 
 Ordinary RCS builds one regional curve and detrends every series by it, but when
@@ -136,7 +144,25 @@ narrow single-cohort sample.
 Multi-curve RCS (several regional curves with tree-to-curve allocation) is not yet
 implemented.
 
-## `ssf`: signal-free standardization
+### How dplPy's RCS compares to ARSTAN
+
+dplPy's `rcs()` matches ARSTAN single-curve RCS in its core: it aligns series by
+cambial age from the pith offsets, builds a robust (biweight) mean-by-age regional
+curve, and detrends each series by the slice of that curve at its own cambial ages,
+as ratios by default. A few differences are worth knowing:
+
+- **Regional-curve smoothing.** dplPy smooths the regional curve with a cubic
+  smoothing spline (`method="caps"`) or an age-dependent spline (`method="ads"`).
+  ARSTAN additionally lets you fit a *parametric* curve (negative exponential,
+  Hugershoff, linear, horizontal mean) or use the unsmoothed empirical mean. If you
+  need one of those exact regional-curve shapes, `rcs()` cannot yet reproduce it.
+- **Difference indices.** With `ratios=False`, dplPy returns residual indices
+  centred on 0. ARSTAN rescales residual indices back onto the ratio index's mean
+  and standard deviation (centred on ~1); dplPy does not, so difference and ratio
+  members live on different scales unless you rescale them yourself.
+- **Non-positive curve.** If the regional curve dips to or below zero, ARSTAN
+  halts; dplPy issues a warning and continues.
+- **Pith offsets** follow the +1 convention noted above.
 
 Signal-free standardization iterates detrending and chronology-building to reduce
 the trend-distortion (end-effect) bias of ordinary detrending:

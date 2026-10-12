@@ -252,8 +252,11 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
         pith offsets, with columns ``series`` and ``pith_offset`` (the cambial
-        age of each series' first measured ring). None assumes a pith offset of
-        1 for every series.
+        age of each series' first measured ring, so 1 means the pith is present).
+        None assumes a pith offset of 1 for every series. **Convention:** this is
+        ARSTAN's ``nshft`` (the number of years between the pith and the first
+        measured ring) **plus one**, so a pith-offset file shared with ARSTAN
+        must be shifted by 1 before use here.
     nyrs : int or None, default None
         smoothing stiffness for the regional curve. None uses
         floor(0.1 * curve length) for method='caps' or 50 for method='ads'.
@@ -363,6 +366,18 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
             smoothed = ads(ym, nyrs0=nyrs2, pos_slope=pos_slope)
         rc = np.full(rwca.shape[0], np.nan)
         rc[valid] = smoothed
+
+    # Non-positive regional curve: a flexible RC can dip to or below zero, which
+    # makes ratio indices blow up or turn negative. ARSTAN halts here ("rcs growth
+    # curve goes negative"); as a library dplPy warns and continues so batch runs
+    # are not interrupted -- the user can pick a stiffer curve or difference mode.
+    _rc_vals = rc[~np.isnan(rc)]
+    if np.any(_rc_vals <= 0):
+        warnings.warn(
+            "rcs: the regional curve is <= 0 at %d cambial age(s); ratio indices "
+            "there will be unstable or negative. Consider a stiffer smoothing "
+            "(a larger nyrs), method='ads', or ratios=False."
+            % int(np.sum(_rc_vals <= 0)))
 
     # detrend in cambial-age space, then map back to calendar years
     rwica = rwca / rc[:, None] if ratios else rwca - rc[:, None]
