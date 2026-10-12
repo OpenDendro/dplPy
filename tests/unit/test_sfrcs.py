@@ -28,6 +28,11 @@ def _sfrcs_quiet(*args, **kw):
 def _gp():
     rwl = _read_quiet("tests/data/csv/gp_rwl.csv")
     po = pd.read_csv("tests/data/csv/gp_po.csv")
+    # gp_po.csv is dplR-convention (cambial age of the first ring, >=1); dplPy 0.8
+    # uses a TRUE offset (0 = pith present), so subtract one.
+    po = po.copy()
+    col = "pith_offset" if "pith_offset" in po.columns else po.columns[1]
+    po[col] = po[col] - 1
     return rwl, po
 
 
@@ -46,10 +51,9 @@ _RWI_01A_GP = [0.436544, 0.486024, 0.476674]
 
 def test_sfrcs_runs_and_converges():
     rwl, po = _gp()
-    info = _sfrcs_quiet(rwl, po=po, make_plot=False, return_info=True)
+    info = _sfrcs_quiet(rwl, po=po, plot=False, return_info=True)
     assert info["converged"] is True
     assert info["n_iter"] <= 40
-    # convergence measure decreases monotonically and ends below tol
     conv = info["conv"]
     assert conv[-1] < 1e-3
     assert np.all(np.diff(conv) <= 1e-9)
@@ -57,7 +61,7 @@ def test_sfrcs_runs_and_converges():
 
 def test_sfrcs_regression_values():
     rwl, po = _gp()
-    info = _sfrcs_quiet(rwl, po=po, make_plot=False, return_info=True)
+    info = _sfrcs_quiet(rwl, po=po, plot=False, return_info=True)
     assert np.allclose(info["sfc"]["sfc"].to_numpy()[:6], _SFC_GP, atol=1e-6)
     assert np.allclose(info["rc"][:6], _RC_GP, atol=1e-6)
     a = info["rwi"]["01A"].dropna().to_numpy()[:3]
@@ -66,7 +70,7 @@ def test_sfrcs_regression_values():
 
 def test_sfrcs_return_shape_and_finite():
     rwl, po = _gp()
-    rwi = _sfrcs_quiet(rwl, po=po, make_plot=False)
+    rwi = _sfrcs_quiet(rwl, po=po, plot=False)
     assert isinstance(rwi, pd.DataFrame)
     assert rwi.shape == rwl.shape
     present = ~np.isnan(rwl.to_numpy())
@@ -74,22 +78,18 @@ def test_sfrcs_return_shape_and_finite():
 
 
 def test_sfrcs_differs_from_plain_rcs():
-    # the signal-free iteration must actually change the result vs one-pass RCS
     rwl, po = _gp()
-    plain = dpl.rcs(rwl, po, preset="crust", make_plot=False).to_numpy()
-    sf = _sfrcs_quiet(rwl, po=po, make_plot=False).to_numpy()
+    plain = dpl.rcs(rwl, po, preset="crust", plot=False).to_numpy()
+    sf = _sfrcs_quiet(rwl, po=po, plot=False).to_numpy()
     m = ~np.isnan(rwl.to_numpy())
-    assert not np.allclose(plain[m], sf[m])         # signal-free adjusts it
-    assert np.corrcoef(plain[m], sf[m])[0, 1] > 0.9  # but stays highly correlated
+    assert not np.allclose(plain[m], sf[m])
+    assert np.corrcoef(plain[m], sf[m])[0, 1] > 0.9
 
 
 def test_sfrcs_iteration_moves_then_settles():
-    # one iteration (no signal removed) differs from the converged chronology;
-    # running to convergence changes the low frequencies by a real amount
     rwl, po = _gp()
-    one = _sfrcs_quiet(rwl, po=po, make_plot=False, max_iterations=1,
-                       return_info=True)
-    conv = _sfrcs_quiet(rwl, po=po, make_plot=False, return_info=True)
+    one = _sfrcs_quiet(rwl, po=po, plot=False, max_iterations=1, return_info=True)
+    conv = _sfrcs_quiet(rwl, po=po, plot=False, return_info=True)
     d = np.nanmax(np.abs(one["sfc"]["sfc"].to_numpy()
                          - conv["sfc"]["sfc"].to_numpy()))
     assert d > 1e-3
@@ -97,48 +97,53 @@ def test_sfrcs_iteration_moves_then_settles():
 
 
 def test_sfrcs_guards_stabilise_hard_data():
-    # co021 (near-zero chronology years) defeats the basic ssf; the SF-RCS
-    # division guard + 0.02 curve floor keep it finite and convergent even with
-    # default pith offsets (all = 1).
     co = _read_quiet("tests/data/csv/co021.csv")
-    info = _sfrcs_quiet(co, make_plot=False, return_info=True)
+    info = _sfrcs_quiet(co, plot=False, return_info=True)
     sfc = info["sfc"]["sfc"].to_numpy()
     assert np.all(np.isfinite(sfc))
-    assert np.nanmin(info["rc"]) >= 0.02 - 1e-12    # curve never dives to zero
+    assert np.nanmin(info["rc"]) >= 0.02 - 1e-12
 
 
-def test_sfrcs_residuals_path():
+def test_sfrcs_difference_path():
     # CRUST residual mode rescales residuals to the ratios' moments, so they sit
     # on the ratio scale (centred near 1) and differ from the ratio indices.
     rwl, po = _gp()
-    resid = _sfrcs_quiet(rwl, po=po, make_plot=False, ratios=False)
-    ratio = _sfrcs_quiet(rwl, po=po, make_plot=False, ratios=True)
+    resid = _sfrcs_quiet(rwl, po=po, plot=False, method="difference")
+    ratio = _sfrcs_quiet(rwl, po=po, plot=False, method="ratio")
     present = ~np.isnan(rwl.to_numpy())
     assert np.all(np.isfinite(resid.to_numpy()[present]))
-    assert 0.8 < np.nanmean(resid.to_numpy()) < 1.2          # on the ratio scale
-    assert not np.allclose(resid.to_numpy()[present],
-                           ratio.to_numpy()[present])         # but not identical
+    assert 0.8 < np.nanmean(resid.to_numpy()) < 1.2
+    assert not np.allclose(resid.to_numpy()[present], ratio.to_numpy()[present])
 
 
 def test_sfrcs_return_info_keys():
     rwl, po = _gp()
-    info = _sfrcs_quiet(rwl, po=po, make_plot=False, return_info=True)
+    info = _sfrcs_quiet(rwl, po=po, plot=False, return_info=True)
     for key in ("rwi", "sfc", "samp_depth", "conv", "n_iter", "converged", "rc"):
         assert key in info
     assert list(info["sfc"].columns) == ["sfc", "samp.depth"]
-    # samp.depth is the count of trees per calendar year
     assert info["sfc"]["samp.depth"].max() <= rwl.shape[1]
 
 
-def test_sfrcs_default_po_is_one():
+def test_sfrcs_default_po_is_zero():
     rwl, _ = _gp()
-    rwi = _sfrcs_quiet(rwl, make_plot=False)           # no pith offsets
+    rwi = _sfrcs_quiet(rwl, plot=False)
     assert rwi.shape == rwl.shape
+
+
+def test_sfrcs_make_plot_deprecated():
+    rwl, po = _gp()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            dpl.sfrcs(rwl, po=po, make_plot=False, verbose=False, max_iterations=3)
+    assert any(issubclass(x.category, DeprecationWarning) for x in w)
 
 
 def test_sfrcs_bad_args():
     rwl, _ = _gp()
     with pytest.raises(TypeError):
-        _sfrcs_quiet("not a frame", make_plot=False)
+        _sfrcs_quiet("not a frame", plot=False)
     with pytest.raises(ValueError):
-        _sfrcs_quiet(rwl, make_plot=False, max_iterations=0)
+        _sfrcs_quiet(rwl, plot=False, max_iterations=0)

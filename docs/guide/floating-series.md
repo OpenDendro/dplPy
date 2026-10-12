@@ -81,7 +81,7 @@ degrees of freedom at each overlap. A confident date has a high *t*, a tiny
 - `corr` (default `"spearman"`) — the correlation method.
 - `series_name` — a label for the floater used in the outputs and plot title; when
   omitted it is taken from a named series or one-column frame, else `"Unknown"`.
-- `make_plot=True` — draw the dating figure: the sliding *t* and the
+- `plot=True` — draw the dating figure: the sliding *t* and the
   Bonferroni-adjusted p-value against calendar year, the distribution of all *t*
   values with the best marked, and an overlay of the reference chronology against
   the best-placed floater over the dated overlap.

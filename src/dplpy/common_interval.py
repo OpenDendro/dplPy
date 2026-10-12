@@ -33,7 +33,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _plot_kwarg
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT
 
@@ -93,7 +93,7 @@ def _rm_short(notNA, row_idx, flag):
     return nrow_out, ncol_out, keep_row_out, keep_col_out
 
 
-def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
+def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
     """Select a complete common interval from a set of ring-width series.
 
     Extended Summary
@@ -125,7 +125,7 @@ def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
         columns.
     type : {"series", "years", "both"}, default "both"
         the selection strategy described above.
-    make_plot : bool, default False
+    plot : bool, default False
         if True, draw a coverage diagram (each series as a grey span, with the
         retained common interval overlaid in black). dplR draws this by default;
         here it is off by default so the function is quiet unless asked.
@@ -150,6 +150,7 @@ def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
     .. [2] Bunn (2008), Dendrochronologia, 26, 115-124.
     """
     _require_dataframe(rwl)
+    plot = _plot_kwarg(plot, kwargs)
     if type not in _TYPES:
         raise ValueError("type must be 'series', 'years' or 'both', got '" + str(type) + "'.")
 
@@ -196,7 +197,7 @@ def common_interval(rwl: pd.DataFrame, type="both", make_plot=False):
             keep_row_out = row_idx[keep_row] if is_years else row_idx
             keep_col_out = keep_col
 
-    if make_plot:
+    if plot:
         _plot_common(rwl, notNA, keep_row_out, keep_col_out, type,
                      ncol_out, nrow_out)
 

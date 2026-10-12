@@ -70,7 +70,7 @@ __license__ = "GNU GPLv3"
 # example usage:
 #   >>> import dplpy as dpl
 #   >>> floats = dpl.readers("drowned_stand.rwl")   # undated collection
-#   >>> res = dpl.xdate_undated(floats, make_plot=True)
+#   >>> res = dpl.xdate_undated(floats, plot=True)
 #   >>> res["offsets"]       # each series' relative start/end year (earliest = 1)
 #   >>> res["chronology"]    # the mean floating chronology
 #   >>> res["verify"]        # isolation and review flags per series
@@ -78,7 +78,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import _normalize_corr
+from ._validate import _normalize_corr, _plot_kwarg
 from .xdate import _corr_pval
 from .xdate_floater import _transform_series
 
@@ -152,7 +152,7 @@ def _coerce_collection(data):
 def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
                   crit_t=4.0, anchor_year=1, min_isolation=1.0,
                   ar_max=10, first_aic_min=True,
-                  make_plot=False, verbose=True):
+                  plot=False, verbose=True, **kwargs):
     """Crossdate a set of undated ("floating") ring-width series against one another
     and assemble a single relatively-dated floating chronology (COFECHA UFLOAT-style).
 
@@ -190,7 +190,7 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     first_aic_min : bool, default True
         Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
         default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
-    make_plot : bool, default False
+    plot : bool, default False
         Draw a placement chart (each series positioned on the relative axis, coloured
         by isolation) with the mean floating chronology beneath it.
     verbose : bool, default True
@@ -212,6 +212,7 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
         ``unplaced`` : list of series that never reached ``crit_t``.
     """
     method = _normalize_corr(corr)
+    plot = _plot_kwarg(plot, kwargs)
     if transform not in _TRANSFORMS:
         raise ValueError("transform must be one of %s" % (_TRANSFORMS,))
     raw = _coerce_collection(data)
@@ -393,7 +394,7 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
             print("    -> %s" % ", ".join(flagged))
         print(line)
 
-    if make_plot:
+    if plot:
         _plot_undated(result, anchor_year=anchor_year)
 
     return result

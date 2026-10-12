@@ -44,7 +44,7 @@ from .detrend import detrend
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pandas as pd
-from ._validate import _require_dataframe, _normalize_corr
+from ._validate import _require_dataframe, _normalize_corr, _plot_kwarg
 from .tbrm import tbrm_rows
 from .sensitivity import sens1
 import numpy as np
@@ -420,8 +420,8 @@ def _format_summary_box(s):
 
 def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
           bin_floor=100, p_val=0.05, biweight=True, lag=10, show_flags=True,
-          make_plot=False, preset=None, seg_lag=None, ar_max=None, absent=None,
-          stabilize_period=32):
+          plot=False, preset=None, seg_lag=None, ar_max=None, absent=None,
+          stabilize_period=32, **kwargs):
     """Crossdate a set of ring-width series against a leave-one-out master.
 
     The segment correlations mirror dplR's corr.rwl.seg(): each series is
@@ -469,7 +469,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         maximum +/- lag examined for the lag (B) flag / COFECHA table.
     show_flags : bool, default True
         print the flag summary and lag tables.
-    make_plot : bool, default False
+    plot : bool, default False
         draw the segment-correlation plot.
     preset : str or None, default None
         set to ``"COFECHA"`` to emulate the COFECHA program instead of dplR's
@@ -540,6 +540,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
     .. [1] https:/opendendro.org/dplpy-man/#xdate
     """
     _require_dataframe(data)
+    plot = _plot_kwarg(plot, kwargs)
 
     # COFECHA emulation: fixed 50-yr segments on a 25-yr grid, anchored to each
     # series' own first/last year, correlated (Pearson) against an arithmetic
@@ -548,7 +549,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         return _xdate_cofecha(data, prewhiten=prewhiten, slide_period=slide_period,
                               seg_lag=seg_lag, lag=lag, ar_max=ar_max, absent=absent,
                               stabilize_period=stabilize_period,
-                              show_flags=show_flags, make_plot=make_plot)
+                              show_flags=show_flags, plot=plot)
 
     method = _normalize_corr(corr)
 
@@ -627,7 +628,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", slide_period=50,
         print(_format_summary_box(summary))
         print()
         _print_flags(flags, lag)
-    if make_plot:
+    if plot:
         _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds, p_val,
                   slide_period, slide_period // 2)
 
@@ -686,7 +687,7 @@ def _cofecha_crit(n, conf=0.99):
 
 def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
                    ar_max=None, stabilize_period=32, absent=None, show_flags=True,
-                   make_plot=False):
+                   plot=False):
     """COFECHA-style crossdating (see :func:`xdate` with ``preset="COFECHA"``).
 
     Takes the RAW ring-width frame and detrends it internally with a rigid
@@ -835,7 +836,7 @@ def _xdate_cofecha(data, prewhiten=True, slide_period=50, seg_lag=None, lag=10,
         print(_format_summary_box(summary))
         print()
         _print_flags(flags, lag)
-    if make_plot:
+    if plot:
         bin_bounds = [_bin_bounds(b) for b in bins]
         _plot_crs(seg_corr, seg_pval, ready, bins, bin_bounds,
                   _cofecha_crit(seg_len), seg_len, seg_lag)
@@ -1139,7 +1140,7 @@ def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
     """
     res = xdate(data, prewhiten=prewhiten, corr=corr, slide_period=slide_period,
                 bin_floor=bin_floor, p_val=p_val, biweight=biweight,
-                show_flags=False, make_plot=False)
+                show_flags=False, plot=False)
     bin_bounds = [_bin_bounds(b) for b in res["bins"]]
     return _plot_crs(res["seg_corr"], res["p_val"], res["rwi"], res["bins"],
                      bin_bounds, p_val, slide_period, slide_period // 2)

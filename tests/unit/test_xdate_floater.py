@@ -171,7 +171,7 @@ def test_make_plot_runs():
     truth = rwl["CAM011"].dropna().to_numpy()
     ref = rwl.drop(columns=["CAM011"])
     res = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
-                 make_plot=True, verbose=False)
+                 plot=True, verbose=False)
     assert "placed" in res            # make_plot also builds the placed series
     plt.close("all")
 
@@ -186,7 +186,7 @@ def test_poor_match_plot_keeps_p_thresholds_in_panel():
     rng = np.random.default_rng(3)
     rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
     res = _quiet(dpl.xdate_floater, rwl, rng.random(250) + 0.5,
-                 series_name="RANDOM", make_plot=True, verbose=False)
+                 series_name="RANDOM", plot=True, verbose=False)
     assert res["best"]["p_bonf"] > 0.05             # genuinely a poor match
     # find the inverted log-scaled p-axis and confirm it reaches below 1e-4
     fig = plt.gcf()

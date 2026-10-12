@@ -42,7 +42,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | dplR | dplPy | Notes |
 |---|---|---|
 | `detrend`, `detrend.series` | `detrend` | `fit=` selects Spline / ModNegExp / ModHugershoff / Mean / AgeDepSpline |
-| `rcs` | `rcs` | `preset="crust"` for the CRUST regional curve |
+| `rcs` | `rcs` | Curve via `fit=`, arithmetic via `method=`, stiffness via `period=`; `preset="crust"` for the CRUST curve. **Pith offset differs — see below.** |
 | `ssf` | `ssf` | Signal-free; `preset="crust"` variant |
 | `ads` (age-dependent spline) | `ads` | Also `detrend(fit="AgeDepSpline")` |
 | `powt` | `powt` | Power transformation |
@@ -77,7 +77,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | `treeMean` | `tree_mean` | Average cores to tree level |
 | `common.interval` | `common_interval` | |
 | `bai.out`, `bai.in` | `bai_out`, `bai_in` | Basal area increment |
-| `po.to.wc`, `wc.to.po` | `po_to_wc`, `wc_to_po` | Pith-offset conversion |
+| `po.to.wc`, `wc.to.po` | `po_to_wc`, `wc_to_po` | Pith-offset conversion. **dplPy's `pith_offset` is a true offset (`0` = pith present); dplR's is the cambial age of the first ring (`1` = pith present), so subtract 1 from a dplR `po` table.** |
 | `fill.internal.NA` | `fill_internal` | Interior-gap infilling |
 
 ### Plotting
@@ -85,7 +85,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | dplR | dplPy | Notes |
 |---|---|---|
 | `plot.rwl`, `plot.crn`, `spag.plot`, `seg.plot` | `plot` | `type=` selects the plot style |
-| crossdating plots | `xdate(make_plot=True)`, `xdate_plot`, `series_corr(make_plot=True)` | |
+| crossdating plots | `xdate(plot=True)`, `xdate_plot`, `series_corr(plot=True)` | |
 
 ### Beyond dplR
 

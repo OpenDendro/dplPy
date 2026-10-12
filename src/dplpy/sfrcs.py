@@ -36,11 +36,13 @@ import numpy as np
 import pandas as pd
 
 from .rcs import _sfrcs_run, _plot_rcs, _build_rwca, _crust_regional_curve
+from ._validate import _plot_kwarg
+from .detrend import _normalize_method
 
 
-def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
+def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
           biweight_crn=False, ss=10, rise=None, max_iterations=40, tol=1e-3,
-          make_plot=True, return_info=False, verbose=True):
+          plot=True, return_info=False, verbose=True, **kwargs):
     """Signal-Free Regional Curve Standardisation of a set of ring-width series.
 
     Extended Summary
@@ -72,13 +74,15 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
-        pith offsets, columns ``series`` and ``pith_offset`` (cambial age of each
-        series' first measured ring; 1 = pith present). None assumes a pith offset
-        of 1 for all. **Convention:** this is ARSTAN's ``nshft`` (years between
-        pith and first ring) **plus one** -- shift an ARSTAN pith-offset file by 1
-        before use here.
-    ratios : bool, default True
-        form indices by division (ratios); if False, by subtraction (difference).
+        pith offsets, columns ``series`` and ``pith_offset`` -- a TRUE offset:
+        rings between the pith and the first measured ring (0 = pith present).
+        None assumes 0 for all. **Convention (changed in 0.8.0):** this equals
+        ARSTAN's ``nshft`` exactly (an ARSTAN file is usable directly); dplR
+        stores the cambial age of the first ring (1 = pith present), so subtract
+        1 from a dplR ``po`` table first.
+    method : {"ratio", "difference"}, default "ratio"
+        how indices are formed: "ratio" divides (default), "difference" subtracts.
+        Matches ``detrend()`` and ``rcs()``.
     biweight_curve : bool, default False
         build the regional curve with Tukey's biweight robust mean by cambial age.
         Default False matches CRUST, which uses the arithmetic mean by age.
@@ -101,8 +105,9 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
     tol : float, default 1e-3
         convergence threshold on the maximum absolute year-to-year change in the
         chronology between successive iterations (CRUST uses 0.001).
-    make_plot : bool, default True
+    plot : bool, default True
         draw the regional-curve figure (series and final curve vs cambial age).
+        The former name ``make_plot=`` is accepted for now with a DeprecationWarning.
     return_info : bool, default False
         if True, return a dict of diagnostics (see Returns) instead of just ``rwi``.
     verbose : bool, default True
@@ -145,12 +150,15 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
         raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")
     if int(max_iterations) < 1:
         raise ValueError("max_iterations must be >= 1.")
+    plot = _plot_kwarg(plot, kwargs)
+    method = _normalize_method(method)
+    ratios = (method == "ratio")
 
     cols = list(rwl.columns)
     M = rwl.to_numpy(dtype=float)
 
     if po is None:
-        po_map = {c: 1 for c in cols}
+        po_map = {c: 0 for c in cols}
     else:
         s = po["series"] if "series" in po.columns else po.iloc[:, 0]
         pv = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
@@ -165,7 +173,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
     rwi = rwl.copy().astype(float)
     rwi.iloc[:, :] = idx
 
-    if make_plot or return_info:
+    if plot or return_info:
         # rebuild the final regional curve (from the converged signal-free
         # measurements) for plotting / return
         present = ~np.isnan(M)
@@ -188,7 +196,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, ratios=True, biweight_curve=False,
         ca_n = np.sum(~np.isnan(rwca_sf), axis=1)
         rise_flag = (nrow > 1500) if rise is None else bool(rise)
         rc = _crust_regional_curve(ca_m, ca_n, nrow, ss=ss, rise=rise_flag)
-        if make_plot:
+        if plot:
             _plot_rcs(rwca_orig, ca_m, rc, len(cols))
 
     if return_info:

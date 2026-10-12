@@ -25,8 +25,9 @@ __license__ = "GNU GPLv3"
 # Project: OpenDendro dplPy
 # Description: Pith-offset helpers, ports of dplR's po.to.wc() and wc.to.po().
 #              A pith offset is the estimated number of rings from the innermost
-#              measured ring to the pith (the cambial age of the first measured
-#              ring); it is what age-based Regional Curve Standardisation needs
+#              measured ring to the pith (a true OFFSET: 0 means the pith is
+#              present at the first measured ring). It is what age-based Regional
+#              Curve Standardisation needs
 #              to align every series on a common cambial-age axis. These two
 #              functions convert between the pith-offset representation and the
 #              (TRIDAS-style) wood-completeness representation.
@@ -39,14 +40,16 @@ from ._validate import _require_dataframe
 def po_to_wc(po: pd.DataFrame) -> pd.DataFrame:
     """Convert pith offset to (partial) wood completeness (dplR's po.to.wc()).
 
-    The number of missing heartwood rings is the pith offset minus one.
+    The number of missing heartwood rings equals the pith offset (dplPy's
+    pith offset is itself the count of rings between pith and first measured
+    ring; 0 = pith present).
 
     Parameters
     ----------
     po : pandas.DataFrame
         pith-offset table with a ``series`` column (series IDs) and a
-        ``pith_offset`` column (integer years from the start of the core to the
-        pith, minimum 1).
+        ``pith_offset`` column (integer rings between the pith and the first
+        measured ring; 0 = pith present).
 
     Returns
     -------
@@ -61,7 +64,7 @@ def po_to_wc(po: pd.DataFrame) -> pd.DataFrame:
     series = po["series"] if "series" in po.columns else po.iloc[:, 0]
     pith_offset = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
     return pd.DataFrame(
-        {"n_missing_heartwood": pd.array(np.asarray(pith_offset) - 1, dtype="Int64")},
+        {"n_missing_heartwood": pd.array(np.asarray(pith_offset), dtype="Int64")},
         index=pd.Index(np.asarray(series), name="series"),
     )
 
@@ -70,9 +73,9 @@ def wc_to_po(wc: pd.DataFrame) -> pd.DataFrame:
     """Convert wood completeness to pith offset (dplR's wc.to.po()).
 
     The pith offset is the number of missing heartwood rings plus the number of
-    unmeasured inner rings plus one, for every series whose pith presence is
-    known (``complete``/``incomplete``) or whose missing-heartwood count is
-    given; other series get a missing pith offset.
+    unmeasured inner rings (0 = pith present), for every series whose pith
+    presence is known (``complete``/``incomplete``) or whose missing-heartwood
+    count is given; other series get a missing pith offset.
 
     Parameters
     ----------
@@ -85,7 +88,7 @@ def wc_to_po(wc: pd.DataFrame) -> pd.DataFrame:
     -------
     pandas.DataFrame
         a pith-offset table with ``series`` and ``pith_offset`` columns
-        (nullable integer), suitable as input to RCS.
+        (nullable integer; 0 = pith present), suitable as input to RCS.
 
     References
     ----------
@@ -99,8 +102,9 @@ def wc_to_po(wc: pd.DataFrame) -> pd.DataFrame:
     unmeasured = wc["n_unmeasured_inner"].reset_index(drop=True) if "n_unmeasured_inner" in wc.columns else nan
 
     known = pith.isin(["complete", "incomplete"]) | missing.notna()
-    # rowSums(cbind(missing, unmeasured), na.rm=TRUE) + 1, only for known rows
-    total = missing.fillna(0).to_numpy() + unmeasured.fillna(0).to_numpy() + 1
+    # rowSums(cbind(missing, unmeasured), na.rm=TRUE), only for known rows;
+    # dplPy's offset is 0 when the pith is present (no +1, unlike dplR).
+    total = missing.fillna(0).to_numpy() + unmeasured.fillna(0).to_numpy()
     pith_offset = pd.array([pd.NA] * n, dtype="Int64")
     pith_offset[known.to_numpy()] = np.asarray(total[known.to_numpy()], dtype="int64")
 

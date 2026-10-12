@@ -10,17 +10,63 @@ and commit log.
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING -- `dpl.rcs` and `dpl.sfrcs` inputs are harmonized with
+  `dpl.detrend` (dplPy 0.8.0).** The regional-curve inputs now use the same
+  vocabulary as per-series detrending:
+  - `method=` now selects the **arithmetic** (`"ratio"` / `"difference"`),
+    matching `detrend()`. The boolean `ratios=` is removed (`ratios=True` ->
+    `method="ratio"`, `ratios=False` -> `method="difference"`).
+  - the regional **curve** is chosen with `fit=` (old `method="caps"` ->
+    `fit="Spline"`, `method="ads"` -> `fit="AgeDepSpline"`). `fit=` accepts the
+    full `detrend()` curve vocabulary -- `Spline`, `AgeDepSpline`, `ModNegExp`,
+    `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp`, `LinearAny`,
+    `LinearNegative`, `Mean` -- plus `None` (no smoothing).
+  - the default regional curve is now **`fit="AgeDepSpline"`** (ARSTAN's
+    recommended RCS curve), previously the fixed spline. Results of calls that
+    did not name a curve will change; use `fit="Spline", period=0.1` to
+    reproduce the previous default exactly.
+  - spline stiffness is set with `period=` (default `0.1`, via the same
+    `get_period` rule as `detrend`), replacing `nyrs=`. `period=-10` gives the
+    ARSTAN percent-of-length spline.
+  - `pos_slope=` now defaults to **`False`** (a non-increasing old-age end, as in
+    ARSTAN's "non-increasing end fitting" and CRUST's "no rise in the final
+    third"), previously `True`.
+  - the figure switch is now `plot=` (see Deprecated).
+- **BREAKING -- the pith offset is now a true offset.** `pith_offset` (in the
+  `po=` table and in `po_to_wc` / `wc_to_po`) is now the number of rings between
+  the pith and the first measured ring, so **0 means the pith is present**
+  (previously 1, the cambial age of the first ring, following dplR). This makes
+  dplPy's pith offset identical to ARSTAN's `nshft`, so an ARSTAN pith-offset
+  file is usable directly; a dplR `po` table must have 1 subtracted first.
+  `po_to_wc` now returns `n_missing_heartwood = pith_offset` (was `- 1`) and
+  `wc_to_po` returns `missing + unmeasured` (was `+ 1`).
+- **The plotting keyword is standardized to `plot=` across the package**
+  (`rcs`, `sfrcs`, `xdate`, `series_corr`, `xdate_floater`, `xdate_undated`,
+  `common_interval`), matching `detrend` / `chron` / `powt`.
+
+### Deprecated
+- **`make_plot=` is deprecated in favor of `plot=`** everywhere it was used. It
+  still works for one release and emits a `DeprecationWarning`; it will be
+  removed in a future version.
+
 ### Added
 - **`dpl.rcs`** now warns when the regional curve is non-positive at one or
   more cambial ages (where ratio indices would blow up or go negative). ARSTAN
   halts in this case; dplPy warns and continues so batch runs are uninterrupted,
-  and points to a stiffer smoothing, `method='ads'`, or `ratios=False`.
+  and points to a stiffer smoothing (a larger `period`), `fit='AgeDepSpline'`,
+  or `method='difference'`.
 - **`dpl.rcs`** gains an opt-in `rescale_difference=` argument (default `False`).
-  When `True` and `ratios=False`, each series' difference (residual) index is
+  When `True` and `method='difference'`, each series' difference (residual) index is
   rescaled onto the mean and standard deviation of that series' own ratio index,
   so difference and ratio members share the ~1 scale -- the per-series version of
   ARSTAN's `calind` convention. Default `False` keeps the current residuals
   centred on 0, so existing calls are unchanged.
+- **`dpl.rcs` can now fit the regional curve with any `detrend()` curve or with
+  no smoothing.** `fit=None` uses the age-aligned mean itself as the regional
+  curve (ARSTAN's "no smooth" / CRUST's unsmoothed option), and the parametric
+  growth curves from `curvefit` (`ModNegExp`, `NegExp`, `Hugershoff`, ...) can be
+  fitted to the regional mean, mirroring how ARSTAN and CRUST build the RC.
 
 - **`dpl.readers`** gains an `encoding=` argument and no longer crashes on a file
   that is not valid UTF-8. A non-UTF-8 byte (e.g. an accented investigator name in a

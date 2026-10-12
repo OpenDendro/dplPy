@@ -38,7 +38,7 @@ from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bo
 
 from math import ceil
 import pandas as pd
-from ._validate import _require_dataframe, _normalize_corr
+from ._validate import _require_dataframe, _normalize_corr, _plot_kwarg
 import numpy as np
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
@@ -86,8 +86,8 @@ def _ccf_bins(series_years, bin_floor, seg_length, floor_plus1=False):
 
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
                 corr="spearman", seg_length=50, bin_floor=100, p_val=0.05,
-                biweight=True, lag=5, make_plot=True, series_x=True,
-                which="both"):
+                biweight=True, lag=5, plot=True, series_x=True,
+                which="both", **kwargs):
     """Crossdate one series against the master built from all the others.
 
     Produces (and, by default, plots) a moving correlation of the series against
@@ -104,10 +104,10 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
         the series to examine.
     prewhiten, corr, seg_length, bin_floor, p_val, biweight, lag
         as in dpl.xdate() (seg_length is the segment length).
-    make_plot : bool, default True
+    plot : bool, default True
         master switch for drawing any figure.
     which : {'both', 'moving', 'ccf'}, default 'both'
-        when ``make_plot`` is True, which figure(s) to draw: both, only the
+        when ``plot`` is True, which figure(s) to draw: both, only the
         moving-correlation plot (``corr.series.seg``), or only the per-segment
         ccf panels (``ccf.series.rwl``).
     series_x : bool, default True
@@ -128,6 +128,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     .. [1] https:/opendendro.org/dplpy-man/#series_corr
     """
     _require_dataframe(data)
+    plot = _plot_kwarg(plot, kwargs)
     if not isinstance(series_name, str):
         raise TypeError("Expected string input as series name, got " + str(type(series_name)) + " instead.")
     if series_name not in data.columns:
@@ -200,7 +201,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
             if series_x else
             "NB: with series_x=False, negative lags indicate missing rings in the series")
 
-    if make_plot:
+    if plot:
         if which not in ("both", "moving", "ccf"):
             raise ValueError("which must be 'both', 'moving' or 'ccf'")
         if which in ("both", "moving"):

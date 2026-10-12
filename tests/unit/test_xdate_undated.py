@@ -102,6 +102,6 @@ def test_make_plot_runs():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     und, _ = _synthetic_floats(seed=3)
-    res = _quiet(dpl.xdate_undated, und, make_plot=True)
+    res = _quiet(dpl.xdate_undated, und, plot=True)
     assert "chronology" in res
     plt.close("all")

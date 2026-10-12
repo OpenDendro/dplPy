@@ -84,7 +84,7 @@ import pandas as pd
 import scipy.stats
 import datetime
 
-from ._validate import _require_dataframe, _normalize_corr
+from ._validate import _require_dataframe, _normalize_corr, _plot_kwarg
 from .stats import get_ar1
 from .xdate import (normalize_for_crossdating, dense_year_grid,
                     _row_biweight, _row_mean, _ar_yw_prewhiten, _corr_pval)
@@ -288,8 +288,8 @@ def _consensus_summary(seg_df, best):
 def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   min_overlap=50, transform="pw", prewhiten=None, biweight=True,
                   corr="spearman", ar_max=10, first_aic_min=True,
-                  make_plot=False, return_rwl=False,
-                  segmented=False, segment_topk=5, verbose=True):
+                  plot=False, return_rwl=False,
+                  segmented=False, segment_topk=5, verbose=True, **kwargs):
     """Estimate the calendar dating of a floating (undated) ring-width series.
 
     Parameters
@@ -333,7 +333,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     first_aic_min : bool, default True
         Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
         default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
-    make_plot : bool, default False
+    plot : bool, default False
         Plot the sliding t-value against the series' end year, marking the best fit.
     return_rwl : bool, default False
         Also return the floating series placed at its best-fit calendar years
@@ -349,7 +349,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         test for an internal error, so short floaters report the per-segment dates
         without a verdict. A coherent one-year step between older and younger segments
         flags an internal dating error that the whole-series fit cannot see; with
-        ``make_plot`` it also draws a staircase diagnostic. The single-best-t
+        ``plot`` it also draws a staircase diagnostic. The single-best-t
         placement remains the primary result.
     segment_topk : int, default 5
         With ``segmented``, how many best placements to record per segment in
@@ -377,6 +377,8 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     correlation scoring reuses dplPy's crossdating internals, so results are
     consistent with ``dpl.xdate``.
     """
+    plot = _plot_kwarg(plot, kwargs)
+
     # The reference may be a whole collection (a DataFrame, master built by
     # averaging its series) or a single pre-built chronology. Accept that single
     # chronology as a pandas Series too -- e.g. crn["res"] -- coercing it to a
@@ -550,7 +552,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         elif verbose:
             print("Segment consensus: " + _consensus_summary(seg_df, best))
 
-    if return_rwl or make_plot:
+    if return_rwl or plot:
         placed = pd.DataFrame(
             {series_name: y_raw},
             index=pd.Index(range(best["min_year"], best["min_year"] + n_series),
@@ -561,7 +563,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         # join on the overlapping name; suffix the placed copy in that case.
         result["combined"] = data.join(placed, how="outer", rsuffix="_floater")
 
-    if make_plot:
+    if plot:
         _plot_floater(result, biweight=biweight)
         if segmented:
             _plot_segment_consensus(result)

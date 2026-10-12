@@ -55,7 +55,7 @@ dplR flags every non-significant segment and has no lag concept; dplPy splits
 those into A (lag 0 is best) and B (a better lag exists), so a segment is never
 both. The per-segment lag table is printed for both flag kinds.
 
-Set `make_plot=True` (or call `xdate_plot`) for a dplR-style crossdating plot, or
+Set `plot=True` (or call `xdate_plot`) for a dplR-style crossdating plot, or
 use `series_corr` to drill into one series.
 
 !!! note "The plot shows significance only — read the text flags too"

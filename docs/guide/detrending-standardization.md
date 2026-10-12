@@ -92,19 +92,40 @@ single regional growth curve, preserving low-frequency (e.g. multi-centennial)
 signal that curve-by-curve detrending removes:
 
 ```python
-rwi = dpl.rcs(rwl, po=pith_offsets, biweight=True)
+rwi = dpl.rcs(rwl, po=pith_offsets, biweight=True)             # default AgeDepSpline, ratios
+rwi = dpl.rcs(rwl, po=pith_offsets, fit="Spline", period=0.1)  # fixed 10%-of-length spline
 ```
 
-`po` is a pith-offset table (see [`po_to_wc`/`wc_to_po`](../reference/utilities.md)).
-`preset="crust"` builds the regional curve the CRUST way (Melvin & Briffa 2014).
+The regional curve is chosen with `fit=` — the same curve vocabulary as
+`detrend()`: `"AgeDepSpline"` (the default, and ARSTAN's recommended RCS curve),
+`"Spline"`, the parametric growth curves (`"ModNegExp"`, `"Hugershoff"`, …), or
+`None` for the unsmoothed age-aligned mean. `method=` selects the arithmetic
+(`"ratio"`, the default, or `"difference"`), `period=` sets the `"Spline"`
+stiffness (a fraction of the curve length, default `0.1`; `-10` is the ARSTAN
+percent-of-length spline), and `pos_slope=False` (the default) keeps the old-age
+end of the curve from rising. `po` is a pith-offset table (see
+[`po_to_wc`/`wc_to_po`](../reference/utilities.md)); `preset="crust"` builds the
+regional curve the CRUST way (Melvin & Briffa 2014).
 
-!!! note "Pith-offset convention"
+!!! warning "Changed in 0.8.0"
 
-    dplPy's `pith_offset` is the **cambial age of the first measured ring**
-    (`1` = the pith is present). This is ARSTAN's `nshft` (the number of years
-    *missing* between pith and first ring) **plus one**. If you reuse a pith-offset
-    file written for ARSTAN, add 1 to each value first. With no `po` given, dplPy
-    assumes `pith_offset = 1` for every series.
+    `rcs()` and `sfrcs()` inputs were harmonized with `detrend()`: the curve is
+    now `fit=` (was `method="caps"`/`"ads"`), the arithmetic is `method=`
+    (`"ratio"`/`"difference"`, was the boolean `ratios=`), stiffness is `period=`
+    (was `nyrs=`), the default curve is `fit="AgeDepSpline"` (was the fixed
+    spline), `pos_slope` now defaults to `False`, and the figure switch is
+    `plot=` (`make_plot=` is deprecated). The pith-offset convention also changed
+    — see the note below.
+
+!!! note "Pith-offset convention (changed in 0.8.0)"
+
+    dplPy's `pith_offset` is a **true offset**: the number of rings *missing*
+    between the pith and the first measured ring, so `0` means the pith is
+    present. This is exactly ARSTAN's `nshft`, so an ARSTAN pith-offset file can
+    be used directly. **dplR** instead stores the cambial age of the first ring
+    (`1` = pith present), so subtract 1 from a dplR pith-offset table before
+    using it here. With no `po` given, dplPy assumes `pith_offset = 0` (pith
+    present) for every series.
 
 ## `sfrcs`: signal-free RCS
 
@@ -151,13 +172,15 @@ cambial age from the pith offsets, builds a robust (biweight) mean-by-age region
 curve, and detrends each series by the slice of that curve at its own cambial ages,
 as ratios by default. A few differences are worth knowing:
 
-- **Regional-curve smoothing.** dplPy smooths the regional curve with a cubic
-  smoothing spline (`method="caps"`) or an age-dependent spline (`method="ads"`).
-  ARSTAN additionally lets you fit a *parametric* curve (negative exponential,
-  Hugershoff, linear, horizontal mean) or use the unsmoothed empirical mean. If you
-  need one of those exact regional-curve shapes, `rcs()` cannot yet reproduce it.
-- **Difference indices.** With `ratios=False`, dplPy returns residual indices
-  centred on 0. ARSTAN instead rescales residual indices onto the ratio index's
+- **Regional-curve shape.** Like ARSTAN and CRUST, dplPy chooses the regional
+  curve from a menu via `fit=`: an age-dependent spline (`"AgeDepSpline"`, the
+  default), a fixed smoothing spline (`"Spline"`), a parametric growth curve
+  (`"ModNegExp"`, `"NegExp"`, `"Hugershoff"`, `"GeneralExp"`, `"LinearAny"`,
+  `"LinearNegative"`, `"Mean"`), or `None` for the unsmoothed age-aligned mean.
+  This mirrors ARSTAN's curve-fit menu — whose RCS default is likewise the
+  age-dependent spline with a non-increasing end — and CRUST's `rdt` options.
+- **Difference indices.** With `method="difference"`, dplPy returns residual
+  indices centred on 0. ARSTAN instead rescales residual indices onto the ratio index's
   mean and standard deviation (centred on ~1). Set `rescale_difference=True` to
   reproduce that ARSTAN `calind` behavior per series; it is off by default, so
   residuals stay centred on 0.

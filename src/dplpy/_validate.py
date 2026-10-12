@@ -29,6 +29,8 @@ __license__ = "GNU GPLv3"
 #              consistent error message, instead of each re-implementing the
 #              check with slightly different wording.
 
+import warnings
+
 import pandas as pd
 
 
@@ -79,3 +81,23 @@ def _normalize_corr(corr, allowed=("spearman", "pearson", "kendall")):
                          + " / ".join(m.capitalize() for m in allowed)
                          + ", got '" + str(corr) + "'.")
     return method
+
+
+def _plot_kwarg(plot, kwargs):
+    """Resolve the plot flag, accepting the deprecated ``make_plot=`` alias.
+
+    dplPy standardized every public function's plotting switch on ``plot=`` in
+    0.8.0. ``make_plot=`` is kept for one release as a deprecated alias: if it is
+    present it emits a ``DeprecationWarning`` and its value is used (a user who
+    passes the old name clearly wants that value). Any other stray keyword is a
+    ``TypeError``, exactly as it would be without ``**kwargs``.
+    """
+    if "make_plot" in kwargs:
+        plot = kwargs.pop("make_plot")
+        warnings.warn(
+            "make_plot= is deprecated and will be removed in a future release; "
+            "use plot= instead.", DeprecationWarning, stacklevel=3)
+    if kwargs:
+        raise TypeError("unexpected keyword argument(s): "
+                        + ", ".join(repr(k) for k in sorted(kwargs)))
+    return plot

@@ -29,19 +29,22 @@ __license__ = "GNU GPLv3"
 #              "regional curve"; that curve is smoothed and each ring is divided
 #              by (or has subtracted) the curve value at its cambial age. Unlike
 #              curve-fitting standardisation this preserves low-frequency
-#              (e.g. multi-centennial) signal. Ports dplR's rcs() (preset=None
-#              path).
+#              (e.g. multi-centennial) signal. The regional curve can be fit
+#              with any curve in detrend()'s vocabulary (fit=), mirroring how
+#              ARSTAN and CRUST build it; fit='Spline' reproduces dplR's rcs().
 
 import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _plot_kwarg
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT, NEUTRAL
 from .agedepspline import ads, _ads_curve
-from .smoothingspline import _smooth_csaps
+from .smoothingspline import _smooth_csaps, get_period
 from .xdate import _row_biweight
+from . import curvefit
+from .detrend import _normalize_fit, _normalize_method
 
 
 # --- CRUST-style regional-curve refinements (Melvin & Briffa 2014) ----------
@@ -113,14 +116,15 @@ def _caps(y, nyrs, f):
 
 def _build_rwca(X, po_arr, nrow):
     """Place each series' rings on the common cambial-age axis: series i's
-    measurements start at cambial-age row ``po_arr[i]-1``. Mirrors the alignment
+    measurements start at cambial-age row ``po_arr[i]`` (a true pith offset;
+    0 = pith present). Mirrors the alignment
     in rcs(); the NaN pattern of ``X`` selects the rings (so a signal-free copy
     of the measurement matrix aligns identically to the raw one)."""
     ncol = X.shape[1]
     rwca = np.full((nrow, ncol), np.nan)
     for i in range(ncol):
         vals = X[:, i][~np.isnan(X[:, i])]
-        s = po_arr[i] - 1
+        s = po_arr[i]
         rwca[s:s + len(vals), i] = vals
     return rwca
 
@@ -203,7 +207,7 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
         # 5. map indices back to calendar space, form the chronology
         idx = np.full((nyear, ncol), np.nan)
         for i in range(ncol):
-            s = po_arr[i] - 1
+            s = po_arr[i]
             n = int(counts[i])
             idx[firsts[i]:firsts[i] + n, i] = rwica[s:s + n, i]
         with warnings.catch_warnings():
@@ -232,9 +236,46 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
     return idx, crn, samp_depth, history, k, converged
 
 
-def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
-        ratios=True, rc_out=False, make_plot=True, method="caps",
-        min_n=None, pos_slope=True, preset=None, rescale_difference=False):
+def _fit_regional_curve(ym, fit, period, nyrs0, f, pos_slope):
+    """Smooth the age-aligned regional mean ``ym`` with the curve named by
+    ``fit`` (canonical spelling, or None for no smoothing); returns an array the
+    same length as ``ym``.
+
+    ``fit`` draws on the same vocabulary as detrend(): the two splines plus the
+    parametric growth curves in curvefit.py. This mirrors how ARSTAN and CRUST
+    build the regional curve -- the RC is just another curve fit, including the
+    "no smoothing" option (fit=None: ARSTAN's "no smooth" / CRUST rdt 2).
+    """
+    if fit is None:
+        return np.asarray(ym, dtype=float)
+    x = np.arange(1, len(ym) + 1)
+    if fit == "Spline":
+        return _caps(ym, get_period(period, len(ym)), f)
+    if fit == "AgeDepSpline":
+        return ads(ym, nyrs0=nyrs0, pos_slope=pos_slope)
+    if fit == "ModNegExp":
+        return curvefit.mod_neg_exp(x, ym, pos_slope)
+    if fit == "NegExp":
+        return curvefit.neg_exp_arstan(x, ym, pos_slope)
+    if fit == "ModHugershoff":
+        return curvefit.mod_hugershoff(x, ym, pos_slope)
+    if fit == "Hugershoff":
+        return curvefit.hugershoff_arstan(x, ym)
+    if fit == "GeneralExp":
+        return curvefit.general_exp(x, ym)
+    if fit == "LinearAny":
+        return curvefit.linear(x, ym)
+    if fit == "LinearNegative":
+        return curvefit.linear_neg(x, ym)
+    if fit == "Mean":
+        return curvefit.horizontal(x, ym)
+    raise ValueError("unsupported fit for the regional curve: " + str(fit))
+
+
+def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
+        period=0.1, nyrs0=50, f=0.5, pos_slope=False, biweight=True,
+        min_n=None, preset=None, rescale_difference=False, rc_out=False,
+        plot=True, **kwargs):
     """Regional Curve Standardisation of a set of ring-width series.
 
     Extended Summary
@@ -251,49 +292,67 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
-        pith offsets, with columns ``series`` and ``pith_offset`` (the cambial
-        age of each series' first measured ring, so 1 means the pith is present).
-        None assumes a pith offset of 1 for every series. **Convention:** this is
-        ARSTAN's ``nshft`` (the number of years between the pith and the first
-        measured ring) **plus one**, so a pith-offset file shared with ARSTAN
-        must be shifted by 1 before use here.
-    nyrs : int or None, default None
-        smoothing stiffness for the regional curve. None uses
-        floor(0.1 * curve length) for method='caps' or 50 for method='ads'.
+        pith offsets, with columns ``series`` and ``pith_offset``. The pith
+        offset is a TRUE offset: the number of rings between the pith and the
+        first measured ring, so **0 means the pith is present**. None assumes a
+        pith offset of 0 for every series. **Convention (changed in 0.8.0):**
+        this now equals ARSTAN's ``nshft`` exactly, so an ARSTAN pith-offset file
+        can be used directly. dplR instead stores the cambial age of the first
+        ring (1 = pith present), so a dplR ``po`` table needs 1 subtracted first.
+    fit : str or None, default "AgeDepSpline"
+        curve fitted to the regional (age-aligned mean) curve, from the same
+        vocabulary as ``detrend()``: ``"AgeDepSpline"`` (default; age-dependent
+        spline, ARSTAN's recommended RCS curve, honours ``pos_slope``),
+        ``"Spline"`` (fixed-stiffness smoothing spline; dplR's ``rcs`` curve),
+        ``"ModNegExp"``, ``"NegExp"``, ``"ModHugershoff"``, ``"Hugershoff"``,
+        ``"GeneralExp"``, ``"LinearAny"``, ``"LinearNegative"``, ``"Mean"``, or
+        ``None`` for no smoothing (the age-aligned mean itself is the regional
+        curve -- ARSTAN's "no smooth" / CRUST's unsmoothed option). Case-insensitive.
+    method : {"ratio", "difference"}, default "ratio"
+        how each index is formed from the ring width and the regional-curve value
+        at its cambial age: ``"ratio"`` divides (default), ``"difference"``
+        subtracts. Matches ``detrend()``.
+    period : int or float, default 0.1
+        smoothing wavelength for ``fit="Spline"`` (same ``get_period`` rule as
+        ``detrend``): ``0 < period <= 1`` is a fraction of the curve length
+        (default ``0.1`` = 10%, reproducing dplR / pre-0.8 ``caps``);
+        ``period < 0`` is a percent-of-length ("ARSTAN") spline (``-10`` = 10%);
+        ``period > 1`` is a fixed wavelength in years.
+    nyrs0 : int, default 50
+        initial stiffness for ``fit="AgeDepSpline"`` (see ``dpl.ads``).
     f : float, default 0.5
-        frequency-response amplitude for method='caps'.
+        frequency-response amplitude for ``fit="Spline"``.
+    pos_slope : bool, default False
+        whether the fitted regional curve may rise at the old-age end. Default
+        False gives the non-increasing end used by ARSTAN ("non-increasing end
+        fitting") and CRUST ("no rise in the final third"), avoiding an
+        artefactual old-age upturn. Applies to ``fit="AgeDepSpline"`` and the
+        ``ModNegExp``/``NegExp``/``ModHugershoff`` linear fallbacks.
     biweight : bool, default True
         build the regional curve with Tukey's biweight robust mean (C=9) rather
         than the arithmetic mean.
-    ratios : bool, default True
-        detrend by division (ratios); if False, by subtraction (difference).
-    rescale_difference : bool, default False
-        only used when ``ratios=False``. If True, rescale each series' difference
-        (residual) index onto the mean and standard deviation of that series' own
-        ratio index, so difference indices sit on the ~1 ratio scale -- ARSTAN's
-        ``calind`` convention. Default False returns residuals centred on ~0.
-    rc_out : bool, default False
-        if True, return a dict with both the detrended ``rwi`` and the regional
-        curve ``rc``; otherwise return just ``rwi``.
-    make_plot : bool, default True
-        draw the regional-curve figure (series and curve vs cambial age).
-    method : {"caps", "ads"}, default "caps"
-        smooth the regional curve with a fixed-stiffness spline (caps) or an
-        age-dependent spline (ads).
     min_n : int or None, default None
         truncate the regional-curve tail where the by-age sample depth falls
         below this.
-    pos_slope : bool, default True
-        passed to ads when method='ads'.
     preset : {None, "crust"}, default None
-        None follows dplR's rcs() (the parameters above apply).
-        "crust" builds the regional curve the CRUST way (Melvin & Briffa 2014):
-        an age-dependent spline smoothed only where sample depth >= 4 with the
-        "no rise in the final third" tail rule, gaps in the curve infilled, a
-        0.02 mm minimum-value floor, and flat extension of the tail. Robust for
-        the heterogeneous / relict data RCS is typically applied to. When set,
-        ``nyrs`` (if given) overrides the age-spline offset (default 10) and
-        ``method``/``f``/``pos_slope`` are ignored.
+        None follows the parameters above. "crust" builds the regional curve the
+        CRUST way (Melvin & Briffa 2014): an age-dependent spline smoothed only
+        where sample depth >= 4 with the "no rise in the final third" tail rule,
+        gaps infilled, a 0.02 mm minimum-value floor, and flat tail extension.
+        When set, ``fit``/``period``/``nyrs0``/``f``/``pos_slope`` are ignored
+        (it is a self-contained bundle of choices).
+    rescale_difference : bool, default False
+        only used when ``method="difference"``. If True, rescale each series'
+        difference (residual) index onto the mean and standard deviation of that
+        series' own ratio index, so difference indices sit on the ~1 ratio scale
+        -- ARSTAN's ``calind`` convention. Default False returns residuals
+        centred on ~0.
+    rc_out : bool, default False
+        if True, return a dict with both the detrended ``rwi`` and the regional
+        curve ``rc``; otherwise return just ``rwi``.
+    plot : bool, default True
+        draw the regional-curve figure (series and curve vs cambial age). The
+        former name ``make_plot=`` is accepted for now with a DeprecationWarning.
 
     Returns
     -------
@@ -312,8 +371,9 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
-    if method not in ("caps", "ads"):
-        raise ValueError("method must be 'caps' or 'ads', got '" + str(method) + "'.")
+    plot = _plot_kwarg(plot, kwargs)
+    method = _normalize_method(method)               # 'ratio' / 'difference'
+    fit = None if fit is None else _normalize_fit(fit)
     if preset not in (None, "crust"):
         raise ValueError("preset must be None or 'crust', got '" + str(preset) + "'.")
 
@@ -321,9 +381,9 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     ncol = len(cols)
     M = rwl.to_numpy(dtype=float)                    # (nyears, nseries)
 
-    # pith offset: default 1 for every series
+    # pith offset (true offset; 0 = pith present): default 0 for every series
     if po is None:
-        po_map = {c: 1 for c in cols}
+        po_map = {c: 0 for c in cols}
     else:
         s = po["series"] if "series" in po.columns else po.iloc[:, 0]
         pv = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
@@ -339,7 +399,7 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     for i, c in enumerate(cols):
         vals = M[:, i][~np.isnan(M[:, i])]
         p = int(po_map[c])
-        rwca[p - 1:p - 1 + len(vals), i] = vals
+        rwca[p:p + len(vals), i] = vals
 
     # regional curve = average by cambial age
     if biweight:
@@ -356,21 +416,17 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
     if preset == "crust":
         # CRUST regional curve: infill, age-dependent spline smoothed only where
         # depth >= 4 (no-rise-final-third tail), 0.02 floor, flat extension.
-        ss = 10 if nyrs is None else int(nyrs)
+        ss = 10
         rise = rwca.shape[0] > 1500              # "except trees > 1500 years old"
         rc = _crust_regional_curve(ca_m, ca_n, rwca.shape[0], ss=ss, rise=rise)
     else:
-        # dplR: smooth the regional curve over its non-NA extent
+        # smooth (or not) the regional curve over its non-NA extent, with the
+        # curve chosen by fit= (shared vocabulary with detrend())
         valid = ~np.isnan(ca_m)
         ym = ca_m[valid]
-        if method == "caps":
-            nyrs2 = int(np.floor(len(ym) * 0.1)) if nyrs is None else int(nyrs)
-            smoothed = _caps(ym, nyrs2, f)
-        else:
-            nyrs2 = 50 if nyrs is None else int(nyrs)
-            smoothed = ads(ym, nyrs0=nyrs2, pos_slope=pos_slope)
+        smoothed = _fit_regional_curve(ym, fit, period, nyrs0, f, pos_slope)
         rc = np.full(rwca.shape[0], np.nan)
-        rc[valid] = smoothed
+        rc[valid] = np.asarray(smoothed, dtype=float)
 
     # Non-positive regional curve: a flexible RC can dip to or below zero, which
     # makes ratio indices blow up or turn negative. ARSTAN halts here ("rcs growth
@@ -381,13 +437,13 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         warnings.warn(
             "rcs: the regional curve is <= 0 at %d cambial age(s); ratio indices "
             "there will be unstable or negative. Consider a stiffer smoothing "
-            "(a larger nyrs), method='ads', or ratios=False."
+            "(a larger period), fit='AgeDepSpline', or method='difference'."
             % int(np.sum(_rc_vals <= 0)))
 
     # detrend in cambial-age space, then map back to calendar years
-    rwica = rwca / rc[:, None] if ratios else rwca - rc[:, None]
+    rwica = rwca / rc[:, None] if method == "ratio" else rwca - rc[:, None]
 
-    if (not ratios) and rescale_difference:
+    if method != "ratio" and rescale_difference:
         # ARSTAN calind (ind=2): put each series' difference (residual) index onto
         # the mean & SD of that series' own ratio index, so difference indices sit
         # on the ~1 ratio scale. This is the faithful per-series version of the
@@ -412,9 +468,9 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         first = int(np.argmax(mask))
         last = len(mask) - 1 - int(np.argmax(mask[::-1]))
         p = int(po_map[c])
-        rwi.iloc[first:last + 1, i] = rwica[p - 1:p - 1 + int(counts[i]), i]
+        rwi.iloc[first:last + 1, i] = rwica[p:p + int(counts[i]), i]
 
-    if make_plot:
+    if plot:
         _plot_rcs(rwca, ca_m, rc, ncol)
 
     if rc_out:

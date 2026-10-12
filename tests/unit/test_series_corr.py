@@ -45,7 +45,7 @@ def test_series_corr_returns_results_and_matches_xdate():
         with contextlib.redirect_stdout(buf):
             data = dpl.readers("tests/data/csv/ca533.csv")
             rwi = dpl.detrend(data, fit="spline", plot=False)
-            sc = dpl.series_corr(rwi, "CAM011", make_plot=False)
+            sc = dpl.series_corr(rwi, "CAM011", plot=False)
             xd = dpl.xdate(rwi, show_flags=False)
     assert set(sc.keys()) == {"moving_corr", "seg_corr", "overall", "lag_table",
                               "ccf", "ccf_bins", "bins"}
@@ -76,10 +76,10 @@ def test_series_corr_which_selects_figures():
             counts = {}
             for w in ("both", "moving", "ccf"):
                 plt.close("all")
-                dpl.series_corr(rwi, "CAM011", make_plot=True, which=w)
+                dpl.series_corr(rwi, "CAM011", plot=True, which=w)
                 counts[w] = len(plt.get_fignums())
             plt.close("all")
-            dpl.series_corr(rwi, "CAM011", make_plot=False)
+            dpl.series_corr(rwi, "CAM011", plot=False)
             counts["none"] = len(plt.get_fignums())
     assert counts == {"both": 2, "moving": 1, "ccf": 1, "none": 0}
     with pytest.raises(ValueError):
@@ -100,7 +100,7 @@ def test_series_corr_ccf_matches_dplR_ccf_series_rwl():
             data = dpl.readers("tests/data/csv/ca533.csv")
             rwi = dpl.detrend(data, fit="spline", plot=False)
             sc = dpl.series_corr(rwi, "CAM011", seg_length=50, bin_floor=100,
-                                 make_plot=False, series_x=True)
+                                 plot=False, series_x=True)
             ready = normalize_for_crossdating(rwi, True)
     fy, ly = int(ready.first_valid_index()), int(ready.last_valid_index())
     years = np.arange(fy, ly + 1); ready = ready.reindex(years)
