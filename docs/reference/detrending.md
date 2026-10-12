@@ -16,6 +16,10 @@ guide for when to use each method.
 
 ::: dplpy.sfrcs.sfrcs
 
+## mrcs
+
+::: dplpy.mrcs.mrcs
+
 ## ssf
 
 ::: dplpy.simplesignalfree.ssf

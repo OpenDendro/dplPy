@@ -76,6 +76,7 @@ from .pith import po_to_wc, wc_to_po
 from .powt import powt
 from .rcs import rcs
 from .sfrcs import sfrcs
+from .mrcs import mrcs
 from .bai import bai_out, bai_in
 from .combine import combine_rwl
 from .simplesignalfree import ssf
@@ -125,6 +126,7 @@ __all__ = [
     "powt",
     "rcs",
     "sfrcs",
+    "mrcs",
     "bai_out",
     "bai_in",
     "combine_rwl",

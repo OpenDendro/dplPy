@@ -10,6 +10,19 @@ and commit log.
 
 ## [Unreleased]
 
+### Added
+- **`dpl.mrcs`** performs multiple-curve Regional Curve Standardization (a port
+  of CRUST's multiple-RCS option, Melvin & Briffa 2014, Part 2): trees are sorted
+  by relative growth rate (or age/diameter) and split into `n_curves` equal-count
+  classes, each standardized by its own regional curve -- correcting the slope
+  ("modern sample bias") a single average curve injects when the sample's
+  growth-rate mix changes over calendar time. `reset_means=True` (default)
+  rescales each tree back to its one-curve mean to recover the low-frequency
+  variance that multiple RCS otherwise removes (CRUST "mean single"). Each class
+  curve is built by `rcs`, so `mrcs` shares its full `fit`/`method`/`period`
+  vocabulary and `mrcs(n_curves=1)` is identical to `rcs`. Signal-free
+  multiple-curve RCS (`sfmrcs`) will follow.
+
 ## [0.8.0] - 2026-10-12
 
 ### Changed

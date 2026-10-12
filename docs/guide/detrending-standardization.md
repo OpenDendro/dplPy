@@ -198,6 +198,38 @@ rwi = dpl.ssf(rwl)
 It repeats until the high-frequency chronology stops changing (median absolute
 difference below `mad_threshold`). `preset="crust"` selects the CRUST variant.
 
+## `mrcs`: multiple-curve RCS
+
+A single regional curve assumes every tree shares one age->growth expectation.
+Because faster-growing trees tend to be younger ("grow fast, die young"), one
+average curve injects a slope bias when the sample's growth-rate or age mix
+changes over calendar time. `mrcs` sorts the trees by relative growth rate,
+splits them into a few equal-count classes, and standardizes each tree by its own
+class curve -- a port of CRUST's multiple-RCS option (Melvin & Briffa 2014).
+
+```python
+rwi = dpl.mrcs(rwl, po=pith_offsets, n_curves=2)             # two growth classes
+rwi = dpl.mrcs(rwl, po=pith_offsets, n_curves=3, sort="age")
+```
+
+Each class curve is built by `rcs`, so `mrcs` shares its curve vocabulary
+(`fit`, `method`, `period`, `preset`, ...) and `mrcs(..., n_curves=1)` is
+identical to `rcs`. Key options:
+
+- `n_curves` (default `2`) -- number of regional curves. Most of the correction
+  (and most of the low-frequency variance loss) appears already at two curves.
+- `sort` (default `"growth"`) -- how trees are ranked before the split:
+  `"growth"` (CRUST's growth-rate ranking), `"age"`, `"diameter"`, or `"none"`.
+- `reset_means` (default `True`) -- multiple RCS removes some genuine
+  low-frequency variance (on timescales beyond the mean tree length). With
+  `reset_means` each tree's indices are rescaled back to the mean they would have
+  had under one-curve RCS, reinstating that variance while keeping the slope
+  correction (CRUST's "mean single"; requires `method="ratio"`).
+
+Use `mrcs` with well-replicated collections -- CRUST's rule of thumb is at least
+40 trees per curve, and `mrcs` warns below that. Signal-free multiple-curve RCS
+(`sfmrcs`) is planned as a separate function.
+
 ## `ads` and `powt`
 
 - **`ads`** fits an age-dependent spline to a single series — a spline whose
