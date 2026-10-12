@@ -142,6 +142,27 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     >>> dpl.detrend(data["SeriesA"]) # Detrends only SeriesA
     >>> dpl.detrend(data["SeriesA"], fit="ModNegExp", method="difference", plot=True)
     
+    Notes
+    -----
+    Missing interior values (``NaN``) are dropped before any curve is fit, so a
+    gap can never corrupt a fit the way a sentinel value (e.g. ARSTAN's
+    ``-9.99``) would. There is, however, a limitation specific to the
+    position-based fits -- every fit except ``Spline`` and ``Mean``. These are
+    fitted against cambial age reconstructed as ``1, 2, ..., n`` over the
+    *surviving* rings: the parametric growth curves (``ModNegExp``, ``NegExp``,
+    ``ModHugershoff``, ``Hugershoff``, ``GeneralExp``), the ``LinearAny`` /
+    ``LinearNegative`` fits, and ``AgeDepSpline`` (whose stiffness tracks ring
+    position). An internal gap therefore compresses the age axis after it (a
+    ring at true cambial age 50 is fit as age 45 if five earlier rings are
+    missing). For a smooth growth curve this is a minor, benign distortion but
+    it is not exact. ``Spline`` is the exception -- a smoothing spline over the
+    real calendar years, so it spans an interior gap correctly in time -- and
+    ``Mean`` is order-invariant, so neither is affected. For a series with large
+    internal gaps under a position-based fit, prefer ``fit='Spline'``, or infill
+    first with ``dpl.fill_internal`` (e.g. ``fill='ARSTAN'`` for Ed Cook's
+    regional-signal imputation). ``detrend`` emits a warning when a
+    position-based fit meets a series with interior gaps.
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#detrend
@@ -241,6 +262,27 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
     series_name = data.name
     method = _normalize_method(method)      # idempotent; canonical passes through
     fit = _normalize_fit(fit)               # idempotent; canonical passes through
+
+    # Interior gaps (NaN between the first and last measured ring) are dropped
+    # before fitting, so they can never corrupt a fit. But every fit except
+    # those in _GAP_SAFE_FITS is fitted against reconstructed ring position
+    # 1..n over the surviving rings, so an interior gap compresses the cambial-
+    # age axis after it -- benign for a smooth curve but not exact. Warn and let
+    # the user decide (switch fit, or infill); dplPy never fills silently.
+    # See docs/guide/internal-gaps.md.
+    if fit not in _GAP_SAFE_FITS:
+        _fvi, _lvi = data.first_valid_index(), data.last_valid_index()
+        _n_gaps = int(data.loc[_fvi:_lvi].isna().sum()) if _fvi is not None else 0
+        if _n_gaps > 0:
+            warnings.warn(
+                "detrend: series '%s' has %d interior missing year(s) and "
+                "fit='%s' is fitted against reconstructed ring position, so the "
+                "gap compresses the cambial-age axis after it (benign for a "
+                "smooth curve but not exact). Use fit='Spline' (spans the gap in "
+                "calendar time) or infill first with dpl.fill_internal "
+                "(e.g. fill='ARSTAN'); see the 'Internal gaps' guide."
+                % (series_name, _n_gaps, fit))
+
     nullremoved_data = data.dropna()
     x = nullremoved_data.index.to_numpy()
     y = nullremoved_data.to_numpy(dtype=float).copy()
@@ -401,6 +443,12 @@ _FIT_CANON = {
     "linear": "LinearAny", "linearany": "LinearAny",
     "linearnegative": "LinearNegative", "linearneg": "LinearNegative",
 }
+# Fits that are NOT distorted by an interior gap: 'Spline' is a smoothing
+# spline over the real calendar years (spans a gap correctly in time) and
+# 'Mean' is order-invariant. Every other fit is built on reconstructed ring
+# position 1..n over the surviving rings, so a gap compresses the age axis.
+_GAP_SAFE_FITS = frozenset({"Spline", "Mean"})
+
 _FIT_OPTIONS = ("Spline, AgeDepSpline, ModNegExp, NegExp, ModHugershoff, "
                 "Hugershoff, GeneralExp, Mean, LinearAny, LinearNegative")
 

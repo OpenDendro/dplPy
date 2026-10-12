@@ -64,6 +64,27 @@ Other important arguments:
 You can also pass a *list* of curves to try in order (as in dplR), and detrend a
 single series (`pandas.Series`) as well as a whole collection.
 
+!!! warning "Internal gaps and position-based fits"
+
+    dplPy fits every curve to the series with its missing years (`NaN`) dropped,
+    so a `-9.99`-style gap value can never corrupt a fit. **`Spline`** fits a
+    smoothing spline over the real calendar years, so it spans an interior gap
+    correctly in time, and **`Mean`** is order-invariant — neither is affected by
+    a gap. Every *other* fit is fitted against cambial age reconstructed as
+    `1, 2, …, n` over the surviving rings: the parametric growth curves
+    (`ModNegExp`, `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp`), the
+    `LinearAny` / `LinearNegative` fits, and **`AgeDepSpline`** (whose stiffness
+    tracks ring position). For these, an interior gap compresses the age axis
+    after the gap — a ring at true cambial age 50 is fit as age 45 if five earlier
+    rings are missing. For a smooth growth curve this is a minor, benign
+    distortion (not the catastrophe a sentinel value would cause), but it is not
+    exact. `detrend` warns when a position-based fit meets a series with interior
+    gaps; you can then switch to `fit="Spline"` or infill first with
+    [`fill_internal`](../reference/utilities.md) (e.g. `fill="ARSTAN"`, Ed Cook's
+    opt-in regional-signal imputation) — dplPy never fills silently. See
+    [Handling internal gaps](internal-gaps.md).
+
+
 ## `rcs`: regional curve standardization
 
 Regional curve standardization aligns series by cambial age and divides by a

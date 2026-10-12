@@ -54,6 +54,15 @@ and commit log.
   asserting a confident date. A detected error prints a banner regardless of
   `verbose`, and `make_plot` adds a staircase diagnostic (implied end year vs. ring
   number, counted from the pith).
+- **`dpl.detrend`** now emits a warning when a series has an *interior* gap
+  (`NaN` between its first and last measured ring) and the chosen fit is fitted
+  against reconstructed ring position — the parametric growth curves
+  (`ModNegExp`, `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp`), the
+  linear fits, and `AgeDepSpline`. For those, an interior gap compresses the
+  cambial-age axis after the gap; `fit="Spline"` (real-year `csaps`) and
+  `fit="Mean"` are unaffected and do not warn. The warning names the series and
+  points to `dpl.fill_internal` and the new *Handling internal gaps* guide. dplPy
+  never fills gaps silently — the choice is left to the user.
 
 ### Changed
 
@@ -87,6 +96,18 @@ and commit log.
   that overlaps the master by fewer than 3 years, or has no values at all; such a
   series now gets an `NaN` correlation and is named in a warning, matching
   `dpl.series_corr` and dplR 1.8.0. The collection mean skips the `NaN`s.
+
+### Documentation
+
+- New User Guide vignette **Handling internal gaps** (`docs/guide/internal-gaps.md`):
+  what an interior `NaN` is versus a measured zero, why `Spline`/`Mean` tolerate a
+  gap while the position-based fits are age-compressed by it, how ARSTAN infilled
+  gaps automatically (and why dplPy deliberately does not), and how to detect,
+  decide, and act with `fill_internal` (including `fill="ARSTAN"`). The
+  `detrend` docstring and the detrending guide note were corrected: `AgeDepSpline`
+  is *not* gap-safe (it fits on ring position, like the parametric curves); only
+  `Spline` spans a gap in calendar time.
+
 
 ## [0.7.0] - 2026-09-26
 

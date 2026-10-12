@@ -105,6 +105,7 @@ nav:
   - User Guide:
       - Reading & writing data: guide/reading-writing-data.md
       - Detrending & standardization: guide/detrending-standardization.md
+      - Handling internal gaps: guide/internal-gaps.md
       - Building chronologies: guide/chronologies.md
       - Variance stabilization: guide/variance-stabilization.md
       - Crossdating & COFECHA: guide/crossdating.md
