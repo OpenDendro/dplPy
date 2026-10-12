@@ -234,7 +234,7 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
 
 def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         ratios=True, rc_out=False, make_plot=True, method="caps",
-        min_n=None, pos_slope=True, preset=None):
+        min_n=None, pos_slope=True, preset=None, rescale_difference=False):
     """Regional Curve Standardisation of a set of ring-width series.
 
     Extended Summary
@@ -267,6 +267,11 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
         than the arithmetic mean.
     ratios : bool, default True
         detrend by division (ratios); if False, by subtraction (difference).
+    rescale_difference : bool, default False
+        only used when ``ratios=False``. If True, rescale each series' difference
+        (residual) index onto the mean and standard deviation of that series' own
+        ratio index, so difference indices sit on the ~1 ratio scale -- ARSTAN's
+        ``calind`` convention. Default False returns residuals centred on ~0.
     rc_out : bool, default False
         if True, return a dict with both the detrended ``rwi`` and the regional
         curve ``rc``; otherwise return just ``rwi``.
@@ -381,6 +386,24 @@ def rcs(rwl: pd.DataFrame, po=None, nyrs=None, f=0.5, biweight=True,
 
     # detrend in cambial-age space, then map back to calendar years
     rwica = rwca / rc[:, None] if ratios else rwca - rc[:, None]
+
+    if (not ratios) and rescale_difference:
+        # ARSTAN calind (ind=2): put each series' difference (residual) index onto
+        # the mean & SD of that series' own ratio index, so difference indices sit
+        # on the ~1 ratio scale. This is the faithful per-series version of the
+        # chronology-level "re-mean" sometimes applied downstream.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            _ratio_idx = rwca / rc[:, None]
+        for i in range(ncol):
+            d = rwica[:, i]
+            r = _ratio_idx[:, i]
+            ok = np.isfinite(d) & np.isfinite(r)
+            if ok.sum() < 2:
+                continue
+            sd = d[ok].std()
+            if sd == 0 or not np.isfinite(sd):
+                continue
+            rwica[:, i] = (d - d[ok].mean()) / sd * r[ok].std() + r[ok].mean()
     rwi = rwl.copy().astype(float)
     for i, c in enumerate(cols):
         mask = ~np.isnan(M[:, i])

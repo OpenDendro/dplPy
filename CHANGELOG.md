@@ -15,6 +15,12 @@ and commit log.
   more cambial ages (where ratio indices would blow up or go negative). ARSTAN
   halts in this case; dplPy warns and continues so batch runs are uninterrupted,
   and points to a stiffer smoothing, `method='ads'`, or `ratios=False`.
+- **`dpl.rcs`** gains an opt-in `rescale_difference=` argument (default `False`).
+  When `True` and `ratios=False`, each series' difference (residual) index is
+  rescaled onto the mean and standard deviation of that series' own ratio index,
+  so difference and ratio members share the ~1 scale -- the per-series version of
+  ARSTAN's `calind` convention. Default `False` keeps the current residuals
+  centred on 0, so existing calls are unchanged.
 
 - **`dpl.readers`** gains an `encoding=` argument and no longer crashes on a file
   that is not valid UTF-8. A non-UTF-8 byte (e.g. an accented investigator name in a

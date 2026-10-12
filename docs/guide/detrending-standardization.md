@@ -157,9 +157,10 @@ as ratios by default. A few differences are worth knowing:
   Hugershoff, linear, horizontal mean) or use the unsmoothed empirical mean. If you
   need one of those exact regional-curve shapes, `rcs()` cannot yet reproduce it.
 - **Difference indices.** With `ratios=False`, dplPy returns residual indices
-  centred on 0. ARSTAN rescales residual indices back onto the ratio index's mean
-  and standard deviation (centred on ~1); dplPy does not, so difference and ratio
-  members live on different scales unless you rescale them yourself.
+  centred on 0. ARSTAN instead rescales residual indices onto the ratio index's
+  mean and standard deviation (centred on ~1). Set `rescale_difference=True` to
+  reproduce that ARSTAN `calind` behavior per series; it is off by default, so
+  residuals stay centred on 0.
 - **Non-positive curve.** If the regional curve dips to or below zero, ARSTAN
   halts; dplPy issues a warning and continues.
 - **Pith offsets** follow the +1 convention noted above.
