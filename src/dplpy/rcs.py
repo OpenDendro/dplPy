@@ -131,7 +131,7 @@ def _build_rwca(X, po_arr, nrow):
 
 def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
                biweight_crn=False, ss=10, rise=None, max_iterations=40,
-               tol=1e-3, verbose=True):
+               tol=1e-3, verbose=True, alloc=None, reset_means=False):
     """Single-curve signal-free RCS. Returns (rwi_matrix, crn, samp_depth,
     history, n_iter, converged).
 
@@ -157,6 +157,11 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
     row_mean = _row_biweight if biweight_curve else (
         lambda a: np.nanmean(np.where(np.isnan(a), np.nan, a), axis=1))
 
+    # tree -> regional-curve allocation; a single group is single-curve SF-RCS
+    alloc_arr = np.zeros(ncol, dtype=int) if alloc is None else np.asarray(alloc, dtype=int)
+    curve_ids = sorted(set(alloc_arr.tolist()))
+    multi = len(curve_ids) > 1
+
     crn = np.ones(nyear)
     prev = None
     history = []
@@ -171,16 +176,27 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
             div = present & qok[:, None] & (crn[:, None] >= 0.01)
             fx = np.where(div, M / np.where(crn == 0, np.nan, crn)[:, None], M)
             fx[~present] = np.nan
-        # 2. regional curve by cambial age, from the signal-free measurements
+        # 2. regional curve(s) by cambial age, from the signal-free measurements.
+        # One curve per allocation group (a single group == single-curve SF-RCS).
         rwca_sf = _build_rwca(fx, po_arr, nrow)
+        rc_mat = np.empty((nrow, ncol))
+        rc_single = None
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            ca_m = row_mean(rwca_sf)
-        ca_n = np.sum(~np.isnan(rwca_sf), axis=1)
-        rc = _crust_regional_curve(ca_m, ca_n, nrow, ss=ss, rise=rise_flag)
-        # 3. tree indices from the ORIGINAL measurements and that curve
+            for c in curve_ids:
+                sel = np.where(alloc_arr == c)[0]
+                sub = rwca_sf[:, sel]
+                rcc = _crust_regional_curve(row_mean(sub),
+                                            np.sum(~np.isnan(sub), axis=1),
+                                            nrow, ss=ss, rise=rise_flag)
+                rc_mat[:, sel] = rcc[:, None]
+            if reset_means and ratios and multi:
+                rc_single = _crust_regional_curve(
+                    row_mean(rwca_sf), np.sum(~np.isnan(rwca_sf), axis=1),
+                    nrow, ss=ss, rise=rise_flag)
+        # 3. tree indices from the ORIGINAL measurements and each tree's curve
         with np.errstate(invalid="ignore", divide="ignore"):
-            ratio = rwca_orig / rc[:, None]
+            ratio = rwca_orig / rc_mat
         if ratios:
             rwica = ratio
         else:
@@ -192,7 +208,7 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
                 warnings.simplefilter("ignore", category=RuntimeWarning)
                 for j in range(ncol):
                     r = ratio[:, j]
-                    d = rwca_orig[:, j] - rc
+                    d = rwca_orig[:, j] - rc_mat[:, j]
                     ok = ~np.isnan(r)
                     if ok.sum() < 2:
                         rwica[:, j] = d
@@ -200,6 +216,18 @@ def _sfrcs_run(M, cols, po_map, ratios=True, biweight_curve=False,
                     mn1, sd1 = np.nanmean(r), np.nanstd(r, ddof=1)
                     mn, sd = np.nanmean(d), np.nanstd(d, ddof=1)
                     rwica[:, j] = ((d - mn) / sd) * sd1 + mn1 if sd > 0 else r
+        # 3b. mean-reset (multi-curve, ratios only): put each tree back on its
+        # single-curve mean (CRUST "mean single") to recover low-freq variance.
+        if rc_single is not None:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                single_ratio = rwca_orig / rc_single[:, None]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                for j in range(ncol):
+                    ms = np.nanmean(single_ratio[:, j])
+                    mm = np.nanmean(rwica[:, j])
+                    if np.isfinite(ms) and np.isfinite(mm) and mm != 0:
+                        rwica[:, j] = rwica[:, j] * (ms / mm)
         # 4. rescale so the whole chronology has mean 1 (CRUST "prevent drift")
         gm = np.nanmean(rwica)
         if np.isfinite(gm) and gm != 0:

@@ -359,7 +359,7 @@ This will load the package and its functions, allowing them to be accessed with 
     >>> rwi = dpl.rcs(data, po=pith_offsets, fit="Spline", period=-10) # fixed 10%-of-length spline
     >>> rwi = dpl.rcs(data, po=pith_offsets, method="difference")      # subtractive index
     ```
-- Related: `dpl.sfrcs(data, po=pith_offsets)` is **signal-free** RCS (a port of CRUST's single-curve algorithm), taking the same `method`/`plot` arguments; `dpl.mrcs(data, po=pith_offsets, n_curves=2)` is **multiple-curve** RCS (CRUST), which sorts trees into growth-rate classes and standardizes each by its own curve.
+- Related: `dpl.sfrcs(data, po=pith_offsets)` is **signal-free** RCS (a port of CRUST's single-curve algorithm), taking the same `method`/`plot` arguments; `dpl.mrcs(data, po=pith_offsets, n_curves=2)` is **multiple-curve** RCS (CRUST), which sorts trees into growth-rate classes and standardizes each by its own curve; `dpl.sfmrcs(...)` is its signal-free counterpart.
 
 ### Read chronology files with `read_crn`
 

@@ -20,8 +20,12 @@ and commit log.
   rescales each tree back to its one-curve mean to recover the low-frequency
   variance that multiple RCS otherwise removes (CRUST "mean single"). Each class
   curve is built by `rcs`, so `mrcs` shares its full `fit`/`method`/`period`
-  vocabulary and `mrcs(n_curves=1)` is identical to `rcs`. Signal-free
-  multiple-curve RCS (`sfmrcs`) will follow.
+  vocabulary and `mrcs(n_curves=1)` is identical to `rcs`.
+- **`dpl.sfmrcs`** adds signal-free multiple-curve RCS: the signal-free iteration
+  (as in `sfrcs`) wrapped around the growth-rate curve allocation (as in `mrcs`),
+  a port of CRUST's signal-free multiple-RCS. `reset_means=True` (default)
+  restores each tree's one-curve mean; `sfmrcs(n_curves=1)` is identical to
+  `sfrcs`.
 
 ## [0.8.0] - 2026-10-12
 

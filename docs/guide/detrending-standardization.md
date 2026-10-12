@@ -227,8 +227,9 @@ identical to `rcs`. Key options:
   correction (CRUST's "mean single"; requires `method="ratio"`).
 
 Use `mrcs` with well-replicated collections -- CRUST's rule of thumb is at least
-40 trees per curve, and `mrcs` warns below that. Signal-free multiple-curve RCS
-(`sfmrcs`) is planned as a separate function.
+40 trees per curve, and `mrcs` warns below that. The signal-free counterpart is
+`dpl.sfmrcs`, which runs the signal-free iteration (as in `sfrcs`) around the same
+growth-rate allocation; `sfmrcs(..., n_curves=1)` is identical to `sfrcs`.
 
 ## `ads` and `powt`
 

@@ -106,6 +106,27 @@ def _sort_key(rwl, po_map, sort):
     return radius / age_rad
 
 
+def _allocate(rwl, po_map, n_curves, sort, label="mrcs"):
+    """Rank trees by `sort` and split into `n_curves` near-equal classes.
+    Returns (alloc, groups): ``alloc[col] = curve index``, and ``groups`` the
+    list of column-index arrays. Shared by mrcs() and sfmrcs()."""
+    cols = list(rwl.columns)
+    key = _sort_key(rwl, po_map, sort)
+    order = np.argsort(key, kind="stable")
+    groups = [g for g in np.array_split(order, n_curves) if len(g) > 0]
+    if len(groups) < n_curves:
+        warnings.warn("%s: only %d non-empty curve(s) for n_curves=%d "
+                      "(too few series)." % (label, len(groups), n_curves))
+    alloc = np.zeros(len(cols), dtype=int)
+    for gi, g in enumerate(groups):
+        alloc[g] = gi
+        if len(g) < _MIN_TREES_PER_CURVE:
+            warnings.warn("%s: curve %d has %d trees (< %d); multiple RCS is "
+                          "unreliable with sparsely-replicated curves."
+                          % (label, gi, len(g), _MIN_TREES_PER_CURVE))
+    return alloc, groups
+
+
 def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
           fit="AgeDepSpline", method="ratio", period=0.1, nyrs0=50, f=0.5,
           pos_slope=False, biweight=True, min_n=None, preset=None,
@@ -214,18 +235,8 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
 
     po_map = _po_map(rwl, po)
 
-    # 1. rank trees and split into n_curves near-equal classes
-    key = _sort_key(rwl, po_map, sort)
-    order = list(np.argsort(key, kind="stable"))
-    groups = [g for g in np.array_split(np.array(order), n_curves) if len(g) > 0]
-    if len(groups) < n_curves:
-        warnings.warn("mrcs: only %d non-empty curve(s) for n_curves=%d "
-                      "(too few series)." % (len(groups), n_curves))
-    for gi, g in enumerate(groups):
-        if len(g) < _MIN_TREES_PER_CURVE:
-            warnings.warn("mrcs: curve %d has %d trees (< %d); multiple RCS is "
-                          "unreliable with sparsely-replicated curves."
-                          % (gi, len(g), _MIN_TREES_PER_CURVE))
+    # 1. rank trees and split into n_curves near-equal classes (shared helper)
+    alloc, groups = _allocate(rwl, po_map, n_curves, sort, label="mrcs")
 
     # 2. standardise each class by its own regional curve (via single-curve rcs)
     rwi = rwl.copy().astype(float)
