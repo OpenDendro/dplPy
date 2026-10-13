@@ -33,6 +33,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 |---|---|---|
 | `rwl.stats` | `stats` | Per-series mean, stdev, skew, kurtosis, gini, AR1, … |
 | `rwl.report` | `report` | |
+| `rwl.check` | `check` | Findings-as-data QC checker (dplR 1.8.0 `rwl.check`) |
 | `summary` | `summary` | |
 | `sens1`, `sens2` | `sens1`, `sens2` | Mean sensitivity (kept out of `stats`, as in dplR) |
 | `gini.coef` | (column in `stats`) | Reported in the `stats` table |
@@ -65,7 +66,8 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | `ccf.series.rwl` | `series_corr` | Cross-correlation view of one series |
 | `interseries.cor` | `interseries_corr` | Overall interseries correlation |
 | `xdate.floater` | `xdate_floater` | Extended with Wilson (2026) t-statistics |
-| *(COFECHA has no dplR equivalent)* | `xdate(preset="COFECHA")`, `xdate_report` | COFECHA emulation and batch report |
+| `xdate.report` | `xdate_report` | COFECHA-style batch report (`xdate.report` arrived in dplR 1.8.0) |
+| *(COFECHA itself has no dplR equivalent)* | `xdate(preset="COFECHA")` | Full COFECHA emulation mode |
 
 ### Signal strength, agreement & indices
 
@@ -100,9 +102,12 @@ dplPy adds LiPD interchange, which dplR does not provide:
 dplPy targets the core standardization, chronology, and crossdating workflow.
 Some specialized dplR tools — for example superposed epoch analysis, spectral and
 wavelet methods, skeleton-plot crossdating, and interactive detrending — are not
-yet available. Check the [API Reference](../reference/io.md) for the current
-surface, and the [project repository](https://github.com/opendendro/dplpy) to
-request or contribute a port.
+yet available. dplR 1.8.0 also added `insert.ring` (insert a missing or false
+ring and refit the series length), `chron.ci` (bootstrap chronology confidence
+intervals), and `read.sheet` / `write.sheet` (tidy/long and delimited spreadsheet
+I/O); these are not yet in dplPy. Check the [API Reference](../reference/io.md) for
+the current surface, and the [project repository](https://github.com/opendendro/dplpy)
+to request or contribute a port.
 
 ## A note on fidelity
 
@@ -110,5 +115,6 @@ Where dplPy claims to reproduce a dplR (or COFECHA, or ARSTAN) method, the
 behavior is checked against those reference implementations, and deliberate
 departures are documented in the relevant function's docstring. The clearest
 example is crossdating: `xdate`'s A flag reproduces dplR's `corr.rwl.seg`
-exactly, while its B (lag-shift) flag is a documented COFECHA-style addition that
-dplR does not have.
+exactly. dplR 1.8.0 added a lag search of its own (`corr.rwl.seg(lag.max=)`) but
+reports it separately and still flags on significance alone; dplPy's B (lag-shift)
+flag folds that lag result into an explicit COFECHA-style flag.

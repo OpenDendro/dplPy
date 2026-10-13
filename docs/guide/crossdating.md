@@ -45,26 +45,30 @@ The two flags are **mutually exclusive**, COFECHA-style:
 - **B flag** — the segment correlates *better at a non-dated lag* than where it is
   dated (its best lag ≠ 0), hinting at a possible dating shift. dplPy's B flag
   follows COFECHA (it fires whenever the best match is at a non-zero lag, with no
-  extra margin); dplR's `corr.rwl.seg` has no B flag, so this is a deliberate,
-  documented addition, on in both the default and COFECHA modes.
+  extra margin). dplR 1.8.0's `corr.rwl.seg` runs the same lag search (`lag.max`,
+  reporting `best.lag` and `best.rho`), but keeps its returned flags
+  significance-only rather than raising a separate B flag; dplPy promotes that lag
+  result to an explicit B flag, on in both the default and COFECHA modes.
 - **A flag** — the dated (lag-0) position *is* the best match, but its correlation
   is still not significant at `p_val` (default 0.05): a weak but correctly-placed
   segment. An A flag's best lag is therefore always 0.
 
-dplR flags every non-significant segment and has no lag concept; dplPy splits
-those into A (lag 0 is best) and B (a better lag exists), so a segment is never
-both. The per-segment lag table is printed for both flag kinds.
+dplR 1.8.0 computes a per-segment lag search (`best.lag` / `best.rho`) but still
+flags on significance alone; dplPy splits its flags into A (lag 0 is best) and B
+(a better lag exists), so a segment is never both. The per-segment lag table is
+printed for both flag kinds.
 
 Set `plot=True` (or call `xdate_plot`) for a dplR-style crossdating plot, or
 use `series_corr` to drill into one series.
 
 !!! note "The plot shows significance only — read the text flags too"
-    The crossdating plot is faithful to dplR's `plot.crs`: it colours a segment
-    red purely on **significance** (the A screen). It does **not** show B (lag)
-    flags — dplR's plot has no such concept. A B-flagged segment that still dates
-    *significantly* is drawn blue, so it can look fine on the plot even though
-    `xdate()` reports it as a possible dating shift. Always read the text flag
-    report alongside the plot to catch B flags.
+    dplPy's crossdating plot colours a segment red purely on **significance** (the
+    A screen) and does **not** mark B (lag) flags. A B-flagged segment that still
+    dates *significantly* is drawn blue, so it can look fine on the plot even though
+    `xdate()` reports it as a possible dating shift. (dplR 1.8.0's `plot.crs` does
+    now tint lag segments when `corr.rwl.seg` is run with `lag.max > 0`; dplPy keeps
+    the lag flags in the text report for now.) Always read the text flag report
+    alongside the plot to catch B flags.
 
 ## COFECHA emulation
 
