@@ -45,6 +45,29 @@ def tbrm(data, c=9):
     return np.sum(w*data)/np.sum(w)
 
 
+def _nanmedian_rows(mat):
+    """Exact per-row median of a 2-D array, ignoring NaN. Faster than
+    ``np.nanmedian(mat, axis=1)``, which routes a NaN-containing array through
+    numpy's masked-array sort path. Here we sort once (numpy orders NaN last) and
+    read the middle of each row's non-NaN count. A row that is entirely NaN
+    yields NaN.
+    """
+    mat = np.asarray(mat, dtype=float)
+    n = mat.shape[0]
+    out = np.full(n, np.nan)
+    if mat.shape[1] == 0:
+        return out
+    s = np.sort(mat, axis=1)                         # NaN sorts to the end
+    cnt = np.count_nonzero(~np.isnan(mat), axis=1)   # real values per row
+    good = cnt > 0
+    rows = np.nonzero(good)[0]
+    cg = cnt[good]
+    lo = (cg - 1) // 2
+    hi = cg // 2
+    out[good] = 0.5 * (s[rows, lo] + s[rows, hi])    # middle value(s) of the real part
+    return out
+
+
 def tbrm_rows(mat, c=9):
     """Vectorized, NaN-aware Tukey biweight robust mean applied to every ROW of a
     2-D array ``mat`` (nrows x k); returns a length-nrows vector.
@@ -56,10 +79,8 @@ def tbrm_rows(mat, c=9):
     """
     mat = np.asarray(mat, dtype=float)
     e = 1e-6
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN rows
-        med = np.nanmedian(mat, axis=1)
-        s = np.nanmedian(np.abs(mat - med[:, None]), axis=1)
+    med = _nanmedian_rows(mat)
+    s = _nanmedian_rows(np.abs(mat - med[:, None]))
     denom = c * s + e
     u = (mat - med[:, None]) / denom[:, None]
     w = np.where(np.abs(u) <= 1, (1 - u ** 2) ** 2, 0.0)

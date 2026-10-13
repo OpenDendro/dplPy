@@ -10,6 +10,17 @@ and commit log.
 
 ## [Unreleased]
 
+### Performance
+- **Faster biweight master and horizontal detrend.** `tbrm_rows` (the biweight
+  row-mean behind the crossdating master, `chron`, and `chron_ars`) now takes
+  each row's median with a single sort instead of `np.nanmedian`, which on a
+  NaN-filled matrix routes through numpy's masked-array sort path. The
+  horizontal detrend used by `series_corr` and `interseries_corr` now reindexes
+  each detrended series onto the full year index instead of an element-by-element
+  `Series.combine`. Both are exact (same results to floating-point noise). On a
+  356-series subfossil collection `interseries_corr` drops from about 38 s to
+  13 s and `xdate` from about 43 s to 16 s.
+
 ### Added
 - **`dpl.check`** runs integrity checks over a ring-width collection and
   returns the findings as a table, one row per finding, each with a stable

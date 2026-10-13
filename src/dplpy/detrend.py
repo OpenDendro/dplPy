@@ -406,12 +406,14 @@ def detrend_series(data: pd.Series, fit, method, plot, period=None,
 
         plt.show()
 
+    # reindex the detrended values (on their measured years) back onto the full
+    # series index, so leading, trailing, and interior gap years stay NaN
     rwi = pd.Series(detrended_data, index=pd.Index(data=x, name="Year"),
-                    name=series_name).combine(data, pick_first)
+                    name=series_name).reindex(data.index)
     if not return_info:
         return rwi
     curve = pd.Series(yi, index=pd.Index(data=x, name="Year"),
-                      name=series_name).combine(data, pick_first)
+                      name=series_name).reindex(data.index)
     # dplR's "dirty dog": a curve that went non-positive, or a fit that had to
     # fall back to the series mean.
     dirty = bool(np.any(yi <= 0)) or (
