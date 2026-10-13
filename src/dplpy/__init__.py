@@ -51,6 +51,7 @@ from .stats import stats
 from .samp_stats import samp_stats
 from .fill_internal import fill_internal
 from .report import report
+from .check import check
 from .plot import plot
 from .detrend import detrend
 from .autoreg import ar_func, autoreg
@@ -95,6 +96,7 @@ __all__ = [
     "stats",
     "samp_stats",
     "report",
+    "check",
     "plot",
     "detrend",
     "fill_internal",

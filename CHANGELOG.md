@@ -11,6 +11,23 @@ and commit log.
 ## [Unreleased]
 
 ### Added
+- **`dpl.check`** runs integrity checks over a ring-width collection and
+  returns the findings as a table, one row per finding, each with a stable
+  check id and a severity (`error`/`warning`/`note`). It is the data
+  counterpart to `report`: `report` prints what a file looks like, `check`
+  reports what is wrong with it, so a report over one file and a sweep over a
+  whole archive are the same call. A sweep runs over a directory or a list of
+  paths, and `summary=True` returns one row per file for ranking an archive.
+  Modeled on dplR 1.8.0's `rwl.check` (A. G. Bunn) and built on dplPy's own
+  reader, spline, and crossdating pieces, so it keeps dplPy's read tolerance.
+  Checks cover collection structure, per-series shape (internal gaps,
+  duplicates, zero variance, repeated-value runs that expose a constant used as
+  a not-measured placeholder), implausible values and precision, locally-absent
+  rings, crossdating against a leave-one-out master (lag, poor-fit outliers,
+  weak common signal), raw-file hygiene (mixed line endings, tabs, non-ASCII,
+  missing final newline, header span), and read provenance from the reader's
+  `df.attrs`. Every check runs guarded, so a check that fails becomes a finding
+  rather than stopping the run.
 - **`dpl.mrcs`** performs multiple-curve Regional Curve Standardization (a port
   of CRUST's multiple-RCS option, Melvin & Briffa 2014, Part 2): trees are sorted
   by relative growth rate (or age/diameter) and split into `n_curves` equal-count

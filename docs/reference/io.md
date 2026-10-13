@@ -40,6 +40,10 @@ guide for worked examples.
 
 ::: dplpy.report.report
 
+## check
+
+::: dplpy.check.check
+
 ## SiteMetadata
 
 ::: dplpy.site_metadata.SiteMetadata
