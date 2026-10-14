@@ -1,4 +1,6 @@
-# Installing pip requirements
+# Extra packages for running the example notebooks locally.
+# dplPy's own dependencies install with the package (pip install dplpy);
+# these are just the Jupyter tooling for opening the notebooks.
 csaps>=1.1.0
-jupyter==1.0.0
-notebook==6.4.11
+jupyter>=1.1
+notebook>=7
