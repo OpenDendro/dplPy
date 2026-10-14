@@ -2,7 +2,7 @@
 
 ## Requirements
 
-dplPy requires **Python 3.10 or newer**. Its core scientific dependencies
+dplPy requires **Python 3.11 or newer**. Its core scientific dependencies
 (NumPy, pandas, SciPy, matplotlib, statsmodels, csaps) are installed
 automatically.
 
@@ -30,7 +30,7 @@ pip install "dplpy[lipd]"
 
 ## Install with conda / mamba
 
-If you prefer a conda environment, create one with Python 3.10+ and install
+If you prefer a conda environment, create one with Python 3.11+ and install
 dplPy into it with pip:
 
 ```bash

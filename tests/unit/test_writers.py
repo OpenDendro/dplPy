@@ -17,8 +17,10 @@ def test_write_invalid_type_data():
     
     with pytest.raises(TypeError) as errorMsg:
         dpl.writers(input_df['SeriesA'], "label", "ext")
-    expected_msg = "Expected dataframe input, got <class 'pandas.core.series.Series'> instead."
-    assert expected_msg == str(errorMsg.value)
+    # the exact type repr varies by pandas version (pandas.core.series.Series
+    # before pandas 3.0, pandas.Series after), so check the stable part
+    msg = str(errorMsg.value)
+    assert msg.startswith("Expected dataframe input, got") and "Series" in msg
 
 
 def test_write_invalid_type_label():

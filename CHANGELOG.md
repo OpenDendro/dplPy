@@ -10,6 +10,19 @@ and commit log.
 
 ## [Unreleased]
 
+### Changed
+- **Supported Python is now 3.11-3.15.** Added 3.14 and 3.15 to the tested
+  matrix and dropped 3.10 (end-of-life). `requires-python` is now `>=3.11`, and
+  the package advertises 3.11-3.15 via trove classifiers.
+- **Lifted the `pandas<3` upper cap** (now `pandas>=2.2.2`). dplPy installs and
+  runs on pandas 3.0, which is required on Python 3.15 (no pandas 2.x wheels are
+  built for 3.15). The library code was already pandas-3.0 clean; two tests were
+  updated for pandas 3.0's copy-on-write (a `to_numpy` array is now read-only) and
+  its changed `type()` repr.
+
+### Removed
+- Python 3.10 support (reached end-of-life). Use Python 3.11 or newer.
+
 ### Performance
 - **Faster biweight master and horizontal detrend.** `tbrm_rows` (the biweight
   row-mean behind the crossdating master, `chron`, and `chron_ars`) now takes

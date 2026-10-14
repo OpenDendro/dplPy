@@ -124,7 +124,7 @@ def test_chron_ars_arstan_default_reredden_the_residual_mean():
     from dplpy.chron_ars import _pooled_ar, _prewhiten_ar_yw, _post_ar, _aggregate
 
     df = _ar2_dataset(n_series=10, n_years=250, phi=(0.6, -0.25), seed=3)
-    x = df.to_numpy(dtype=float)
+    x = df.to_numpy(dtype=float, copy=True)
     n_series = x.shape[1]
 
     out_ar = _pooled_ar(x, max_lag=10, first_aic_min=True)
@@ -151,7 +151,7 @@ def test_chron_ars_methods_differ_under_staggered_depth():
     # depth changes through time, so the two ars_methods should differ here.
     df = _ar2_dataset(n_series=10, n_years=250, phi=(0.6, -0.25), seed=5)
     # stagger onsets so early years have shallow depth
-    arr = df.to_numpy(dtype=float)
+    arr = df.to_numpy(dtype=float, copy=True)
     for s in range(arr.shape[1]):
         arr[: s * 12, s] = np.nan
     df = pd.DataFrame(arr, index=df.index, columns=df.columns)
@@ -221,7 +221,7 @@ def test_chron_ars_backcast_reverse_ar_formula():
 def _staggered_ar2(n_series=10, n_years=250, phi=(0.6, -0.25), seed=4):
     """AR(2) dataset with staggered onsets (rising sample depth)."""
     df = _ar2_dataset(n_series=n_series, n_years=n_years, phi=phi, seed=seed)
-    arr = df.to_numpy(dtype=float)
+    arr = df.to_numpy(dtype=float, copy=True)
     for s in range(arr.shape[1]):
         arr[: s * 12, s] = np.nan
     return pd.DataFrame(arr, index=df.index, columns=df.columns)
@@ -256,7 +256,7 @@ def test_chron_ars_arstan_ars_vsc_is_stabilize_then_reredden():
                                  _aggregate)
 
     df = _staggered_ar2(seed=6)
-    x = df.to_numpy(dtype=float)
+    x = df.to_numpy(dtype=float, copy=True)
     ns = x.shape[1]
     oa = _pooled_ar(x, 10, True)
     p = oa["order"]
@@ -283,7 +283,7 @@ def test_chron_ars_dplr_ars_vsc_is_posthoc_on_reddened():
     from dplpy.chron_ars import _pooled_ar, _prewhiten_ar_yw
 
     df = _staggered_ar2(seed=8)
-    x = df.to_numpy(dtype=float)
+    x = df.to_numpy(dtype=float, copy=True)
     ns = x.shape[1]
     p = _pooled_ar(x, 10, True)["order"]
     rwi_clean = np.column_stack([_prewhiten_ar_yw(x[:, s], p) for s in range(ns)])
@@ -308,7 +308,7 @@ def test_pooled_acf_matches_dplR_reference_ca533():
     from dplpy.chron_ars import _pooled_ar
     data = dpl.readers("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
-    out_ar = _pooled_ar(rwi.to_numpy(dtype=float), max_lag=10, first_aic_min=True)
+    out_ar = _pooled_ar(rwi.to_numpy(dtype=float, copy=True), max_lag=10, first_aic_min=True)
     # dplR pooled ACF (lags 0..5) and selected order, from chron.ars() on dplR's
     # own spline detrend (matches dplPy's new detrend + pooled AR to ~1e-8).
     ref_acf = [1.0, 0.51626627, 0.35330050, 0.25346321, 0.21923437, 0.19473382]
