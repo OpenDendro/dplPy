@@ -175,3 +175,97 @@ def test_chron_invalid_stabilize_method():
     rwi = _staggered_rwi()
     with pytest.raises(ValueError):
         dpl.chron(rwi, plot=False, stabilize="nope")
+
+# --- chron(ci=True): bootstrap confidence intervals on the standard chronology ---
+
+import os
+import io
+import contextlib
+
+
+def _ca533_rwi():
+    here = os.path.dirname(__file__)
+    path = os.path.join(here, "..", "data", "rwl", "ca533.rwl")
+    buf = io.StringIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(buf):
+            return dpl.detrend(dpl.readers(path), fit="Spline", plot=False)
+
+
+def _quiet(fn, *a, **k):
+    buf = io.StringIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with contextlib.redirect_stdout(buf):
+            return fn(*a, **k)
+
+
+def test_ci_default_off_no_columns():
+    rwi = _ca533_rwi()
+    out = _quiet(dpl.chron, rwi, plot=False)
+    assert "lower_ci" not in out.columns and "upper_ci" not in out.columns
+
+
+def test_ci_columns_and_order():
+    rwi = _ca533_rwi()
+    out = _quiet(dpl.chron, rwi, plot=False, ci=True, R=100, seed=0)
+    assert list(out.columns) == ["std", "lower_ci", "upper_ci", "samp_depth"]
+    # samp_depth equals the per-year count of measured series
+    assert (out["samp_depth"].to_numpy() == rwi.notna().sum(axis=1).to_numpy()).all()
+
+
+def test_ci_std_matches_plain_chron():
+    rwi = _ca533_rwi()
+    plain = _quiet(dpl.chron, rwi, plot=False)
+    out = _quiet(dpl.chron, rwi, plot=False, ci=True, R=200, seed=0)
+    common = plain.index.intersection(out.index)
+    assert np.allclose(plain.loc[common, "std"].to_numpy(),
+                       out.loc[common, "std"].to_numpy(), equal_nan=True)
+
+
+def test_ci_brackets_std():
+    out = _quiet(dpl.chron, _ca533_rwi(), plot=False, ci=True, R=300, seed=1)
+    w = out[out["samp_depth"] >= 2]
+    assert (w["lower_ci"] <= w["std"] + 1e-9).all()
+    assert (w["upper_ci"] >= w["std"] - 1e-9).all()
+
+
+def test_ci_reproducible_with_seed():
+    rwi = _ca533_rwi()
+    a = _quiet(dpl.chron, rwi, plot=False, ci=True, R=200, seed=42)
+    b = _quiet(dpl.chron, rwi, plot=False, ci=True, R=200, seed=42)
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_ci_higher_conf_is_wider():
+    rwi = _ca533_rwi()
+    c90 = _quiet(dpl.chron, rwi, plot=False, ci=True, conf=0.90, R=400, seed=7)
+    c99 = _quiet(dpl.chron, rwi, plot=False, ci=True, conf=0.99, R=400, seed=7)
+    w = c90["samp_depth"] >= 5
+    width90 = (c90["upper_ci"] - c90["lower_ci"])[w]
+    width99 = (c99["upper_ci"] - c99["lower_ci"])[w]
+    assert (width99 >= width90 - 1e-9).all()
+
+
+def test_ci_thin_year_nan_and_warns():
+    idx = pd.Index(range(1990, 2001), name="Year")
+    df = pd.DataFrame({"A": np.linspace(0.9, 1.1, 11),
+                       "B": np.linspace(1.1, 0.9, 11)}, index=idx)
+    df.loc[2000, "B"] = np.nan                       # only one series at 2000
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        with pytest.warns(UserWarning):
+            out = dpl.chron(df, plot=False, ci=True, R=100, seed=0)
+    assert out.loc[2000, "samp_depth"] == 1
+    assert np.isnan(out.loc[2000, "lower_ci"])
+    assert np.isnan(out.loc[2000, "upper_ci"])
+    assert not np.isnan(out.loc[2000, "std"])         # chronology value still present
+
+
+def test_ci_arithmetic_mean_option():
+    rwi = _ca533_rwi()
+    out = _quiet(dpl.chron, rwi, plot=False, ci=True, biweight=False, R=200, seed=0)
+    w = out[out["samp_depth"] >= 2]
+    assert (w["lower_ci"] <= w["std"] + 1e-9).all()
+    assert (w["upper_ci"] >= w["std"] - 1e-9).all()

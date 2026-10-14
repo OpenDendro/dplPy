@@ -50,6 +50,7 @@ from .summary import summary
 from .stats import stats
 from .samp_stats import samp_stats
 from .fill_internal import fill_internal
+from .edit_rwl import edit_rwl
 from .report import report
 from .check import check
 from .plot import plot
@@ -100,6 +101,7 @@ __all__ = [
     "plot",
     "detrend",
     "fill_internal",
+    "edit_rwl",
     "ar_func",
     "autoreg",
     "chron",

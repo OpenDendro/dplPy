@@ -33,19 +33,23 @@ __license__ = "GNU GPLv3"
 #              whether to plot the results of the chronology (default True).
 
 
+import warnings
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from ._validate import _require_dataframe
 from ._plot_style import style_axes, finalize_font, ACCENT
 import numpy as np
-from .tbrm import tbrm
+from .tbrm import tbrm, tbrm_rows
+import scipy.stats
 from .autoreg import ar_func
 
 # Main function for creating chronology of series. Formats input, prewhitens if necessary
 # and produces output mean value chronology in a dataframe.
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
           max_lag=10, aic=True, ar_method="yw", first_aic_min=False,
-          stabilize=None, stabilize_kwargs=None):
+          stabilize=None, stabilize_kwargs=None,
+          ci=False, conf=0.95, R=1000, seed=None):
     """Build a mean-value chronology from ring-width indices.
 
     Averages the series (detrended RWI) year by year into a standard chronology,
@@ -83,13 +87,26 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
         extra keyword arguments forwarded to :func:`stabilize_chron` when stabilize
         is set. The chronology, column, source RWI matrix, and sample depth are
         supplied automatically and may not be overridden here.
+    ci : boolean, default False
+        also compute a bootstrap confidence interval for the standard chronology,
+        adding `lower_ci` and `upper_ci` columns. Each year's available series are
+        resampled `R` times and the normal-approximation interval of the bootstrap
+        means is taken. Years with fewer than two series get NaN limits (with a
+        warning). The interval is only for the standard chronology.
+    conf : float, default 0.95
+        confidence level, used when `ci` is True.
+    R : int, default 1000
+        number of bootstrap replicates per year, used when `ci` is True.
+    seed : int or None, default None
+        seed for the `ci` bootstrap, for reproducible intervals.
 
     Returns
     -------
     data : pandas dataframe
         a mean-value chronology indexed by year, with columns std (standard
         chronology), res (residual chronology, only when prewhiten is True), and
-        samp_depth. When stabilize is set, a stabilized *_vsc column is added next
+        samp_depth. With ci=True, lower_ci and upper_ci columns for the standard
+        chronology. When stabilize is set, a stabilized *_vsc column is added next
         to each base chronology.
 
     Notes
@@ -149,6 +166,11 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     chron_res = pd.concat([chron_res, pd.Series(data=depths, name="samp_depth")], axis=1)
     chron_res.set_index('Year', inplace = True, drop = True)
 
+    if ci:
+        lo, hi = _bootstrap_ci(rwi_data, biweight, conf, R, seed)
+        chron_res["lower_ci"] = lo.reindex(chron_res.index)
+        chron_res["upper_ci"] = hi.reindex(chron_res.index)
+
     if skw is not None:
         # std_vsc: stabilize the standard chronology with the standard matrix rbar
         chron_res["std_vsc"] = stabilize_chron(
@@ -162,10 +184,51 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
                  if c in chron_res.columns]
         chron_res = chron_res[order]
 
+    if ci:
+        cols = [c for c in chron_res.columns if c not in ("lower_ci", "upper_ci")]
+        at = cols.index("std") + 1
+        cols[at:at] = ["lower_ci", "upper_ci"]
+        chron_res = chron_res[cols]
+
     if plot:
         plot_chron(years, depths, means, whitened_means)
 
     return chron_res
+
+
+def _bootstrap_ci(rwi_data, biweight, conf, R, seed):
+    """Per-year normal-approximation bootstrap CI for the standard chronology.
+
+    Resamples each year's available series R times, takes the (biweight or
+    arithmetic) mean of each replicate, and returns the normal-approximation
+    interval (as dplR's chron.ci does). Returns two year-indexed Series
+    (lower, upper); years with fewer than two series are NaN.
+    """
+    rng = np.random.default_rng(seed)
+    z = scipy.stats.norm.ppf((1.0 + conf) / 2.0)
+    stat = tbrm if biweight else (lambda a: float(np.mean(a)))
+    stat_rows = tbrm_rows if biweight else (lambda m: np.nanmean(m, axis=1))
+    M = rwi_data.to_numpy(dtype=float)
+    lo = np.full(M.shape[0], np.nan)
+    hi = np.full(M.shape[0], np.nan)
+    n_thin = 0
+    for i in range(M.shape[0]):
+        avail = M[i][~np.isnan(M[i])]
+        k = avail.size
+        if k < 2:
+            n_thin += int(k == 1)
+            continue
+        t0 = stat(avail)
+        t_star = np.asarray(stat_rows(avail[rng.integers(0, k, size=(R, k))]),
+                            dtype=float)
+        centre = t0 - (float(np.mean(t_star)) - t0)          # boot.ci "norm"
+        half = z * float(np.std(t_star, ddof=1))
+        lo[i], hi[i] = centre - half, centre + half
+    if n_thin:
+        warnings.warn("chron: ci=True -- %d year(s) had fewer than 2 series and "
+                      "were given NaN confidence limits." % n_thin)
+    idx = pd.Index(np.asarray(rwi_data.index), name=rwi_data.index.name)
+    return pd.Series(lo, index=idx), pd.Series(hi, index=idx)
 
 # Does the work of creating the actual chronology by finding the mean RWI for each year
 # in the dataset and keeping track of the sample size.
