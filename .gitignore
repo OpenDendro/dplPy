@@ -121,3 +121,6 @@ dmypy.json
 
 # dplR comparison notebooks (require R + dplR + rpy2; kept local for now)
 /notebooks/dplR_comparison/
+
+# Example notebooks copied in from notebooks/ at docs build time
+docs/examples/

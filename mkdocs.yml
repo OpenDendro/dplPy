@@ -53,6 +53,12 @@ plugins:
             members_order: source
             filters:
               - "!^_"
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+
+hooks:
+  - mkdocs_hooks.py
 
 # Options
 extra:
@@ -113,6 +119,10 @@ nav:
       - Statistics & agreement: guide/statistics.md
       - LiPD interchange: guide/lipd.md
       - Coming from dplR: guide/coming-from-dplr.md
+  - Examples:
+      - Reading data: examples/readers_demonstration.ipynb
+      - Crossdating: examples/crossdating_demonstration.ipynb
+      - Regional Curve Standardization: examples/rcs_demonstration.ipynb
   - API Reference:
       - Input & output: reference/io.md
       - Detrending & standardization: reference/detrending.md
