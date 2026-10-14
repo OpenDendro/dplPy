@@ -35,6 +35,20 @@ and commit log.
   13 s and `xdate` from about 43 s to 16 s.
 
 ### Added
+- **`dpl.edit_rwl`** inserts, deletes, or changes a single ring in a series,
+  selected by `action="insert"/"delete"/"change"` -- the correction that pairs
+  with the crossdating checks (find a misdated ring with `xdate`/`series_corr`/
+  `check`, fix it here). It folds dplR's `insert.ring` and `delete.ring` into one
+  dispatch function and adds a value edit, keeps dplR's `fix_last`/`fix_length`
+  semantics, and always returns a copy (it never edits in place).
+- **`dpl.chron` can return bootstrap confidence intervals** for the standard
+  chronology with `ci=True`, adding `lower_ci` and `upper_ci` columns (a
+  normal-approximation interval from resampling each year's series; `conf`, `R`,
+  and `seed` tune it). A confidence interval is part of building a chronology, so
+  it is a builder option rather than a separate function. Years with fewer than
+  two series get NaN limits with a warning. The interval covers the standard
+  mean-value chronology only; residual and ARSTAN chronology intervals are left
+  to a future full-pipeline bootstrap.
 - **`dpl.check`** runs integrity checks over a ring-width collection and
   returns the findings as a table, one row per finding, each with a stable
   check id and a severity (`error`/`warning`/`note`). It is the data

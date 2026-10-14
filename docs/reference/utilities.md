@@ -7,6 +7,10 @@ helpers.
 
 ::: dplpy.fill_internal.fill_internal
 
+## edit_rwl
+
+::: dplpy.edit_rwl.edit_rwl
+
 ## po_to_wc
 
 ::: dplpy.pith.po_to_wc
