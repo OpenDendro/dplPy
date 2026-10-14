@@ -35,6 +35,21 @@ and commit log.
   13 s and `xdate` from about 43 s to 16 s.
 
 ### Added
+- **TRiDaS (Tree Ring Data Standard) read and write.** `dpl.read_tridas`
+  parses a TRiDaS XML file into a typed `TridasProject` (ring-width tables,
+  derived chronologies, undated/floating series, and the full
+  project/object/element/sample/radius/series metadata); a standalone
+  `dpl.write_tridas` emits a TRiDaS 1.2.2 file from a ring-width frame and/or
+  a chronology plus a `TridasMetadata`, with mandatory-field validation.
+  `dpl.readers()` now detects a `<tridas>` file and returns the ring-width
+  frame for the common single-table case (a multi-table or chronology file
+  points you to `read_tridas`), and `dpl.writers(format="tridas")` delegates
+  to the writer. Modeled on dplR's `read.tridas`/`write.tridas` but written as
+  a stdlib ElementTree walk rather than a port. Missing values are read as
+  NaN (never 0, so a measured 0 stays a real locally-absent ring); units
+  convert to millimetres and reuse dplPy's precision model; chronologies map
+  to `derivedSeries` (sample depth round-trips as each value's `count`).
+  v1 keeps duplicate series separate with a warning rather than merging.
 - **`dpl.edit_rwl`** inserts, deletes, or changes a single ring in a series,
   selected by `action="insert"/"delete"/"change"` -- the correction that pairs
   with the crossdating checks (find a misdated ring with `xdate`/`series_corr`/

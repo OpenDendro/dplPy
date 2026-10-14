@@ -47,6 +47,28 @@ import numpy as np
 from ._validate import _require_dataframe
 from .site_metadata import SiteMetadata
 
+
+def _tridas_metadata_from_header(header):
+    """Map a writers() `header` (a SiteMetadata, a dict, or None) onto what
+    write_tridas() wants: a (metadata, taxon) pair. SiteMetadata is site-level,
+    so its site name becomes the object title and its species the element taxon.
+    Returns (metadata_or_None, taxon_or_None); the convenience path writes with
+    validate=False, so missing fields become empty placeholders."""
+    if header is None:
+        return (None, None)
+    if isinstance(header, SiteMetadata):
+        md = {
+            "project_title": header.site_name,
+            "investigator": header.investigators,
+            "objects": [{"title": header.site_name, "type": "unknown"}],
+        }
+        return (md, header.species_name)
+    if isinstance(header, dict):
+        return (header, header.get("taxon"))
+    # a TridasMetadata (or anything write_tridas accepts) passes through
+    return (header, None)
+
+
 def writers(data: pd.DataFrame, label: str, format: str, header=None,
             chronology_type="standard", column="std", prec=0.001, gaps=-99,
             sep="\t", float_format="%.4f", na_rep="NA"):
@@ -108,6 +130,24 @@ def writers(data: pd.DataFrame, label: str, format: str, header=None,
 
     if not isinstance(format, str):
         raise TypeError("Expected format to be of type str, not " + str(type(format)))
+
+    # TRiDaS is written by the standalone writer (its metadata surface dwarfs the
+    # other formats). This is the convenience path: treat `data` as ring widths
+    # unless it carries a samp_depth column (a chronology). The full-control path,
+    # with mandatory-field validation, is dpl.write_tridas().
+    if format == "tridas":
+        from .tridas import write_tridas, TridasMetadata
+        cols = [str(c).lower() for c in data.columns]
+        is_crn = any(c.startswith("samp_depth") or c.startswith("samp.depth")
+                     for c in cols)
+        md, taxon = _tridas_metadata_from_header(header)
+        out = write_tridas(label,
+                           rwl=None if is_crn else data,
+                           crn=data if is_crn else None,
+                           metadata=md, taxon=taxon, prec=prec, validate=False)
+        print("Writing to " + out)
+        print("Done.")
+        return
 
     filename = label + "." + format
     print("Writing to " + filename)

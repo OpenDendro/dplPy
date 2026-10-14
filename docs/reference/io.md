@@ -47,3 +47,19 @@ guide for worked examples.
 ## SiteMetadata
 
 ::: dplpy.site_metadata.SiteMetadata
+
+## read_tridas
+
+::: dplpy.tridas.read_tridas
+
+## write_tridas
+
+::: dplpy.tridas.write_tridas
+
+## TridasProject
+
+::: dplpy.tridas.TridasProject
+
+## TridasMetadata
+
+::: dplpy.tridas.TridasMetadata

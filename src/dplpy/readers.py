@@ -92,10 +92,13 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
         auto-detects it the way dplR does; pass ``True``/``False`` to force.
     skip_lines : int, default 0
         how many of the first lines of the file to skip when reading it.
-    format : {None, "tucson", "csv"}, default None
+    format : {None, "tucson", "csv", "tridas"}, default None
         force the file format regardless of suffix. ``None`` infers it: .csv as CSV,
-        .rwl/.raw as Tucson, any other suffix by sniffing content. ("rwl"/"raw" are
-        aliases for "tucson".)
+        .rwl/.raw as Tucson, .xml as TRiDaS, any other suffix by sniffing content.
+        ("rwl"/"raw" are aliases for "tucson"; "xml" for "tridas".) A TRiDaS file is
+        parsed and, for the common single-table case, returned as one ring-width
+        DataFrame; a multi-table or chronology TRiDaS file raises with a pointer to
+        ``dpl.read_tridas()``, which returns the full ``TridasProject``.
     strict : bool, default True
         ``True`` refuses a file with an unrecoverable problem (fail-loud). ``False``
         (salvage) recovers as much as possible: a self-overlapping or
@@ -150,21 +153,35 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
             fmt = "tucson"
         elif f == "csv":
             fmt = "csv"
+        elif f in ("tridas", "xml"):
+            fmt = "tridas"
         else:
-            raise ValueError("format must be None, 'tucson', or 'csv'")
+            raise ValueError("format must be None, 'tucson', 'csv', or 'tridas'")
     elif filename.upper().endswith(".CSV"):
         fmt = "csv"
     elif filename.upper().endswith((".RWL", ".RAW")):
         fmt = "tucson"
+    elif filename.upper().endswith(".XML"):
+        fmt = "tridas"
     else:
         fmt = _sniff_format(filename, is_url)
         if fmt is None:
             raise ValueError(
-                "Could not determine the file format; pass format='tucson' or 'csv' "
-                "(suffixes: .csv, .rwl, .raw)."
+                "Could not determine the file format; pass format='tucson', 'csv', "
+                "or 'tridas' (suffixes: .csv, .rwl, .raw, .xml)."
             )
         warnings.warn("File suffix '" + FORMAT + "' not recognized; inferred "
                       + fmt + " format from the file contents.")
+
+    # TRiDaS XML is a different shape (a hierarchy of possibly many tables). For
+    # the common single-table file we return one ring-width frame; a multi-table
+    # or chronology file raises with a pointer to dpl.read_tridas().
+    if fmt == "tridas":
+        if is_url:
+            raise ValueError("reading TRiDaS from a URL is not supported yet; "
+                             "download the .xml file and read it locally.")
+        from .tridas import read_tridas_single
+        return read_tridas_single(filename)
 
     # open the input file and read its data into a pandas dataframe
     if fmt == "csv":
@@ -743,6 +760,10 @@ def _sniff_format(filename, is_url):
         lines = _fetch_url_lines(filename)
     else:
         lines = _read_text(filename)[0].split("\n")
+    # TRiDaS: a <tridas> element in the first lines (an XML declaration or
+    # comments may precede it, so scan a block rather than line 1 alone).
+    if any("<tridas" in ln for ln in lines[:30]):
+        return "tridas"
     sample = []
     for ln in lines:
         ln = ln.rstrip("\r\n")

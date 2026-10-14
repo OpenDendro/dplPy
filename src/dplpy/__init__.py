@@ -86,6 +86,7 @@ from .simplesignalfree import ssf
 from .sss import sss
 from .writers import writers
 from .site_metadata import SiteMetadata
+from .tridas import read_tridas, write_tridas, TridasProject, TridasMetadata
 from .lipd import to_lipd, from_lipd, lipd_metadata
 from .cli import help, readme
 
@@ -140,6 +141,10 @@ __all__ = [
     "sss",
     "writers",
     "SiteMetadata",
+    "read_tridas",
+    "write_tridas",
+    "TridasProject",
+    "TridasMetadata",
     "to_lipd",
     "from_lipd",
     "lipd_metadata",
