@@ -81,36 +81,29 @@ def spline(x, y, period=None, f=0.5):
 
 
 def variance_stabilize_spline(x, period=None, f=0.5, clip_negative=False, ok=None):
-    """Ad-hoc spline variance stabilization -- the approach offered as a
-    variance-stabilization option in ARSTAN and used in COFECHA's
-    variance-stabilization step.
+    """Ad-hoc spline variance stabilization.
 
-    Centres the series, fits a smoothing spline to the ABSOLUTE departures to
-    capture their time-varying amplitude, divides the departures by that envelope
-    (restoring sign), and rescales to the original mean and standard deviation.
-    This flattens time-varying variance whatever its cause; it is strictly ad hoc
-    and can remove real low-frequency variance (Osborn et al. 1997), so it is
-    opt-in.
+    Centre the series, fit a smoothing spline to the ABSOLUTE departures to capture
+    their time-varying amplitude, divide the departures by that envelope (restoring
+    sign), and rescale to the original mean and standard deviation. This flattens
+    time-varying variance whatever its cause; it is strictly ad hoc and can remove
+    real low-frequency variance (Osborn et al. 1997), so it is opt-in.
 
     Parameters
     ----------
     x : array-like
         the series to stabilize (no interior NaNs).
     period : int or float or None
-        spline stiffness (wavelength) passed to :func:`spline`, resolved by
-        :func:`get_period`. An int > 1 is a fixed wavelength in years (COFECHA
-        uses 32); a float in (0, 1) is a fraction of the series length; ``None``
-        uses the default 67% spline (``floor(0.67 * n)`` years), the same
-        wavelength convention detrending uses. Note that ``period`` sets the
-        *wavelength*; ``f`` (below) independently sets the frequency response at
-        that wavelength -- the two are separate knobs.
+        spline wavelength passed to :func:`spline`, resolved by :func:`get_period`.
+        An int > 1 is a fixed wavelength in years; a float in (0, 1) is a fraction of
+        the series length; ``None`` uses the default 67% spline. Note that ``period``
+        sets the wavelength while ``f`` independently sets the frequency response at
+        that wavelength.
     f : float, default 0.5
-        spline frequency-response amplitude at ``period`` (a 50% amplitude cutoff
-        at that wavelength).
+        spline frequency-response amplitude at ``period`` (a 50% amplitude cutoff).
     clip_negative : bool, default False
-        set negatives to 0 after rescaling -- appropriate when the result is a
-        chronology (chron.stabilized), not when it is a pre-AR filtered index
-        (COFECHA), so it defaults off.
+        set negatives to 0 after rescaling -- appropriate for a chronology, not for
+        a pre-AR filtered index, so it defaults off.
     ok : array-like of bool or None
         mask of positions to use for the mean/SD (e.g. sample depth > 0); the
         spline is still fit to all points. ``None`` uses every point.

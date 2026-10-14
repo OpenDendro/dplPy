@@ -44,14 +44,11 @@ from ._validate import _coerce_to_frame
 import numpy as np
 
 def stats(inp: pd.DataFrame | str):
-    """Generates summary statistics
-    
-    Extended Summary
-    ----------------
-    Generates summary statistics for .RWL and .CSV format files. 
-    It outputs a dataframe with 'first', 'last', 'year', 'mean', 'median', 'stdev',
-    'skew', 'kurtosis', 'gini', 'ar1' for each series in data file.
-    
+    """Summary statistics for each series in a ring-width dataset.
+
+    Reports, for each series, the columns 'first', 'last', 'year', 'mean', 'median',
+    'stdev', 'skew', 'kurtosis', 'gini', and 'ar1'.
+
     Parameters
     ----------
     inp : str or pandas dataframe
@@ -60,16 +57,14 @@ def stats(inp: pd.DataFrame | str):
     Returns
     -------
     data : pandas dataframe
-    
+
     Examples
     --------
-    >>> dpl.stats(<data>)
-    
+    >>> dpl.stats(data)
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#stats
-    
-    
     """
     series_data = _coerce_to_frame(inp)
 

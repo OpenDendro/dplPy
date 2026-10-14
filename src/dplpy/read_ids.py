@@ -52,44 +52,24 @@ _STC_PATTERN = re.compile(r"^([A-Za-z]+)(\d+)([A-Za-z0-9]*)$")
 def read_ids(data, stc=None):
     """Derive tree and core IDs from series names (site-tree-core convention).
 
-    Extended Summary
-    ----------------
-    Tree-ring series are conventionally named with a site code, a tree number,
-    and a core designator (the "STC" convention). This function splits each
-    series name into a tree identifier (site + tree number, so that different
-    trees -- and different sites -- never collide) and a core designator, and
-    returns the mapping used by dpl.rwi_stats() and dpl.sss() to know which
-    cores belong to the same tree.
+    Split each series name into a tree identifier (site + tree number, so trees and
+    sites never collide) and a core designator, and return the mapping
+    dpl.rwi_stats() and dpl.sss() use to know which cores belong to the same tree.
+    Two parsing modes: the pattern default (``stc=None``) splits on letter/digit
+    boundaries (leading letters = site, first digit run = tree, trailing characters
+    = core); an STC mask (``stc=(site_len, tree_len[, core_len])``) splits by fixed
+    character positions.
 
-    Two parsing modes are available:
-
-    Pattern default (stc=None). Each name is split on its letter/digit
-    boundaries: leading letters are the site, the first run of digits is the
-    tree number, and any trailing characters are the core. This handles names
-    with a LETTER core and a variable-length site automatically, e.g. both
-    "ABC001A" (site ABC, tree 001, core A -> tree "ABC001") and "ABCD01"
-    (site ABCD, tree 01, no core -> tree "ABCD01").
-
-    IMPORTANT: this pattern cannot see a DIGIT core. A name like "CAM031"
-    (site CAM, tree 03, core 1) still matches -- the whole digit run "031" is
-    read as the tree number and the core comes out empty -- so it parses
-    WITHOUT any warning but leaves "CAM031" and "CAM032" as two separate trees
-    instead of grouping them under "CAM03". For digit cores (and for site codes
-    that contain digits) you MUST supply an explicit stc mask. The only names
-    that trigger the "could not parse" warning are those that do not match the
-    pattern at all (no leading letters, embedded separators, etc.).
-
-    STC mask (stc=(site_len, tree_len[, core_len])). Splits each name by fixed
-    character positions: the tree identifier is the first site_len+tree_len
-    characters, and the core is the remainder (or exactly core_len characters
-    if a third element is given). Use this whenever the pattern default cannot
-    resolve the structure -- e.g. digit cores like "CAM031" with stc=(3, 2, 1),
-    or site codes that contain digits.
+    IMPORTANT: the pattern default cannot detect a DIGIT core. A name like "CAM031"
+    is read as tree "031" with an empty core (no warning), leaving "CAM031" and
+    "CAM032" as separate trees instead of grouping them under "CAM03". For digit
+    cores, or site codes that contain digits, supply an explicit ``stc`` mask (e.g.
+    ``stc=(3, 2, 1)`` for "CAM031").
 
     Parameters
     ----------
     data : pandas dataframe or iterable of str
-        a dataframe whose column names are the series names (such as from
+        a dataframe whose column names are the series names (e.g. from
         dpl.readers()), or any iterable of series-name strings.
     stc : tuple of int, or None, default None
         None to use the pattern default; otherwise a (site_len, tree_len) or
@@ -112,7 +92,6 @@ def read_ids(data, stc=None):
     References
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/read.ids.html
-
     """
     if isinstance(data, pd.DataFrame):
         names = [str(c) for c in data.columns]

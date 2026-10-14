@@ -573,30 +573,25 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
           max_year: Optional[int] = None, summary: bool = False):
     """Check a ring-width collection for defects, reported as a table of findings.
 
-    Extended Summary
-    ----------------
-    The data counterpart to :func:`report`. ``report`` prints what a file looks
-    like; ``check`` returns what is wrong with it, as one row per finding, so a
-    report over one file and a sweep over a whole archive are the same code.
-    Every finding carries a stable ``check`` id and a ``severity`` ("error",
-    "warning", "note"). Every check runs guarded and a check that fails becomes a
-    ``RWL_CHECK_ERROR`` finding rather than stopping. Modeled on dplR 1.8.0's
-    ``rwl.check`` (A. G. Bunn), built on dplPy's own reader, spline, and
-    crossdating pieces.
+    The data counterpart to :func:`report`: ``report`` prints what a file looks
+    like, ``check`` returns what is wrong with it, one row per finding. Every
+    finding carries a stable ``check`` id and a ``severity`` ("error", "warning",
+    "note"), and a check that fails becomes a ``RWL_CHECK_ERROR`` finding rather
+    than stopping the run. Analog of dplR 1.8.0's ``rwl.check``.
 
     Parameters
     ----------
     x : pandas.DataFrame, str, or list of str
-        a ring-width collection (``readers`` output), a path to a Tucson file, or
-        a list of paths / a directory for an archive sweep.
+        a ring-width collection (``readers`` output), a path to a Tucson file, or a
+        list of paths / a directory for an archive sweep.
     file : str or None
         label for the ``file`` column when ``x`` is a DataFrame.
     checks : list of str or None
         which groups to run. Default all: structure, series, values, zeros,
         crossdating, file, provenance.
     summary : bool, default False
-        if True, return one row per file (counts per check and per severity)
-        instead of the findings. ``pd.concat`` these over an archive to rank it.
+        if True, return one row per file (counts per check and per severity) instead
+        of the findings. ``pd.concat`` these over an archive to rank it.
     min_depth, depth_run, min_length, run_min, lag_max, min_overlap, spline_nyrs,
     r_dating, r_margin, outlier_mad, outlier_gap, r_cohesion, plausible_mean,
     small_thresh, big_thresh, max_year :

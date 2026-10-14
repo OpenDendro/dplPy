@@ -406,27 +406,20 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     """Generate a COFECHA-style crossdating QA report for one or more .rwl files.
 
     For each file: read (salvage mode), detrend, cross-date with ``dpl.xdate``,
-    collate per-series statistics, and print the report and/or save it as a
+    collate per-series statistics, and print the report and/or save it as
     ``<name>.txt`` in ``out_dir`` (see ``output``). Built for batch QA of ITRDB
-    submissions.
-
-    By default this is a dplR-faithful report styled after COFECHA (some columns
-    match COFECHA closely, others differ by method). Pass ``preset="COFECHA"`` to
-    emulate the COFECHA program instead: each file is detrended with a 32-year
-    spline and cross-dated with ``dpl.xdate(preset="COFECHA")`` (Burg prewhitening,
-    spline variance stabilization, an arithmetic z-scored master, Pearson
-    correlation, COFECHA segment anchoring and critical value, and "omit absent
-    rings" fed automatically from the raw frame), and the summary statistics are
-    length-weighted by ring count as COFECHA reports them.
+    submissions. Pass ``preset="COFECHA"`` to emulate the COFECHA program instead
+    (Burg prewhitening, spline variance stabilization, an arithmetic z-scored
+    master, Pearson correlation, COFECHA segment anchoring and critical value, and
+    "omit absent rings" fed from the raw frame); pass a RAW frame in that case.
 
     Parameters
     ----------
     files : str, pandas.DataFrame, or list
         A .rwl path, an already-loaded ring-width DataFrame (e.g. from
-        dpl.readers()), or a list mixing either. A DataFrame is treated as one
-        collection and reported directly (the read step is skipped). For the
-        COFECHA preset, pass a RAW frame (zeros marking absent rings), as the
-        preset detrends internally.
+        dpl.readers()), or a list mixing either. A DataFrame is reported directly
+        (the read step is skipped). For the COFECHA preset, pass a RAW frame (zeros
+        marking absent rings).
     out_dir : str, default "."
         Directory for the ``.txt`` reports (created if needed).
     fit : str, default "Spline"
@@ -436,22 +429,19 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
         passed through to ``dpl.xdate`` (``corr``, ``bin_floor`` and ``p_val`` are
         ignored when ``preset="COFECHA"``; ``slide_period`` still applies).
     output : {"both", "screen", "file"}, default "both"
-        where the full report goes: ``"screen"`` prints it to the notebook/console
-        for immediate reading, ``"file"`` writes a ``<name>.txt`` in ``out_dir``,
-        ``"both"`` does both. The report text is always available in the returned
-        dict regardless of this setting.
+        where the full report goes: ``"screen"`` prints it, ``"file"`` writes a
+        ``<name>.txt`` in ``out_dir``, ``"both"`` does both. The report text is
+        always in the returned dict regardless.
     verbose : bool, default True
-        print a one-line per-file progress note and a final tally (separate from
-        ``output``, which controls the full report text).
+        print a one-line per-file progress note and a final tally.
     preset : str or None, default None
         set to ``"COFECHA"`` to emulate the COFECHA program (see above).
     spline_period : int or None, default None
         spline stiffness (years) for the ``preset="COFECHA"`` detrend; defaults
         to COFECHA's 32.
     name : str or None, default None
-        Report label for a DataFrame input -- used as the report title and the
-        ``.txt`` filename, and as the key in the returned dict. Ignored for file
-        paths (which use the file's basename). Defaults to "report".
+        Report label for a DataFrame input -- the report title, ``.txt`` filename,
+        and key in the returned dict. Ignored for file paths. Defaults to "report".
 
     Returns
     -------

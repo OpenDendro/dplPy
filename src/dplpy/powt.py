@@ -189,22 +189,18 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
          return_stats=False):
     """Adaptive power transformation of ring-width series (variance stabilising).
 
-    Extended Summary
-    ----------------
-    Stabilises the variance of ring-width series by raising each value to a data
-    driven power p. The power comes from the empirical relationship between local
-    level and local spread: for adjacent rings, level M = (x[t] + x[t-1]) / 2 and
+    Stabilise the variance of ring-width series by raising each value to a
+    data-driven power p. For adjacent rings, level M = (x[t] + x[t-1]) / 2 and
     spread S = |x[t] - x[t-1]|; regressing log(S) on log(M) gives a slope b, and
-    p = |1 - b| removes the level-spread dependence. This is ARSTAN's fourth data
-    transformation option (Cook & Peters 1997) and a port of dplR's powt().
+    p = |1 - b| removes the level-spread dependence. Port of dplR's powt (Cook &
+    Peters 1997).
 
     Two methods are offered:
 
     - ``"cook"`` (default) estimates p independently for each series.
     - ``"universal"`` estimates a single p for the whole data set with a linear
-      mixed-effects model (log(S) ~ log(M) with a random intercept per year),
-      matching dplR's default. Requires statsmodels; if the estimate is p <= 0 a
-      log transform is used instead. Not part of ARSTAN.
+      mixed-effects model (random intercept per year), matching dplR's default.
+      Requires statsmodels; a log transform is used if the estimate is p <= 0.
 
     Parameters
     ----------
@@ -217,22 +213,15 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
         if True, rescale each transformed series back to its original mean and
         standard deviation.
     return_power : bool, default False
-        if True, return a (transformed, power) tuple instead of just the
-        transformed data; ``power`` is a Series over series for 'cook' or a
-        single float for 'universal'.
+        if True, return a (transformed, power) tuple; ``power`` is a Series over
+        series for 'cook' or a single float for 'universal'.
     plot : bool, default False
-        if True, draw the "data transform statistics" diagnostic -- a 2x2 figure
-        of per-series skew and spread-vs-level correlation, before (top row) and
-        after (bottom row) the transform, with median and quartile reference
-        lines. A successful transform drives the bottom-row bars toward zero
-        (series made symmetric and variance decoupled from level). This emulates
-        ARSTAN's power-transform diagnostic (dplR's powt has no such plot).
+        if True, draw the data-transform-statistics diagnostic: per-series skew and
+        spread-vs-level correlation, before and after the transform. A successful
+        transform drives the after values toward zero.
     return_stats : bool, default False
         if True, also return a per-series diagnostics DataFrame with columns
-        ``skew_before``, ``skew_after``, ``r_before``, ``r_after`` (the
-        spread-vs-level correlations) and ``power``. The spread-vs-level
-        correlation uses dplPy's mean-based level/spread (the same used to fit the
-        power), which differs slightly from ARSTAN's trailing-ring level.
+        ``skew_before``, ``skew_after``, ``r_before``, ``r_after`` and ``power``.
 
     Returns
     -------
@@ -242,16 +231,9 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
 
     Notes
     -----
-    **Difference from ARSTAN's power transform.** The power comes from regressing
-    log(spread) on log(level) across adjacent rings. dplPy (following dplR) defines
-    the *level* as the pair mean ``(x[t] + x[t-1]) / 2``; ARSTAN's power path
-    (``trnfrm``/``mndf`` with ``iopt=2``) instead uses the trailing ring ``x[t]``.
-    ARSTAN also clamps the fitted power to ``[0, 1]`` (with ``p = 0`` becoming a
-    log transform), whereas dplPy applies ``p = |1 - b|`` directly (log only when
-    ``p <= 0``). So dplPy reproduces dplR's power exactly, but a given series'
-    power can differ slightly from ARSTAN's. The ``plot``/``return_stats``
-    diagnostic uses the same mean-based level as the fit, so it stays consistent
-    with the power dplPy actually applies.
+    dplPy reproduces dplR's power exactly. A given series' power can differ slightly
+    from ARSTAN's, which uses the trailing ring as the level and clamps p to
+    ``[0, 1]``.
 
     Examples
     --------

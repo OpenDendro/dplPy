@@ -46,97 +46,70 @@ from .autoreg import ar_func
 def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
           max_lag=10, aic=True, ar_method="yw", first_aic_min=False,
           stabilize=None, stabilize_kwargs=None):
-    """Creates a mean value chronology for a dataset of tree-ring widths.
+    """Build a mean-value chronology from ring-width indices.
 
-    Extended Summary
-    ----------------
-    Creates a mean value chronology for a dataset, typically the ring width
-    indices of a detrended series. Determines whether to find means using Tukey's
-    bi-weight robust mean (default 'True'), whether to prewhiten data by fitting
-    to an AR model (default 'False'), and whether to plot the results of the
-    chronology (default 'True'). When prewhitening, the AR-model order can be
-    controlled with ``max_lag`` and ``aic`` (mirroring dplR's chron(), which
-    forwards these to ar() as order.max and aic).
+    Averages the series (detrended RWI) year by year into a standard chronology,
+    optionally prewhitening each series with an AR model first to also produce a
+    residual chronology. Mirrors dplR's chron().
 
     Parameters
     ----------
     rwi_data : pandas dataframe
-        a pandas dataframe imported from dpl.readers()
+        detrended ring-width indices (e.g. from dpl.detrend()).
     biweight : boolean, default True
-        use Tukey's bi-weight robust mean
+        average with Tukey's biweight robust mean if True, else the arithmetic mean.
     prewhiten : boolean, default False
-        run pre-whitening on the time series before building
-        chronology
+        prewhiten each series with an AR model to also build a residual chronology.
     plot : boolean, default True
-        plot the results
+        plot the chronology.
     max_lag : int, default 10
-        when ``prewhiten`` is True, the maximum AR order considered. The default
-        of 10 follows ARSTAN's convention (and matches chron_ars). dplR's own
-        chron() instead forwards to ar() whose default order.max is
-        floor(10*log10(n)) (~27 for a 500-yr series), so to reproduce dplR's
+        maximum AR order considered when prewhiten is True. To reproduce dplR's
         chron() exactly, pass max_lag=floor(10*log10(n)).
     aic : boolean, default True
-        when ``prewhiten`` is True, select the AR order by AIC up to ``max_lag``
-        (dplR's ar() aic=TRUE). If False, fit a fixed AR of order ``max_lag``.
+        when prewhiten is True, select the AR order by AIC up to max_lag; if False,
+        fit a fixed AR of order max_lag.
     ar_method : {"yw", "ols"}, default "yw"
-        AR estimator used for prewhitening. "yw" (Yule-Walker) matches R's ar()
-        default and reproduces dplR's residual chronology at the same order;
-        "ols" (statsmodels AutoReg, conditional least squares)
-        matches R's ar(method="ols"). chron_ars() also uses Yule-Walker.
+        AR estimator for prewhitening. "yw" (Yule-Walker) matches R's ar() default;
+        "ols" matches R's ar(method="ols").
     first_aic_min : boolean, default False
-        AR order-selection rule when ``aic`` is True. False takes the global AIC
-        minimum (R's ar() behaviour, so chron() reproduces dplR's chron()); True
-        takes the first local AIC minimum -- ARSTAN's rule, shared with
-        chron_ars() -- which is more parsimonious (it rarely selects an order
-        above ~7, so ``max_lag`` seldom binds) at the cost of a little AIC.
+        AR order-selection rule when aic is True. False takes the global AIC minimum
+        (reproduces dplR's chron()); True takes the first local AIC minimum (more
+        parsimonious).
     stabilize : {None, "rbar", "spline", "both"}, default None
-        If not None, also variance-stabilize each chronology and return the
-        stabilized versions in extra ``*_vsc`` columns (see Notes). This is the
-        ARSTAN workflow, where variance stabilization (menu option ``isb``) is
-        applied to the finished chronologies. The method families are as in
-        :func:`stabilize_chron`: ``"rbar"`` (Osborn/Frank N_eff scaling),
-        ``"spline"`` (ARSTAN stabit spline), or ``"both"`` (rbar then a 67%
-        spline; ARSTAN ``isb=2``).
+        if set, also variance-stabilize each chronology and return the stabilized
+        versions in extra *_vsc columns (see Notes). Method families are as in
+        :func:`stabilize_chron`.
     stabilize_kwargs : dict, optional
-        Extra keyword arguments forwarded to :func:`stabilize_chron` when
-        ``stabilize`` is set (e.g. ``{"rbar_mode": "constant"}``,
-        ``{"win_length": 30}``, ``{"spline_period": 100}``). The chronology,
-        column, source RWI matrix, and sample depth are supplied automatically
-        and may not be overridden here. Defaults (running rbar, 67% spline) match
-        Frank (2006) / ARSTAN.
+        extra keyword arguments forwarded to :func:`stabilize_chron` when stabilize
+        is set. The chronology, column, source RWI matrix, and sample depth are
+        supplied automatically and may not be overridden here.
 
     Returns
     -------
-    data: pandas dataframe
-        a mean-value chronology indexed by year. Columns: ``std`` (the standard
-        chronology), ``res`` (the residual/AR-prewhitened chronology; only when
-        ``prewhiten`` is True), and ``samp_depth`` (the sample depth). These
-        names match chron_ars() and mirror dplR's std/res/samp.depth. When
-        ``stabilize`` is set, a stabilized ``std_vsc`` (and ``res_vsc`` when
-        ``prewhiten`` is True) column is added next to each base chronology.
+    data : pandas dataframe
+        a mean-value chronology indexed by year, with columns std (standard
+        chronology), res (residual chronology, only when prewhiten is True), and
+        samp_depth. When stabilize is set, a stabilized *_vsc column is added next
+        to each base chronology.
 
     Notes
     -----
-    **Variance stabilization (``stabilize``).** Following ARSTAN's per-chronology
-    rbar convention, the standard chronology is stabilized with the rbar of the
-    standard (detrended) RWI matrix, and the residual chronology with the rbar of
-    the residual (prewhitened) matrix. Both restandardize to the input
-    chronology's full period (see :func:`stabilize_chron`). For the ARSTAN
-    (re-reddened) chronology, use :func:`chron_ars` with ``stabilize=``.
+    **Variance stabilization (``stabilize``).** The standard chronology is
+    stabilized with the rbar of the standard RWI matrix and the residual chronology
+    with the rbar of the residual matrix; both restandardize to the full period
+    (see :func:`stabilize_chron`). For the re-reddened ARSTAN chronology, use
+    :func:`chron_ars` with ``stabilize=``.
 
     Examples
     --------
-    >>> import dplpy as dpl 
-    >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> rwi_data = dpl.detrend(data)
+    >>> import dplpy as dpl
+    >>> rwi_data = dpl.detrend(dpl.readers("../tests/data/csv/file.csv"))
     >>> dpl.chron(rwi_data)
     >>> dpl.chron(rwi_data, prewhiten=True)
-    >>> chron_data = dpl.chron(rwi_data, biweight=False, plot=False)
-    
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#chron
-    
     """
     _require_dataframe(rwi_data)
     from .stabilize import stabilize_chron, _prepare_stabilize_kwargs
@@ -251,9 +224,8 @@ def get_whitened_chron_info(rwi_data, chron_data, biweight, max_lag=10, aic=True
 def plot_chron(years, depths, means, whitened_means, ax=None, show=True):
     """Plot a mean chronology with its sample depth on a twin axis.
 
-    Uses the shared dplPy look (no global style side effects). Pass an existing
-    ``ax`` to draw into it, and ``show=False`` to keep the figure for saving;
-    the figure and axes are returned either way.
+    Pass an existing ``ax`` to draw into it, and ``show=False`` to keep the figure
+    for saving; the figure and axes are returned either way.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 5))

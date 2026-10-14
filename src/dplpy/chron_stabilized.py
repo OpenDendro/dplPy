@@ -10,93 +10,59 @@ import warnings
 def chron_stabilized(rwi_data: pd.DataFrame, win_length=50, min_seg_ratio=1/3,
                      biweight=True, running_rbar=False, method="running_rbar",
                      spline_nyrs=None):
-    """ Variance Stabilization functions
-    
-    Extended Summary
-    ----------------
-    Builds a variance stabilized mean-value chronology from a pandas dataframe
-    of detrended ring widths, by multiplying the chronology with the square
-    root of the effective independent sample size, Neff, defined as 
+    """Build a variance-stabilized mean-value chronology.
 
-    Neff = n(t) / 1+(n(t)-1)rbar(t)
-
-        where n(t) is the number of series at time t, and rbar(t) is the
-        mean pairwise correlation between all series (not "interseries
-        correlation" -- see dpl.interseries_corr() -- which correlates each
-        series against a composite chronology of the others, rather than
-        against each other series individually).
-
-    In the limiting cases, when the rbar is zero or unity, Neff obtains 
-    values of the true sample size and unity, respectively.
-    Neff is calculated over different segments of the data of
-    length `win_length`, and only series with at least `min_seg_ratio` of
-    valid values in the segment are considered.
-
-    This is a port of dplR's chron.stabilized() (see reference below); the
-    intent is to match that implementation's behavior as closely as possible,
-    including its two independent window-length recommendations and its use
-    of an unfiltered overall rbar constant (as opposed to the
-    windowed rbar, which does apply the min_seg_ratio overlap filter).
+    Scales a mean-value chronology by the square root of the effective independent
+    sample size Neff = n(t) / (1 + (n(t)-1) rbar(t)), where n(t) is the sample depth
+    and rbar(t) the mean pairwise interseries correlation, computed over windows of
+    length ``win_length``. Port of dplR's chron.stabilized().
 
     Parameters
     ----------
     rwi_data : pd.DataFrame
-        a Pandas dataset representing detrended tree rings/widths.
+        detrended ring-width indices.
     win_length : int, default 50
-        an integer for specifying the window lengths where rbar values
-        will be calculated.
+        window length over which rbar values are calculated.
     min_seg_ratio : float, default 1/3
-        the minimum ratio of non-NA values to the window length for a series to be
-        considered in an Neff calculation. Defaults to exactly 1/3 to match
-        dplR's chron.stabilized(), which drops overlaps below win_length/3.
+        minimum ratio of non-NA values to window length for a series to count in an
+        Neff calculation (1/3 matches dplR's chron.stabilized()).
     biweight : boolean, default True
-        flag indicating whether or not to use Tukey's bi-weight robust mean when
-        calculating the mean-value chronology
+        average with Tukey's biweight robust mean if True, else the arithmetic mean.
     running_rbar : boolean, default False
-        flag indicating whether or not to return the running rbar values
-        as part of chronology output (only for method='running_rbar').
+        also return the running rbar values in the output (only for
+        method='running_rbar').
     method : str, default 'running_rbar'
         the variance-stabilization method:
 
-        - 'running_rbar' : the running-window-rbar effective-signal adjustment
-          (Frank et al. 2006 "RUNNINGr"), a port of dplR's chron.stabilized().
-          The default; uses win_length and min_seg_ratio.
-        - 'briffa' (alias 'mean_rbar') : the same effective-sample-size adjustment
-          but with a single, time-constant rbar computed over all pairwise series
-          overlaps longer than 20 years (Osborn et al. 1997 constant-rbar; Frank
-          et al. 2006 "MEANr"; ARSTAN's Briffa option). Corrects for changing
-          sample size ONLY.
-        - 'spline' : ARSTAN's ad-hoc spline stabilization. Removes any time trend
-          in the ABSOLUTE departures of the chronology with a smoothing spline,
-          so it can stabilize variance even when the heteroscedasticity is NOT a
-          sample-size effect. NOTE (per ARSTAN and Osborn et al. 1997): this is
-          strictly ad hoc and can remove real low-frequency variance -- use with
-          care. Stiffness set by spline_nyrs.
+        - 'running_rbar' : running-window-rbar effective-signal adjustment (Frank et
+          al. 2006 "RUNNINGr"); the default. Uses win_length and min_seg_ratio.
+        - 'briffa' (alias 'mean_rbar') : the same adjustment with a single
+          time-constant rbar over all pairwise overlaps longer than 20 years (Osborn
+          et al. 1997; Frank et al. 2006 "MEANr"). Corrects for changing sample size
+          only.
+        - 'spline' : ARSTAN's ad-hoc spline stabilization, removing any time trend in
+          the absolute departures with a smoothing spline. Can remove real
+          low-frequency variance -- use with care. Stiffness set by spline_nyrs.
     spline_nyrs : int, float or None, default None
-        stiffness for method='spline'. An int is a fixed spline wavelength in
-        years (ARSTAN's fixed-n cutoff); a float in (0, 1) is a fraction of the
-        chronology length (ARSTAN's %-n cutoff). None uses 0.5 (half the length).
+        stiffness for method='spline'. An int is a fixed spline wavelength in years;
+        a float in (0, 1) is a fraction of the chronology length; None uses 0.5.
         Ignored by the rbar methods.
 
     Returns
     -------
-    stabilized_chron: a pandas dataframe of a variance-stabilized mean-value
-                      chronology, indexed by year. Columns: ``vsc`` (the
-                      variance-stabilized chronology, matching dplR's naming),
-                      ``Running rbar`` (only when running_rbar=True), and
-                      ``samp_depth``.
-        
+    stabilized_chron : pandas dataframe
+        a variance-stabilized mean-value chronology indexed by year, with columns
+        ``vsc``, ``Running rbar`` (only when running_rbar=True), and ``samp_depth``.
+
     Examples
     --------
-    >>> import dplpy as dpl 
+    >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.chron_stabilized(data, win_length=60, min_seg_ratio=0.4) -> returns mean
-                                            value chronology with stabilized
-                                            variance.
+    >>> dpl.chron_stabilized(data, win_length=60, min_seg_ratio=0.4)
+
     References
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/chron.stabilized.html
-    
     """
     _require_dataframe(rwi_data)
     
@@ -220,25 +186,18 @@ def pad_rbar_array(rbar_array, n_samps):
 
 
 def _briffa_rbar(data, min_overlap=20):
-    """A single time-constant rbar: the mean of the pairwise correlations
-    between series, counting only pairs whose overlap exceeds ``min_overlap``
-    years (ARSTAN's Briffa method uses n > 20). Osborn constant-rbar / Frank
-    MEANr."""
+    """A single time-constant rbar: the mean of the pairwise correlations between
+    series, counting only pairs whose overlap exceeds ``min_overlap`` years.
+    """
     return pairwise_corr_mean(data, "pearson", min_overlap=min_overlap, strict=True)
 
 
 def _spline_stabilize(chron_series, n_samps, spline_nyrs):
-    """ARSTAN's ad-hoc spline variance stabilization option: centre
-    the chronology, fit a smoothing spline to the ABSOLUTE departures to capture
-    their time trend, divide the departures by that trend (restoring sign), then
-    rescale to the chronology's original mean and standard deviation. Removes
-    time-varying variance whatever its cause -- strictly ad hoc (it can remove
-    real low-frequency variance), per ARSTAN and Osborn et al. (1997).
-
-    Thin wrapper over :func:`smoothingspline.variance_stabilize_spline` (the
-    shared variance-stabilization core) that resolves this routine's
-    ``spline_nyrs`` stiffness convention and clips negatives (a chronology cannot
-    go below zero).
+    """ARSTAN's ad-hoc spline variance stabilization: centre the chronology, fit a
+    smoothing spline to the absolute departures to capture their time trend, divide
+    the departures by that trend (restoring sign), then rescale to the chronology's
+    original mean and standard deviation. Can remove real low-frequency variance.
+    Resolves the ``spline_nyrs`` stiffness convention and clips negatives.
     """
     n = len(chron_series)
     # stiffness: int -> fixed wavelength in years; 0<float<1 -> fraction of n

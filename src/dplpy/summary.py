@@ -40,31 +40,28 @@ import pandas as pd
 from ._validate import _coerce_to_frame
 
 def summary(inp: pd.DataFrame | str):
-    """ Summarizes a chronology
-    
-    Extended Summary
-    ----------------
-    This function summarizes a given dataframe of tree widths/rings.
-    
+    """Summarize a ring-width dataset.
+
+    Reports per-series summary information for a dataframe of tree-ring widths.
+
     Parameters
     ----------
     inp : str or pandas dataframe
         a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
-   
+
     Returns
     -------
     data : pandas dataframe
-    
+
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> dpl.summary(data)
-    
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#summary
-    
     """
     series_data = _coerce_to_frame(inp)
 

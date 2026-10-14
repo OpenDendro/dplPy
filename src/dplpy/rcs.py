@@ -304,83 +304,68 @@ def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
         period=0.1, nyrs0=50, f=0.5, pos_slope=False, biweight=True,
         min_n=None, preset=None, rescale_difference=False, rc_out=False,
         plot=True, **kwargs):
-    """Regional Curve Standardisation of a set of ring-width series.
+    """Regional Curve Standardization of a set of ring-width series.
 
-    Extended Summary
-    ----------------
-    Detrends by a single "regional curve": every series is placed on a common
-    cambial-age axis according to its pith offset, the average ring width at
-    each cambial age is taken (the regional curve), that curve is smoothed, and
-    each ring is divided by (ratios) or has subtracted (difference) the curve
-    value at its cambial age. This preserves low-frequency growth signal that
-    per-series detrending would remove. A port of dplR's rcs().
+    Align every series on a common cambial-age axis using its pith offset, average
+    to form the regional curve, smooth it, and divide (ratio) or subtract
+    (difference) the curve value at each ring's cambial age. This preserves the
+    low-frequency growth signal that per-series detrending removes. Shares the
+    ``fit`` / ``method`` / ``period`` vocabulary of ``detrend``. Analog of dplR's
+    ``rcs``.
 
     Parameters
     ----------
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
-        pith offsets, with columns ``series`` and ``pith_offset``. The pith
-        offset is a TRUE offset: the number of rings between the pith and the
-        first measured ring, so **0 means the pith is present**. None assumes a
-        pith offset of 0 for every series. **Convention (changed in 0.8.0):**
-        this now equals ARSTAN's ``nshft`` exactly, so an ARSTAN pith-offset file
-        can be used directly. dplR instead stores the cambial age of the first
-        ring (1 = pith present), so a dplR ``po`` table needs 1 subtracted first.
+        pith offsets, columns ``series`` and ``pith_offset`` -- the number of rings
+        between the pith and the first measured ring, so 0 means the pith is present.
+        None assumes 0 for every series. (A dplR ``po`` table stores the cambial age
+        of the first ring, where 1 = pith present, so subtract 1 first.)
     fit : str or None, default "AgeDepSpline"
-        curve fitted to the regional (age-aligned mean) curve, from the same
-        vocabulary as ``detrend()``: ``"AgeDepSpline"`` (default; age-dependent
-        spline, ARSTAN's recommended RCS curve, honours ``pos_slope``),
-        ``"Spline"`` (fixed-stiffness smoothing spline; dplR's ``rcs`` curve),
-        ``"ModNegExp"``, ``"NegExp"``, ``"ModHugershoff"``, ``"Hugershoff"``,
-        ``"GeneralExp"``, ``"LinearAny"``, ``"LinearNegative"``, ``"Mean"``, or
-        ``None`` for no smoothing (the age-aligned mean itself is the regional
-        curve -- ARSTAN's "no smooth" / CRUST's unsmoothed option). Case-insensitive.
+        curve fitted to the age-aligned mean, from the ``detrend`` vocabulary:
+        ``"AgeDepSpline"`` (default; age-dependent spline, honours ``pos_slope``),
+        ``"Spline"`` (fixed-stiffness smoothing spline), ``"ModNegExp"``, ``"NegExp"``,
+        ``"ModHugershoff"``, ``"Hugershoff"``, ``"GeneralExp"``, ``"LinearAny"``,
+        ``"LinearNegative"``, ``"Mean"``, or ``None`` for no smoothing (the age-aligned
+        mean itself is the regional curve). Case-insensitive.
     method : {"ratio", "difference"}, default "ratio"
-        how each index is formed from the ring width and the regional-curve value
-        at its cambial age: ``"ratio"`` divides (default), ``"difference"``
-        subtracts. Matches ``detrend()``.
+        how each index is formed from the ring width and the regional-curve value at
+        its cambial age: ``"ratio"`` divides, ``"difference"`` subtracts.
     period : int or float, default 0.1
-        smoothing wavelength for ``fit="Spline"`` (same ``get_period`` rule as
-        ``detrend``): ``0 < period <= 1`` is a fraction of the curve length
-        (default ``0.1`` = 10%, reproducing dplR / pre-0.8 ``caps``);
-        ``period < 0`` is a percent-of-length ("ARSTAN") spline (``-10`` = 10%);
-        ``period > 1`` is a fixed wavelength in years.
+        smoothing wavelength for ``fit="Spline"`` (``get_period`` rule): a fraction of
+        length in ``(0, 1]`` (default 0.1 = 10%), a percent-of-length spline if
+        negative (-10 = 10%), or a fixed wavelength in years if > 1.
     nyrs0 : int, default 50
         initial stiffness for ``fit="AgeDepSpline"`` (see ``dpl.ads``).
     f : float, default 0.5
         frequency-response amplitude for ``fit="Spline"``.
     pos_slope : bool, default False
-        whether the fitted regional curve may rise at the old-age end. Default
-        False gives the non-increasing end used by ARSTAN ("non-increasing end
-        fitting") and CRUST ("no rise in the final third"), avoiding an
-        artefactual old-age upturn. Applies to ``fit="AgeDepSpline"`` and the
-        ``ModNegExp``/``NegExp``/``ModHugershoff`` linear fallbacks.
+        whether the regional curve may rise at the old-age end. False keeps a
+        non-increasing end, avoiding an artefactual old-age upturn. Applies to
+        ``AgeDepSpline`` and the ``ModNegExp``/``NegExp``/``ModHugershoff`` linear
+        fallbacks.
     biweight : bool, default True
-        build the regional curve with Tukey's biweight robust mean (C=9) rather
-        than the arithmetic mean.
+        build the regional curve with a Tukey biweight robust mean (else arithmetic).
     min_n : int or None, default None
-        truncate the regional-curve tail where the by-age sample depth falls
-        below this.
+        truncate the regional-curve tail where by-age sample depth falls below this.
     preset : {None, "crust"}, default None
-        None follows the parameters above. "crust" builds the regional curve the
-        CRUST way (Melvin & Briffa 2014): an age-dependent spline smoothed only
-        where sample depth >= 4 with the "no rise in the final third" tail rule,
-        gaps infilled, a 0.02 mm minimum-value floor, and flat tail extension.
-        When set, ``fit``/``period``/``nyrs0``/``f``/``pos_slope`` are ignored
-        (it is a self-contained bundle of choices).
+        None follows the parameters above. "crust" builds the regional curve the CRUST
+        way (Melvin & Briffa 2014): an age-dependent spline smoothed only where sample
+        depth >= 4 with the no-rise tail rule, gaps infilled, a 0.02 mm floor, and flat
+        tail extension. When set, ``fit``/``period``/``nyrs0``/``f``/``pos_slope`` are
+        ignored.
     rescale_difference : bool, default False
-        only used when ``method="difference"``. If True, rescale each series'
-        difference (residual) index onto the mean and standard deviation of that
-        series' own ratio index, so difference indices sit on the ~1 ratio scale
-        -- ARSTAN's ``calind`` convention. Default False returns residuals
+        used only when ``method="difference"``. If True, rescale each series'
+        difference index onto the mean and standard deviation of its own ratio index,
+        so differences sit on the ~1 ratio scale. Default False returns residuals
         centred on ~0.
     rc_out : bool, default False
-        if True, return a dict with both the detrended ``rwi`` and the regional
-        curve ``rc``; otherwise return just ``rwi``.
+        if True, return a dict with both the detrended ``rwi`` and the regional curve
+        ``rc``; otherwise return just ``rwi``.
     plot : bool, default True
-        draw the regional-curve figure (series and curve vs cambial age). The
-        former name ``make_plot=`` is accepted for now with a DeprecationWarning.
+        draw the regional-curve figure (series and curve vs cambial age). The former
+        name ``make_plot=`` is accepted for now with a DeprecationWarning.
 
     Returns
     -------
@@ -392,11 +377,11 @@ def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/rcs.html
     .. [2] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
-       implementation of Regional Chronology Standardisation: Part 1,
-       Signal-Free RCS. Dendrochronologia, 32, 7-20.
+       implementation of Regional Chronology Standardisation: Part 1, Signal-Free
+       RCS. Dendrochronologia, 32, 7-20.
     .. [3] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
-       implementation of Regional Chronology Standardisation: Part 2, Further
-       RCS options and recommendations. Dendrochronologia, 32, 343-356.
+       implementation of Regional Chronology Standardisation: Part 2, Further RCS
+       options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
     plot = _plot_kwarg(plot, kwargs)

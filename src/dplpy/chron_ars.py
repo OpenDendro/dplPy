@@ -64,137 +64,82 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
               stabilize_kwargs=None):
     """Build ARSTAN standard, residual, and re-reddened chronologies.
 
-    Extended Summary
-    ----------------
-    Produces the three ARSTAN chronologies of Cook (1985) from a set of
-    detrended ring-width indices:
+    Produces the three ARSTAN chronologies of Cook (1985) from a set of detrended
+    ring-width indices:
 
-    - **std**: the standard chronology -- the (robust) mean of the RWI series,
-      with no autoregressive modeling.
-    - **res**: the residual chronology -- each series is prewhitened with a
-      pooled AR(p) model, the prewhitened series are averaged, and that mean is
-      prewhitened once more to order p, yielding a near-white chronology. With
-      ``backcast=True`` (the default) each prewhitening step backcasts its initial
-      values as ARSTAN does, so no years are lost to the AR model (see Notes).
-    - **ars**: the ARSTAN chronology -- the common red-noise persistence
-      (the *pooled* AR model) is reintroduced by "re-reddening" (postAR). How
-      this is done is controlled by ``ars_method`` (see Notes): the default
-      ``"arstan"`` re-reddens the mean of the prewhitened series (average then
-      re-redden, as in Ed Cook's ARSTAN); ``"dplr"`` re-reddens each series and
-      then averages (matching dplR's chron.ars).
+    - **std**: the standard chronology, the (robust) mean of the RWI series with no
+      autoregressive modeling.
+    - **res**: the residual chronology, each series prewhitened by a pooled AR(p)
+      model, averaged, then prewhitened once more to order p (near-white).
+    - **ars**: the ARSTAN chronology, the pooled red-noise persistence reintroduced
+      by re-reddening; ``ars_method`` sets how (see Notes).
 
-    The AR order p is chosen from a pooled autocovariance accumulated across all
-    series and lags (Cook's pooled-AR approach), converted to AR coefficients
-    (Durbin-Levinson) and selected by AIC.
-
-    This is a port of dplR's chron.ars(). The pooled-AR accumulation -- the
-    step the dplR authors flagged as a "time killer" -- is vectorized with numpy
-    here (a per-series-pair loop of vectorized lag dot-products, replacing
-    dplR's triple loop with per-iteration cbind/rowSums), while following
-    dplR/FORTRAN's behavior, including its practice of compressing each
-    series pair to its common overlap and then lagging by position. The
-    re-reddening (postAR) forward filter is applied with scipy.signal.lfilter.
+    The pooled AR order p is selected by AIC from an autocovariance accumulated
+    across all series. Analog of dplR's ``chron.ars``.
 
     Parameters
     ----------
     rwi_data : pandas dataframe
-        detrended ring-width indices (e.g. from dpl.detrend()), with years as
-        the index and series as columns.
+        detrended ring-width indices (e.g. from ``dpl.detrend``), years as the
+        index and series as columns.
     biweight : boolean, default True
-        if True, aggregate series with Tukey's biweight robust mean (tbrm);
-        if False, use the arithmetic mean.
+        aggregate series with Tukey's biweight robust mean if True, else the
+        arithmetic mean.
     max_lag : int, default 10
         maximum AR lag considered when selecting the pooled AR order.
     first_aic_min : boolean, default True
-        if True, select the order at the first local AIC minimum (dplR's
-        default); if False, select the global AIC minimum.
+        select the order at the first local AIC minimum (dplR's rule) if True, else
+        the global AIC minimum.
     verbose : boolean, default True
-        if True, print the pooled ACF, AR coefficients, AIC, and selected order.
+        print the pooled ACF, AR coefficients, AIC, and selected order.
     prewhiten_method : str, default "ar.yw"
-        "ar.yw" (Yule-Walker, the default and the numerically exact match to
-        dplR) or "arima.CSS-ML" (matches dplR within tolerance).
+        ``"ar.yw"`` (Yule-Walker; numerically exact match to dplR) or
+        ``"arima.CSS-ML"`` (matches dplR within tolerance).
     ars_method : str, default "arstan"
-        how the ARSTAN (re-reddened) chronology is constructed (see Notes):
-        "arstan" re-reddens the mean of the prewhitened series (average then
-        re-redden -- Ed Cook's ARSTAN order); "dplr" re-reddens each series and
-        then averages (dplR's chron.ars order). The two agree only when every
-        series spans the full period; under staggered sample depth they differ.
+        how the re-reddened ARSTAN chronology is built (see Notes): ``"arstan"``
+        re-reddens the mean of the prewhitened series; ``"dplr"`` re-reddens each
+        series then averages (reproduces dplR). The two agree only when every
+        series spans the full period.
     backcast : boolean, default True
-        if True, backcast the initial values of each Yule-Walker prewhitening
-        step (as ARSTAN's ``bckcst``/``albino`` do), so residuals are defined for
-        every year and no leading years are lost to the AR model. If False, the
-        first ``p`` residuals of each series (and of the re-prewhitened mean) are
-        set to NaN, reproducing dplR's ``chron.ars``. See Notes. Applies to the
-        ``"ar.yw"`` path; the ``"arima.CSS-ML"`` path already returns full-length
-        residuals from its state-space filter.
+        backcast the initial values of each Yule-Walker prewhitening step so no
+        leading years are lost (ARSTAN behavior). False sets the first ``p``
+        residuals to NaN, reproducing dplR's ``chron.ars``. Applies to the
+        ``"ar.yw"`` path; ``"arima.CSS-ML"`` already returns full-length residuals.
     stabilize : {None, "rbar", "spline", "both"}, default None
-        If not None, also variance-stabilize each chronology and return the
-        stabilized versions in extra ``*_vsc`` columns (see Notes). This mirrors
-        ARSTAN, where variance stabilization (menu option ``isb``) is applied to
-        the finished chronologies. The method families are as in
-        :func:`stabilize_chron`: ``"rbar"`` (Osborn/Frank N_eff scaling),
-        ``"spline"`` (ARSTAN stabit spline), or ``"both"`` (rbar then a 67%
-        spline; ARSTAN ``isb=2``).
+        if set, also variance-stabilize each chronology and return the stabilized
+        versions in extra ``*_vsc`` columns (see Notes). Method families are as in
+        :func:`stabilize_chron`.
     stabilize_kwargs : dict, optional
-        Extra keyword arguments forwarded to :func:`stabilize_chron` when
-        ``stabilize`` is set (e.g. ``{"rbar_mode": "constant"}``). The
-        chronology, column, source matrix, and sample depth are supplied
-        automatically and may not be overridden here.
+        extra keyword arguments forwarded to :func:`stabilize_chron` when
+        ``stabilize`` is set. The chronology, column, source matrix, and sample
+        depth are supplied automatically and may not be overridden here.
 
     Returns
     -------
-    out : pandas dataframe indexed by year with columns 'std', 'res', 'ars',
-        and 'samp_depth'. When ``stabilize`` is set, a stabilized ``std_vsc``,
-        ``res_vsc``, and ``ars_vsc`` column is added next to each base
-        chronology.
+    out : pandas dataframe indexed by year with columns 'std', 'res', 'ars', and
+        'samp_depth'. When ``stabilize`` is set, a stabilized ``std_vsc``,
+        ``res_vsc``, and ``ars_vsc`` column is added next to each base chronology.
 
     Notes
     -----
-    **ARSTAN chronology construction (``ars_method``).** The re-reddening and
-    averaging steps do not commute when sample depth changes through time, so
-    there are two distinct ways to build the ARSTAN chronology:
+    **ARSTAN chronology (``ars_method``).** Re-reddening and averaging do not
+    commute when sample depth changes through time, so the ``ars`` column can be
+    built two ways: ``"arstan"`` (default) re-reddens the mean of the prewhitened
+    series; ``"dplr"`` re-reddens each series and then averages. The ``std`` and
+    ``res`` columns, the pooled AR order, and the prewhitening are identical either
+    way; only ``ars`` changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
 
-    - ``"arstan"`` (default): ``ars = postAR(mean(prewhitened series))`` --
-      average the prewhitened series first, then re-redden that single mean
-      series once. This reproduces Ed Cook's ARSTAN FORTRAN, which re-reddens
-      the residual chronology directly (``commie1`` applied to the residual
-      chronology). dplPy defaults to this to be faithful to ARSTAN, from which
-      chron_ars takes its DNA.
-    - ``"dplr"``: ``ars = mean(postAR(prewhitened series_i))`` -- re-redden each
-      prewhitened series and then average. This matches dplR's ``chron.ars`` and
-      was dplPy's behavior before this option existed.
+    **Backcasting (``backcast``).** An AR(p) filter has no data for its first ``p``
+    lagged terms. With ``backcast=True`` (default) those pre-sample values are
+    estimated by running the model in reverse, so the residual and ARSTAN
+    chronologies are full length (no leading NaN); the first ``p`` years are
+    model-based, so treat them as slightly less certain. With ``backcast=False``
+    the first ``p`` residuals are NaN, reproducing dplR's ``chron.ars``.
 
-    The ``std`` and ``res`` chronologies, the pooled AR order, and the
-    common-pooled-order prewhitening are identical for both settings; only the
-    ``ars`` column changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
-
-    **Backcasting (``backcast``).** An AR(p) filter has no data for its ``p``
-    lagged terms at the start of a series, so ordinarily the first ``p`` residuals
-    are undefined. ARSTAN avoids this by *backcasting*: it synthesizes ``p``
-    pre-sample values by running the AR model in reverse (subroutine ``bckcst``,
-    used by ``albino`` when prewhitening and ``commie`` when re-reddening), so the
-    filter can produce output for every year. dplPy does the same at both
-    prewhitening stages -- the per-series prewhitening and the re-prewhitening of
-    the mean -- when ``backcast=True`` (the default), so the residual and ARSTAN
-    chronologies are full length (no leading NaN) and match ARSTAN's construction
-    more closely: a young series' first ``p`` residuals are now *included* in the
-    robust mean rather than dropped, exactly as ARSTAN includes them. With
-    ``backcast=False`` the first ``p`` residuals are set to NaN, reproducing
-    dplR's ``chron.ars``. The re-reddening step (``postAR``) always backcasts, as
-    in ARSTAN. The backcast values are model-based estimates, so treat the first
-    ``p`` years as slightly less certain than the interior.
-
-    **Variance stabilization (``stabilize``).** Following ARSTAN's per-chronology
-    rbar convention, ``std_vsc`` uses the rbar of the standard (detrended) RWI
-    matrix, and both ``res_vsc`` and the ARSTAN chronology use the rbar of the
-    residual (prewhitened) matrix. The ARSTAN column is stabilized in the ARSTAN
-    order: with ``ars_method="arstan"`` the residual-style mean of the prewhitened
-    series is stabilized **before** re-reddening (ARSTAN stabilizes the residual
-    chronology, then ``commie1``), so ``ars_vsc`` stays consistent with the
-    unstabilized ``ars``. With ``ars_method="dplr"`` the ARSTAN chronology is
-    already built by re-reddening each series, so ``ars_vsc`` is stabilized
-    post-hoc on the reddened chronology (not the ARSTAN order). All columns
-    restandardize to their own full period (see :func:`stabilize_chron`).
+    **Variance stabilization (``stabilize``).** ``std_vsc`` uses the rbar of the
+    standard RWI matrix; ``res_vsc`` and the stabilized ARSTAN column use the rbar
+    of the residual matrix. Each column restandardizes to its own full period (see
+    :func:`stabilize_chron`).
 
     Examples
     --------
@@ -207,7 +152,6 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     .. [1] https://rdrr.io/cran/dplR/man/chron.ars.html
     .. [2] Cook, E.R. (1985) A time series analysis approach to tree-ring
            standardization. PhD dissertation, University of Arizona.
-
     """
     _require_dataframe(rwi_data)
     if prewhiten_method not in _KNOWN_PREWHITEN_METHODS:

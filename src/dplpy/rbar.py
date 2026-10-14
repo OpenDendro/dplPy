@@ -45,23 +45,15 @@ def get_running_rbar(data, min_seg_ratio, corr_type="pearson"):
     return mean_series_intercorrelation(data, corr_type, min_seg_ratio)
 
 def pairwise_corr_mean(data, method="pearson", min_overlap=None, strict=False):
-    """Mean of the off-diagonal pairwise correlations between the columns of
-    ``data`` (self-correlations excluded by setting the diagonal to NaN).
+    """Mean of the off-diagonal pairwise correlations between the columns of ``data``
+    (self-correlations excluded).
 
     When ``min_overlap`` is given, a series pair is counted only if its number of
     overlapping (both-present) years passes the threshold -- strictly greater
     (``strict=True``, ARSTAN's Briffa n>20) or at least (``strict=False``, the
-    moving-window rbar). This is the single home for the correlation-matrix ->
-    overlap-mask -> mean step shared by the rbar variants.
-
-    The average is a FLAT mean over every valid off-diagonal entry of the
-    (symmetric) matrix -- i.e. every retained series pair weighted equally --
-    matching dplR's ``mean(corMat, na.rm = TRUE)`` in chron.stabilized(). It must
-    NOT be a mean-of-column-means: the two coincide only when every series has the
-    same number of retained partners, but once the overlap mask drops pairs
-    unevenly across series (interior windows), a mean-of-column-means weights each
-    series equally instead of each pair and drifts from dplR on those windows.
-    The flat mean matches dplR's ``mean(corMat, na.rm = TRUE)``.
+    moving-window rbar). The average is a flat mean over every valid off-diagonal
+    entry (each retained pair weighted equally), matching dplR's
+    ``mean(corMat, na.rm = TRUE)``.
     """
     # corr.to_numpy() can be a read-only view under numpy 2 / copy-on-write, so
     # fill_diagonal needs an explicit writable copy, not the view pandas hands back.
@@ -87,16 +79,13 @@ def mean_series_intercorrelation(data_set, corr_type, min_seg_ratio, apply_mask=
 
 
 def running_rbar_vector(data, win_length, min_seg_ratio, n_samps=None):
-    """Moving-window rbar vector (Frank et al. 2006 "RUNNINGr"), padded at the
-    ends, matching dplR's chron.stabilized().
+    """Moving-window rbar vector (Frank et al. 2006 "RUNNINGr"), padded at the ends,
+    matching dplR's chron.stabilized().
 
     ``data`` is a years x series DataFrame (typically zero-mean). Returns a numpy
     array of length ``nrows``: the window rbar centred on each year, with the
     leading/trailing ``win_length/2`` positions padded with the nearest computed
     value, and NaN where the total sample depth is 0.
-
-    This is the shared engine used by both chron_stabilized() and
-    stabilize_chron() so the running rbar is computed identically in each.
     """
     num_years = data.shape[0]
     rbar_array = np.full(num_years, np.nan)

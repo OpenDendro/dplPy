@@ -44,129 +44,83 @@ from . import curvefit
 def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
             plot=True, period=None, nyrs0=50, pos_slope=False, f=0.5,
             verbose=False, return_info=False):
-    """Detrends a given series or dataframe
+    """Detrend a series or dataframe to ring-width indices.
 
-    Extended Summary
-    ----------------
-    Detrends a given series or dataframe, first by fitting data to a growth
-    curve (a smoothing spline by default), and then by forming the ring-width
-    index as a ratio ('ratio', i.e. division -- the default) or a difference
-    ('difference', i.e. subtraction) of the data to the fitted curve.
+    Fit a growth curve to each series (a smoothing spline by default) and form the
+    ring-width index as the ratio (``method="ratio"``, division, the default) or the
+    difference (``method="difference"``, subtraction) of the data to the curve.
 
-    IMPORTANT -- ``fit`` chooses the CURVE, ``method`` chooses the ARITHMETIC.
-    This differs from dplR, where ``method`` selects the curve and ``difference``
-    selects the arithmetic. In dplPy the curve type is ``fit=`` and the
-    ratio/difference choice is ``method=``; passing a curve name to ``method=``
-    raises a helpful error.
+    ``fit`` chooses the CURVE and ``method`` chooses the ARITHMETIC. This differs
+    from dplR, where ``method`` selects the curve; passing a curve name to
+    ``method`` raises a helpful error.
 
     Parameters
     ----------
-    data: pandas dataframe or series
-        a data frame loaded using dpl.readers(), or a series extracted from such a datafame.
-    fit: str, default 'Spline'
-        the growth curve to fit. Accepted values (case-insensitive; dplR's names
-        are used as the canonical spelling):
-        'Spline' (smoothing spline), 'AgeDepSpline' (age-dependent spline),
-        'ModNegExp' (modified negative exponential fit by nonlinear least squares,
-        dplR-style, with a linear->mean fallback), 'NegExp' (the SAME neg-exp curve
-        fit by Ed Cook's ARSTAN deterministic method -- a 1-D search for the decay
-        rate with the amplitude/asymptote in closed form. It minimises the same
-        data-space error as 'ModNegExp', so the two coincide when the nls converges;
-        its advantage is robustness -- being deterministic it never fails to
-        converge, so it still fits series where 'ModNegExp' would fall back to a
-        line/mean. Same linear->mean fallback for the rejected cases),
-        'ModHugershoff' (Hugershoff growth curve fit by nonlinear least squares,
-        dplR-style, with a linear->mean fallback), 'Hugershoff' (the SAME curve fit
-        by ARSTAN's log-linearised closed form -- here the two genuinely differ, as
-        the closed form optimises log-space rather than data-space error),
-        'GeneralExp' (the general exponential a*t*exp(b*t) -- Hugershoff with the
-        power fixed at 1, ARSTAN's menu option 8, deterministic), 'Mean' (horizontal
-        line at the series mean), 'LinearAny' (best-fit straight line, any slope;
-        ARSTAN option 4), and 'LinearNegative' (best-fit line constrained to a
-        non-positive slope, falling back to the mean if the slope is positive;
-        ARSTAN option 5). NegExp/ModNegExp and Hugershoff/ModHugershoff each pair
-        ARSTAN's deterministic fit with dplR's nls fit of the same curve.
-        Names are case-insensitive; legacy spellings ('ModNegEx', 'horizontal',
-        and 'Linear' as an alias of 'LinearAny') are also accepted.
-        ``fit`` may also be a LIST of curve types (e.g. ['Spline', 'ModNegExp'])
-        to detrend by each and compare them (mirrors dplR's method vector). In
-        that case a Series returns a DataFrame with one column per method, and a
-        DataFrame returns a dict mapping each series name to such a DataFrame.
-        (A list of methods cannot be combined with return_info=True.)
-    method : str, default 'ratio'
-        how the ring-width index is formed from the data and the fitted curve.
-        'ratio' (equivalently 'division') divides the data by the curve;
-        'difference' subtracts the curve from the data. This mirrors dplR's
-        detrend(), where division is the default and 'difference=TRUE' subtracts.
-        The former spelling 'residual' for the division result is deprecated --
-        in dplPy 'residual' now refers only to the residual (AR-prewhitened)
-        chronology -- and is accepted for now as an alias of 'ratio' with a
-        warning.
+    data : pandas dataframe or series
+        ring widths from ``dpl.readers``, or a single series taken from one.
+    fit : str or list, default "Spline"
+        the growth curve to fit (case-insensitive; dplR's names are canonical):
+        ``"Spline"`` (smoothing spline), ``"AgeDepSpline"`` (age-dependent spline),
+        ``"ModNegExp"`` and ``"ModHugershoff"`` (negative-exponential and Hugershoff
+        curves fit by nonlinear least squares, with a linear->mean fallback),
+        ``"NegExp"`` and ``"Hugershoff"`` (the same curves by ARSTAN's deterministic
+        fit), ``"GeneralExp"``, ``"LinearAny"`` (any-slope line), ``"LinearNegative"``
+        (non-positive-slope line, else the mean), and ``"Mean"`` (horizontal line at
+        the series mean). A list of curves detrends by each and returns a comparison:
+        a Series gives a DataFrame with one column per curve, a DataFrame gives a dict
+        of them (not combinable with ``return_info``).
+    method : {"ratio", "difference"}, default "ratio"
+        how the index is formed: ``"ratio"`` divides the data by the curve,
+        ``"difference"`` subtracts it.
     plot : boolean, default True
-        flag indicating whether or not to plot the results.
+        draw the fitted curve and the detrended index.
+    period : int or float, default None
+        smoothing wavelength for ``fit="Spline"`` (``get_period`` rule): a fraction of
+        length in ``(0, 1]``, a percent-of-length spline if negative, or a fixed
+        wavelength in years if > 1. None uses the dplR default (two thirds of length).
     nyrs0 : int, default 50
-        initial spline stiffness for fit='AgeDepSpline' (see dpl.ads()).
+        initial spline stiffness for ``fit="AgeDepSpline"`` (see ``dpl.ads``).
     pos_slope : boolean, default False
-        for fit='ModNegExp' and fit='AgeDepSpline', whether to allow a positive
-        slope (in the ModNegExp linear fallback, and at the end of the age-
-        dependent spline). dplR's detrend uses pos.slope=FALSE.
+        allow a positive slope at the old-age end (the ``ModNegExp`` linear fallback
+        and ``AgeDepSpline``). dplR uses ``pos.slope=FALSE``.
     f : float, default 0.5
-        frequency-response amplitude of the smoothing spline at the `period`
-        wavelength (dplR's `f`): the fraction of amplitude retained there. Only
-        used for fit='Spline'.
+        spline frequency-response amplitude at ``period`` (``fit="Spline"`` only).
     verbose : boolean, default False
-        print, per series, the curve fitted and the detrending arithmetic used.
-        (Fallbacks in fit='ModNegExp' are also reported via warnings.)
+        print, per series, the curve fitted and the arithmetic used.
     return_info : boolean, default False
-        if True, return a dict (mirroring dplR's detrend return.info) instead of
-        just the detrended data::
+        if True, return a dict (like dplR's ``return.info``) instead of just the data::
 
-            {"rwi":        detrended series (same shape as the input),
+            {"rwi":        the detrended series (same shape as the input),
              "curves":     the fitted detrending curves,
-             "model_info": per-series fit description -- the method actually used
-                           (e.g. 'NegativeExponential', 'Line', 'Mean', 'Spline')
-                           and its parameters/coefficients,
+             "model_info": per-series description of the fit actually used,
              "data_info":  per-series {n_zeros, zero_years} of the input,
-             "dirty_dog":  True if any series' curve went non-positive or fell
-                           back to the series mean (dplR's "dirty dog" flag)}
-    
+             "dirty_dog":  True if any curve went non-positive or fell back to the mean}
+
     Returns
     -------
-    data: pandas dataframe or series of detrended data.
-    
+    data : pandas dataframe or series
+        the detrended data.
+
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.detrend(data) # Detrends all series in a dataframe
-    >>> dpl.detrend(data["SeriesA"]) # Detrends only SeriesA
-    >>> dpl.detrend(data["SeriesA"], fit="ModNegExp", method="difference", plot=True)
-    
+    >>> dpl.detrend(data)                     # all series in a dataframe
+    >>> dpl.detrend(data["SeriesA"], fit="ModNegExp", method="difference")
+
     Notes
     -----
-    Missing interior values (``NaN``) are dropped before any curve is fit, so a
-    gap can never corrupt a fit the way a sentinel value (e.g. ARSTAN's
-    ``-9.99``) would. There is, however, a limitation specific to the
-    position-based fits -- every fit except ``Spline`` and ``Mean``. These are
-    fitted against cambial age reconstructed as ``1, 2, ..., n`` over the
-    *surviving* rings: the parametric growth curves (``ModNegExp``, ``NegExp``,
-    ``ModHugershoff``, ``Hugershoff``, ``GeneralExp``), the ``LinearAny`` /
-    ``LinearNegative`` fits, and ``AgeDepSpline`` (whose stiffness tracks ring
-    position). An internal gap therefore compresses the age axis after it (a
-    ring at true cambial age 50 is fit as age 45 if five earlier rings are
-    missing). For a smooth growth curve this is a minor, benign distortion but
-    it is not exact. ``Spline`` is the exception -- a smoothing spline over the
-    real calendar years, so it spans an interior gap correctly in time -- and
-    ``Mean`` is order-invariant, so neither is affected. For a series with large
-    internal gaps under a position-based fit, prefer ``fit='Spline'``, or infill
-    first with ``dpl.fill_internal`` (e.g. ``fill='ARSTAN'`` for Ed Cook's
-    regional-signal imputation). ``detrend`` emits a warning when a
-    position-based fit meets a series with interior gaps.
+    Interior ``NaN`` are dropped before fitting. The position-based fits (every curve
+    except ``Spline`` and ``Mean``) reconstruct cambial age by counting the surviving
+    rings, so an interior gap compresses the age axis after it -- usually a minor
+    distortion, but for large gaps prefer ``fit="Spline"`` or infill first with
+    ``dpl.fill_internal``. ``detrend`` warns when a position-based fit meets a series
+    with interior gaps. ``Spline`` (fit over calendar years) and ``Mean``
+    (order-invariant) are unaffected.
 
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#detrend
-         
     """
     method = _normalize_method(method)
 

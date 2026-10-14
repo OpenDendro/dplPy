@@ -66,28 +66,27 @@ from ._validate import _coerce_to_frame
 def sens1(data):
     """Mean sensitivity (dplR ``sens1``).
 
-    The standard measure of year-to-year variability in dendrochronology
-    (Douglass; Eq. 1 of Biondi and Qeadan 2008), typically computed on detrended
-    series. For a single series of ``n`` (non-missing) values,
+    The standard measure of year-to-year variability in dendrochronology (Douglass;
+    Eq. 1 of Biondi and Qeadan 2008), typically computed on detrended series. For a
+    single series of ``n`` (non-missing) values,
 
         sens1 = (2 / (n - 1)) * sum_i |x_i - x_{i-1}| / (x_i + x_{i-1})
 
-    where a ``0/0`` term arising from an ``x_i + x_{i-1} == 0`` pair is skipped
-    (matching dplR's C ``ISNAN`` guard) while ``n - 1`` is unchanged.
+    where a ``0/0`` term from an ``x_i + x_{i-1} == 0`` pair is skipped while
+    ``n - 1`` is unchanged.
 
     Parameters
     ----------
     data : pandas.DataFrame, pandas.Series, 1-D array-like, or str
-        A ring-width dataset (years x series), a single series, or a path/URL to
-        a .csv/.rwl file. NA/NaN values are dropped before the calculation.
+        A ring-width dataset (years x series), a single series, or a path/URL to a
+        .csv/.rwl file. NA/NaN values are dropped before the calculation.
 
     Returns
     -------
     float or pandas.Series
-        For a single series, the scalar mean sensitivity. For a DataFrame (or a
-        file path, which is read into one), a Series of the statistic indexed by
-        series name -- the equivalent of R's ``apply(rwl, 2, sens1)``. A series
-        with fewer than two values yields ``NaN``.
+        For a single series, the scalar mean sensitivity. For a DataFrame (or a file
+        path, which is read into one), a Series of the statistic indexed by series
+        name. A series with fewer than two values yields ``NaN``.
 
     Examples
     --------

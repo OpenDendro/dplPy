@@ -96,53 +96,46 @@ def _rm_short(notNA, row_idx, flag):
 def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
     """Select a complete common interval from a set of ring-width series.
 
-    Extended Summary
-    ----------------
-    Finds the largest block of years and series in which every retained series
-    has a value for every retained year (a complete, gap-free rectangle). This
-    is the interval over which chronology-level statistics such as rbar, EPS and
-    SSS can be computed without missing values, and is the recommended way to
-    handle datasets whose series are unevenly distributed in time. Ported from
-    dplR's ``common.interval()``.
+    Finds the largest block of years and series in which every retained series has a
+    value for every retained year (a complete, gap-free rectangle) -- the interval
+    over which chronology statistics such as rbar, EPS and SSS can be computed
+    without missing values. Ported from dplR's ``common.interval()``.
 
     Three strategies trade off the number of series against the number of years:
 
-    - ``"series"`` maximises the number of series (cores), at the highest sample
-      depth -- typically a short, deep interval.
-    - ``"years"`` maximises the number of years, dropping short series to extend
-      the span -- typically a long, shallow interval.
-    - ``"both"`` (default) maximises the number of data cells (series x years),
-      a balance of the two. (Following dplR, this is a specific heuristic rather
-      than the global cell maximum, which ``"years"`` can occasionally exceed.)
+    - ``"series"`` maximises the number of series (cores) at the highest sample depth
+      -- typically a short, deep interval.
+    - ``"years"`` maximises the number of years, dropping short series to extend the
+      span -- typically a long, shallow interval.
+    - ``"both"`` (default) maximises the number of data cells (series x years), a
+      balance of the two.
 
-    To use an interval of your own choosing instead, simply slice the frame
-    (e.g. ``rwi.loc[1800:1980]``) before passing it on.
+    To use an interval of your own choosing, slice the frame (e.g.
+    ``rwi.loc[1800:1980]``) before passing it on.
 
     Parameters
     ----------
     rwl : pandas.DataFrame
-        ring-width series (raw or detrended), years as the index, series as
-        columns.
+        ring-width series (raw or detrended), years as the index, series as columns.
     type : {"series", "years", "both"}, default "both"
         the selection strategy described above.
     plot : bool, default False
         if True, draw a coverage diagram (each series as a grey span, with the
-        retained common interval overlaid in black). dplR draws this by default;
-        here it is off by default so the function is quiet unless asked.
+        retained common interval overlaid in black).
 
     Returns
     -------
     pandas.DataFrame
-        the trimmed frame containing only the retained series and years (a
-        complete rectangle). The full frame is returned unchanged if no trimming
-        is possible/needed.
+        the trimmed frame containing only the retained series and years (a complete
+        rectangle). The full frame is returned unchanged if no trimming is
+        possible/needed.
 
     Examples
     --------
     >>> import dplpy as dpl
     >>> rwi = dpl.detrend(dpl.readers("../tests/data/csv/co021.csv"), plot=False)
     >>> ci = dpl.common_interval(rwi, type="both")
-    >>> dpl.rwi_stats(ci)                       # rbar/EPS/SNR over the interval
+    >>> dpl.rwi_stats(ci)
 
     References
     ----------

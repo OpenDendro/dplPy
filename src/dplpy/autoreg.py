@@ -34,37 +34,41 @@ import numpy as np
 import warnings
 
 def ar_func(data: pd.DataFrame | pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=False) -> (pd.DataFrame | pd.Series):
-    """Auto Regressive (AR) functions 
-      
-    Extended Summary
-    ---------------
-    Fits a given data to an the best-fit autoregressive model, returns the residuals
-    of AR fit relative to the original data + the mean of the original data.
+    """Prewhiten series with a best-fit AR model.
+
+    Fits each series to the best-fit autoregressive model and returns the residuals
+    plus the series mean (the prewhitened series).
 
     Parameters
     ----------
-    data : pd.DataFrame | pd.Series
-        a pandas dataframe imported from dpl.readers() or a series extracted
-        from such a dataframe.
-    max_lag: int, default 5
-        max lag to consider when selecting the AR model.
+    data : pd.DataFrame or pd.Series
+        ring widths from dpl.readers(), or a single series taken from one.
+    max_lag : int, default 5
+        maximum AR order considered when selecting the model.
+    aic : bool, default True
+        select the AR order by AIC up to max_lag; if False, fit a fixed AR of order
+        max_lag.
+    method : {"ols", "yw", "burg"}, default "ols"
+        AR estimator. "ols" matches R's ar(method="ols"); "yw" (Yule-Walker) matches
+        R's ar() default; "burg" is the maximum-entropy estimator.
+    first_aic_min : bool, default False
+        when aic is True, False takes the global AIC minimum, True the first local AIC
+        minimum (more parsimonious).
 
     Returns
     -------
-    res :  pandas dataframe or series of AR-modeled data, depending on which was given as input.
-    
+    res : pandas dataframe or series
+        the prewhitened data (residuals plus mean), matching the input type.
+
     Examples
     --------
-    >>> import dplpy as dpl 
+    >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.ar_func(data['series name']) -> returns residuals plus mean of best fit 
-                                            from AR models with max lag of either 5 
-                                            (default) or specified number
-    
+    >>> dpl.ar_func(data["series name"])
+
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#ar_func 
-    
+    .. [1] https:/opendendro.org/dplpy-man/#ar_func
     """
     if isinstance(data, pd.DataFrame):
         start_df = pd.DataFrame(index=pd.Index(data.index))
@@ -100,36 +104,41 @@ def ar_func_series(data: pd.Series, max_lag, aic=True, method="ols", first_aic_m
 
 
 def autoreg(data: pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=False):
-    """ Auto Regressive (AR) functions
-    
-    Extended Summary
-    ----------------
-    Selects the best AR model with a specified maximum order for the given data,
-    and returns the parameters for the model. The best model is selected based 
-    on AIC value.
+    """Fit the best-fit AR model to a series and return its parameters.
+
+    Selects the AR order up to max_lag by AIC and returns the fitted model
+    parameters.
 
     Parameters
     ----------
     data : pd.Series
-        an individual (Pandas) series representing tree rings/widths.
+        an individual series representing tree rings/widths.
     max_lag : int, default 5
-        max lag to consider when selecting the AR model.
-            
+        maximum AR order considered when selecting the model.
+    aic : bool, default True
+        select the AR order by AIC up to max_lag; if False, fit a fixed AR of order
+        max_lag.
+    method : {"ols", "yw", "burg"}, default "ols"
+        AR estimator. "ols" matches R's ar(method="ols"); "yw" (Yule-Walker) matches
+        R's ar() default; "burg" is the maximum-entropy estimator.
+    first_aic_min : bool, default False
+        when aic is True, False takes the global AIC minimum, True the first local AIC
+        minimum (more parsimonious).
+
     Returns
     -------
-    params: array containing the parameters of best-fit AR model in order.
-        
+    params : array
+        parameters of the best-fit AR model, as [intercept, phi_1, ..., phi_p].
+
     Examples
     --------
-    >>> import dplpy as dpl 
+    >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.autoreg(data['series name']) -> returns parameters of best fit AR model
-                                            with maxlag of 5 (default) or other 
-                                            specified number
+    >>> dpl.autoreg(data["series name"])
+
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#autoreg
-    
     """
     # validate data?
     if not isinstance(data, pd.Series):
@@ -173,23 +182,13 @@ def autoreg(data: pd.Series, max_lag=5, aic=True, method="ols", first_aic_min=Fa
 
 
 def _yw_params_aic(x, max_lag, aic=True, first_aic_min=False):
-    """Yule-Walker AR fit matching R's ar(method="yule-walker").
+    """Yule-Walker AR fit, matching R's ar(method="yule-walker").
 
-    Uses the Levinson-Durbin recursion on the biased (divisor-n) autocovariances,
-    selecting the order by AIC (n*log(var_p) + 2p, R's criterion) up to ``max_lag``
-    when ``aic`` is True, else a fixed order ``max_lag``. Follows R's
-    Levinson-Durbin AR estimation in both the selected order and the
-    coefficients. Returns parameters as
-    ``[intercept, phi_1, ..., phi_p]`` where intercept = mean*(1 - sum(phi)), so
-    the array plugs straight into fitted_values() like the OLS coefficients.
-
-    When ``aic`` is True, ``first_aic_min`` chooses between two order-selection
-    rules: False (default) takes the GLOBAL AIC minimum -- R's ar() behaviour, so
-    chron() reproduces dplR's chron(); True takes the FIRST LOCAL AIC minimum (the
-    first order after which AIC turns back up), which is ARSTAN's rule (and what
-    chron_ars uses via firstAICmin). The first-local rule is more parsimonious --
-    on real collections it rarely selects an order above ~7 -- at the cost of a
-    little AIC. The two agree whenever the AIC minimum is not a late, shallow one.
+    Selects the order by AIC up to ``max_lag`` when ``aic`` is True, else a fixed
+    order ``max_lag``. Returns ``[intercept, phi_1, ..., phi_p]`` with intercept =
+    mean*(1 - sum(phi)), so the array plugs straight into fitted_values(). When
+    ``aic`` is True, ``first_aic_min`` selects the first local AIC minimum (more
+    parsimonious) rather than the global minimum.
     """
     x = x[~np.isnan(x)]
     n = len(x)
@@ -227,18 +226,12 @@ def _yw_params_aic(x, max_lag, aic=True, first_aic_min=False):
 
 
 def _burg_params_aic(x, max_lag, aic=True, first_aic_min=False):
-    """Burg (maximum-entropy) AR fit -- the estimator in COFECHA's MEMPR and in
-    Ed Cook's ARSTAN.
+    """Burg (maximum-entropy) AR fit.
 
-    Burg's recursion minimises the sum of forward and backward prediction-error
-    powers, choosing each reflection coefficient by the harmonic-mean formula
-    ``k = 2*sum(f*b) / sum(f^2 + b^2)`` and updating the coefficients by the
-    Levinson step. The order is selected by AIC (``n*log(var_p) + 2p``) up to
-    ``max_lag``; ``first_aic_min`` takes the first local AIC minimum (COFECHA's
-    IOPT=1 / ARSTAN rule) rather than the global minimum. Returns parameters as
-    ``[intercept, phi_1, ..., phi_p]`` with intercept = mean*(1 - sum(phi)),
-    matching :func:`_yw_params_aic` so fitted_values() and the residual+mean
-    convention downstream are unchanged."""
+    Selects the order by AIC up to ``max_lag`` (``first_aic_min`` takes the first
+    local AIC minimum). Returns ``[intercept, phi_1, ..., phi_p]`` with intercept =
+    mean*(1 - sum(phi)), matching :func:`_yw_params_aic`.
+    """
     x = x[~np.isnan(x)]
     n = len(x)
     m = float(np.mean(x)) if n else 0.0

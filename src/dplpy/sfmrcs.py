@@ -54,19 +54,14 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
            **kwargs):
     """Signal-Free multiple-curve Regional Curve Standardisation.
 
-    Extended Summary
-    ----------------
-    Combines :func:`sfrcs` (signal-free RCS) with :func:`mrcs` (multiple-curve
-    RCS): trees are sorted by relative growth rate and split into ``n_curves``
-    equal-count classes, then the signal-free iteration rebuilds each class's
-    regional curve from measurements that have had the current chronology divided
-    out, while forming the tree indices from the original measurements, until the
-    chronology converges. A port of CRUST's signal-free multiple-RCS.
-
-    Multiple RCS corrects the growth-rate slope bias but removes some genuine
-    low-frequency variance; ``reset_means`` (default ``True``, ratios only)
-    restores each tree's one-curve mean to recover it (CRUST "mean single").
-    ``sfmrcs(rwl, n_curves=1)`` is identical to ``sfrcs(rwl)``.
+    Combine :func:`sfrcs` (signal-free iteration) with :func:`mrcs` (multiple
+    curves): sort trees by growth rate into ``n_curves`` equal-count classes, then
+    iteratively rebuild each class's regional curve from measurements that have had
+    the current chronology divided out, while forming the tree indices from the
+    original measurements, until the chronology converges. ``reset_means`` (ratios
+    only) restores each tree's one-curve mean to recover the low-frequency variance
+    multiple RCS removes. ``sfmrcs(rwl, n_curves=1)`` is identical to
+    ``sfrcs(rwl)``. Port of CRUST's signal-free multiple RCS.
 
     Parameters
     ----------

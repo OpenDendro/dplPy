@@ -52,77 +52,44 @@ import scipy.stats
 
 
 def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spearman"):
-    """Mean interseries correlation
+    """Mean interseries correlation (COFECHA's headline statistic).
 
-    Extended Summary
-    ----------------
-    For every series in the dataset, calculates the correlation between that
-    series and a master chronology built from every *other* series in the
-    dataset (leave-one-out principle). This is the same quantity commonly
-    reported by COFECHA as the mean interseries correlation, and computed by
-    dplR's interseries.cor().
+    For each series, correlate it against a master chronology built from every other
+    series (leave-one-out), then average. This is dplR's ``interseries.cor()``, and
+    is distinct from rbar (``rwi_stats``), which averages the pairwise correlations
+    between individual series.
 
-    This is a fundamentally different statistic from rbar (reported by
-    dpl.rwi_stats() and used by dpl.chron_stabilized()): rbar is the mean of the
-    pairwise correlations
-    between every series and every OTHER series individually -- a stricter
-    test to pass -- while the interseries correlation computed here is the
-    mean of the correlation between each series and the composite chronology
-    built from the rest. dplR's own documentation for interseries.cor()
-    draws this same distinction explicitly.
-
-    Each series is first normalized by dividing by its own mean (dplPy's
-    "horizontal" detrend -- equivalent to dplR's normalize.xdate() without
-    its optional Hanning-filter alternative, which dplPy does not currently
-    implement), then optionally prewhitened with an autoregressive model
-    (matching dplR's default). Note also that, unlike dplR's
-    rwi.stats()/rwi.stats.running(), this function does not exclude series
-    with very few (three or fewer) valid observations from contributing to
-    other series' composite chronologies; for typical dendrochronological
-    datasets this is not expected to matter, but a pathologically short
-    series could be weighted differently here than in dplR.
+    Expects raw ring widths, not indices: each series is normalized by its own mean
+    and, by default, prewhitened before the correlations are computed.
 
     Parameters
     ----------
-    data : pandas dataframe
-        a dataframe of raw ring widths, as produced by dpl.readers(). Unlike
-        chron() or chron_stabilized(), this function expects raw
-        measurements rather than already-detrended ring-width indices -- it
-        performs its own normalization internally, matching dplR's
-        interseries.cor().
+    data : pandas.DataFrame
+        raw ring widths (as from ``dpl.readers``), years as the index, series as
+        columns.
     prewhiten : boolean, default True
-        whether to prewhiten each series with an autoregressive model before
-        computing correlations.
+        prewhiten each series with an autoregressive model before correlating.
     biweight : boolean, default True
-        whether to use Tukey's biweight robust mean (rather than the
-        arithmetic mean) when building each series' leave-one-out composite
-        chronology.
-    corr : str, default "Spearman"
-        correlation type to use: "Spearman" or "Pearson".
+        build each leave-one-out master with a Tukey biweight robust mean rather than
+        the arithmetic mean.
+    corr : {"Spearman", "Pearson"}, default "Spearman"
+        correlation type.
 
     Returns
     -------
     mean_corr : float
-        the collection-wide mean interseries correlation (rounded to 3
-        decimals) -- the single number most users want.
-    result : pandas dataframe
-        one row per series (indexed by series name) with that series'
-        interseries correlation (3 decimals) and its one-sided ("greater")
-        p-value.
+        collection-wide mean interseries correlation (3 decimals).
+    result : pandas.DataFrame
+        per-series interseries correlation and one-sided p-value.
 
     Examples
     --------
     >>> import dplpy as dpl
-    >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> mean_corr, per_series = dpl.interseries_corr(data)
-    >>> mean_corr                       # the collection-wide mean
-    >>> per_series.head()               # the individual-series table
-    >>> dpl.interseries_corr(data, prewhiten=False, corr="Pearson")
+    >>> mean_corr, per_series = dpl.interseries_corr(dpl.readers("series.rwl"))
 
     References
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/interseries.cor.html
-
     """
     _require_dataframe(data)
 

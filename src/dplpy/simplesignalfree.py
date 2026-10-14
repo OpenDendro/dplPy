@@ -112,15 +112,12 @@ def ssf(rwl,
         preset=None):
     """Simple signal-free chronology (dplR's ssf()).
 
-    Extended Summary
-    ----------------
-    Builds a signal-free chronology (Melvin & Briffa 2008): an initial
-    chronology is formed, every series is divided by it to strip the common
-    signal, the resulting "signal-free" measurements are rescaled and
-    re-detrended, and a new chronology is built. This repeats until the
-    high-frequency component of the chronology stops changing between iterations
-    (the sample-depth-weighted median absolute difference falls below
-    ``mad_threshold``) or ``max_iterations`` is reached. Reproduces dplR's ssf().
+    Build a signal-free chronology (Melvin & Briffa 2008): form an initial
+    chronology, divide every series by it to strip the common signal, rescale and
+    re-detrend the resulting signal-free measurements, and build a new chronology,
+    repeating until the high-frequency chronology stops changing (the sample-depth-
+    weighted median absolute difference falls below ``mad_threshold``) or
+    ``max_iterations`` is reached. Reproduces dplR's ssf().
 
     Parameters
     ----------
@@ -148,14 +145,13 @@ def ssf(rwl,
     verbose : bool, default True
         print progress and the per-iteration convergence diagnostics.
     preset : {None, "crust"}, default None
-        None reproduces the basic signal-free method (dplR's ssf; Melvin &
-        Briffa 2008). "crust" turns on the guards/refinements from CRUST (Melvin
-        & Briffa 2014): the signal-free measurements are rescaled multiplicatively
-        (the model-consistent "mean offset") rather than additively; the raw
-        measurement is kept in any year where the chronology is near zero
-        (< 0.01); and the fitted detrending curves are floored at 0.02 mm. These
-        make ssf robust to sensitive sites with many absent rings (e.g. co021),
-        which the basic method cannot standardise.
+        None reproduces the basic signal-free method (dplR's ssf; Melvin & Briffa
+        2008). "crust" adds CRUST's robustness guards (Melvin & Briffa 2014):
+        multiplicative rescaling of the signal-free measurements, the raw
+        measurement kept in any year where the chronology is near zero (< 0.01), and
+        the fitted curves floored at 0.02 mm. These make ssf robust to sensitive
+        sites with many absent rings (e.g. co021) that the basic method cannot
+        standardise.
 
     Returns
     -------

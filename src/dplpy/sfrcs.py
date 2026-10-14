@@ -43,71 +43,47 @@ from .detrend import _normalize_method
 def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
           biweight_crn=False, ss=10, rise=None, max_iterations=40, tol=1e-3,
           plot=True, return_info=False, verbose=True, **kwargs):
-    """Signal-Free Regional Curve Standardisation of a set of ring-width series.
+    """Signal-Free Regional Curve Standardization of a set of ring-width series.
 
-    Extended Summary
-    ----------------
-    Ordinary RCS builds one "regional curve" (mean growth by cambial age) and
-    detrends every series by it. When the sample's age structure varies over
-    calendar time -- young trees clustered in one period, old trees in another --
-    that age curve absorbs some of the common climate signal, biasing the low
-    frequencies ("trend distortion"). Signal-Free RCS breaks the feedback: it
-    iterates, and on each pass rebuilds the regional curve from measurements that
-    have had the *current chronology* (the common signal) divided out, while still
-    forming the tree indices from the original measurements. A port of CRUST's
-    single-curve signal-free RCS (Melvin & Briffa 2014).
-
-    Each iteration (CRUST ``rcs_detrend``/``det_sf_rcs``):
-      1. signal-free measurements ``fx = tx / crn`` -- but only where the calendar
-         year holds more than one tree *and* ``crn >= 0.01``; elsewhere the raw
-         ``tx`` is kept (the near-zero/low-depth division guard);
-      2. regional curve = mean ring width by cambial age of ``fx``, smoothed with
-         the CRUST age-dependent spline (``spline3``, 11-year minimum stiffness,
-         fitted only where by-age depth >= 4, 0.02 mm floor, flat-extended tail);
-      3. tree indices = original ``tx`` divided by that curve;
-      4. rescale so the chronology mean is 1;
-      5. recompute the chronology (robust biweight mean by year).
-    Iteration stops when ``max|crn_k - crn_(k-1)| < tol``.
+    Ordinary RCS lets the single regional curve absorb some of the common climate
+    signal when the sample's age structure varies over time, biasing the low
+    frequencies. Signal-Free RCS breaks that feedback: it iterates, each pass
+    rebuilding the regional curve from measurements with the current chronology
+    divided out, while still forming the tree indices from the original
+    measurements. Iteration stops when the chronology stops changing (``tol``). Port
+    of CRUST's single-curve signal-free RCS (Melvin & Briffa 2014).
 
     Parameters
     ----------
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
     po : pandas.DataFrame or None, default None
-        pith offsets, columns ``series`` and ``pith_offset`` -- a TRUE offset:
-        rings between the pith and the first measured ring (0 = pith present).
-        None assumes 0 for all. **Convention (changed in 0.8.0):** this equals
-        ARSTAN's ``nshft`` exactly (an ARSTAN file is usable directly); dplR
-        stores the cambial age of the first ring (1 = pith present), so subtract
-        1 from a dplR ``po`` table first.
+        pith offsets, columns ``series`` and ``pith_offset`` -- rings between the pith
+        and the first measured ring (0 = pith present). None assumes 0 for all. (A dplR
+        ``po`` table stores the cambial age of the first ring, 1 = pith present, so
+        subtract 1 first.)
     method : {"ratio", "difference"}, default "ratio"
-        how indices are formed: "ratio" divides (default), "difference" subtracts.
-        Matches ``detrend()`` and ``rcs()``.
+        how indices are formed: "ratio" divides, "difference" subtracts.
     biweight_curve : bool, default False
-        build the regional curve with Tukey's biweight robust mean by cambial age.
-        Default False matches CRUST, which uses the arithmetic mean by age.
+        build the regional curve with a biweight robust mean by cambial age. Default
+        False (arithmetic mean by age) matches CRUST.
     biweight_crn : bool, default False
-        how the chronology mean by year is formed. False (default) uses the
-        arithmetic mean, matching CRUST's ``RCSdefault.fil`` (KRB=1) -- this
-        reproduces a headless build of CRUST to ~1e-3 on CRUST's own sample data.
-        True uses Tukey's biweight robust mean (a robust alternative that departs
-        from CRUST's default).
+        build the yearly chronology mean with a biweight robust mean. Default False
+        (arithmetic) matches CRUST's default.
     ss : int, default 10
         age-dependent spline stiffness offset for the regional curve; per-point
         stiffness is ``ss + cambial age`` (ss=10 -> 11-year minimum), as in CRUST.
     rise : bool or None, default None
-        allow the smoothed regional curve to rise in its final third. None selects
-        CRUST's rule automatically (allowed only for curves longer than 1500 years);
-        otherwise the tail is flattened from its minimum to prevent an artefactual
-        old-age upturn.
+        allow the smoothed regional curve to rise in its final third. None uses CRUST's
+        rule (allowed only for curves longer than 1500 years); otherwise the tail is
+        flattened to prevent an artefactual old-age upturn.
     max_iterations : int, default 40
-        maximum signal-free iterations (CRUST's budget).
+        maximum signal-free iterations.
     tol : float, default 1e-3
-        convergence threshold on the maximum absolute year-to-year change in the
-        chronology between successive iterations (CRUST uses 0.001).
+        convergence threshold on the maximum chronology change between iterations.
     plot : bool, default True
-        draw the regional-curve figure (series and final curve vs cambial age).
-        The former name ``make_plot=`` is accepted for now with a DeprecationWarning.
+        draw the regional-curve figure (series and final curve vs cambial age). The
+        former name ``make_plot=`` is accepted for now with a DeprecationWarning.
     return_info : bool, default False
         if True, return a dict of diagnostics (see Returns) instead of just ``rwi``.
     verbose : bool, default True
@@ -116,8 +92,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
     Returns
     -------
     pandas.DataFrame or dict
-        By default the detrended ``rwi`` (calendar-year indexed, one column per
-        series). With ``return_info=True``, a dict::
+        the detrended ``rwi`` (calendar x series). With ``return_info=True``, a dict::
 
             {"rwi":        detrended series (calendar x series),
              "sfc":        the signal-free chronology (Series + samp.depth),
@@ -129,22 +104,20 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
 
     Notes
     -----
-    This is the single-curve case (CRUST ``trc=1, src=1``). Multi-curve RCS
-    (several regional curves with tree-to-curve allocation) is not yet
-    implemented. Unlike dplPy's ``rcs`` and ``ssf``, there is no dplR reference
-    for this method: the port is faithful to CRUST's ``stand.f90`` and its
-    numerical core (the ``spline3`` smoother) is validated against CRUST's
-    compiled kernel, but the full iteration is not checked against a gold
-    standard. Treat results as CRUST-faithful rather than machine-verified.
+    Single-curve case (CRUST ``trc=1, src=1``); multiple-curve signal-free RCS is
+    ``sfmrcs``. There is no dplR reference for this method: the port follows CRUST's
+    ``stand.f90`` and its spline smoother is validated against CRUST's compiled
+    kernel, but the full iteration is not checked against a gold standard, so treat
+    results as CRUST-faithful rather than machine-verified.
 
     References
     ----------
     .. [1] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
-       implementation of Regional Chronology Standardisation: Part 1,
-       Signal-Free RCS. Dendrochronologia, 32, 7-20.
+       implementation of Regional Chronology Standardisation: Part 1, Signal-Free
+       RCS. Dendrochronologia, 32, 7-20.
     .. [2] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
-       implementation of Regional Chronology Standardisation: Part 2, Further
-       RCS options and recommendations. Dendrochronologia, 32, 343-356.
+       implementation of Regional Chronology Standardisation: Part 2, Further RCS
+       options and recommendations. Dendrochronologia, 32, 343-356.
     """
     if not isinstance(rwl, pd.DataFrame):
         raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")

@@ -132,31 +132,16 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
           pos_slope=False, biweight=True, min_n=None, preset=None,
           reset_means=True, rescale_difference=False, rc_out=False,
           plot=True, **kwargs):
-    """Multiple-curve Regional Curve Standardisation (CRUST multiple RCS).
+    """Multiple-curve Regional Curve Standardisation.
 
-    Extended Summary
-    ----------------
-    Single-curve RCS (:func:`rcs`) assumes every tree shares one age->growth
-    expectation. Because "trees that grow fast die young", fast growers acquire a
-    negative slope in their one-curve indices and slow growers a positive slope,
-    so one average regional curve injects a systematic slope ("modern sample
-    bias") whenever the sample's growth-rate (or age) mix changes over calendar
-    time. ``mrcs`` sorts the trees by relative growth rate, splits them into
-    ``n_curves`` equal-count classes, builds a separate regional curve for each
-    class, and standardises each tree by its own class curve. A port of CRUST's
-    multiple-RCS option (Melvin & Briffa 2014, Part 2).
-
-    Multiple RCS corrects the slope bias but also removes some genuine
-    low-frequency variance (on timescales beyond the mean tree length; almost all
-    of the loss occurs going from one to two curves). ``reset_means`` (default
-    ``True``) rescales each tree's indices back to the mean it would have had under
-    one-curve RCS, reinstating the long-timescale amplitude while keeping the
-    slope correction -- CRUST's recommended compromise. It requires
-    ``method="ratio"`` and is skipped (with a warning) for ``method="difference"``.
-
-    Each class curve is built by the single-curve :func:`rcs`, so ``mrcs`` shares
-    its full ``fit``/``method``/``period``/``nyrs0``/``f``/``pos_slope``/``preset``
-    vocabulary, and ``mrcs(rwl, n_curves=1)`` is identical to ``rcs(rwl)``.
+    Sort trees by relative growth rate, split them into ``n_curves`` equal-count
+    classes, build a regional curve for each class, and standardise each tree by its
+    own class curve. This removes the modern-sample-bias slope that a single
+    regional curve injects when the sample's growth-rate (or age) mix changes over
+    time. Each class curve is built by :func:`rcs`, so ``mrcs`` shares its
+    ``fit``/``method``/``period``/``nyrs0``/``f``/``pos_slope``/``preset``
+    vocabulary, and ``mrcs(rwl, n_curves=1)`` is identical to ``rcs(rwl)``. Port of
+    CRUST's multiple RCS.
 
     Parameters
     ----------
@@ -166,24 +151,22 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
         pith offsets (columns ``series`` and ``pith_offset``; a true offset,
         0 = pith present), as in :func:`rcs`. None assumes 0 for every series.
     n_curves : int, default 2
-        number of regional curves (CRUST ``srcno``). ``1`` reduces exactly to
-        :func:`rcs`. Most of the low-frequency correction/loss is already present
-        at 2 curves.
+        number of regional curves. ``1`` reduces exactly to :func:`rcs`.
     sort : {"growth", "age", "diameter", "none"}, default "growth"
-        how trees are ranked before the equal-count split. "growth" is CRUST's
-        recommended growth-rate ranking (see Notes); "age" uses cambial age;
-        "diameter" uses total radius; "none" keeps input order.
+        how trees are ranked before the equal-count split: "growth" by relative
+        growth rate, "age" by cambial age, "diameter" by total radius, "none" keeps
+        input order.
     fit, method, period, nyrs0, f, pos_slope, biweight, min_n, preset,
     rescale_difference :
-        passed through to :func:`rcs` to build each class curve; see
-        :func:`rcs` for their meaning. Defaults match :func:`rcs`.
+        passed through to :func:`rcs` to build each class curve; see :func:`rcs`.
+        Defaults match :func:`rcs`.
     reset_means : bool, default True
-        if True (and ``method="ratio"``), rescale each tree's indices to the mean
-        it would have had under one-curve RCS, recovering low-frequency variance
-        (CRUST "mean single"). Skipped with a warning for ``method="difference"``.
+        if True (ratios only), rescale each tree's indices to the mean it would have
+        had under one-curve RCS, recovering the low-frequency variance multiple RCS
+        removes. Skipped with a warning for ``method="difference"``.
     rc_out : bool, default False
-        if True, return a dict ``{"rwi", "rc", "alloc"}`` -- the indices, the list
-        of per-class regional curves (by cambial age), and the series->class map.
+        if True, return a dict ``{"rwi", "rc", "alloc"}`` -- the indices, the list of
+        per-class regional curves (by cambial age), and the series->class map.
     plot : bool, default True
         draw the per-class regional-curve figure. ``make_plot=`` is accepted as a
         deprecated alias.
@@ -191,25 +174,15 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
     Returns
     -------
     pandas.DataFrame or dict
-        the detrended ``rwi`` (calendar-year indexed), or
-        ``{"rwi", "rc", "alloc"}`` when ``rc_out`` is True.
-
-    Notes
-    -----
-    Growth rate (``sort="growth"``) is the tree's total measured radius -- plus
-    the regional-curve-estimated radius of any missing pith rings -- divided by
-    the cumulative radius of the *unsmoothed* single regional curve (the
-    age-aligned mean of all trees) at the tree's full cambial age, after CRUST's
-    ``growth_rate`` routine. Trees are allocated to classes in near-equal numbers;
-    a class with fewer than %d trees is flagged, following CRUST's guidance that
-    multiple RCS needs well-replicated curves.
+        the detrended ``rwi`` (calendar-year indexed), or ``{"rwi", "rc", "alloc"}``
+        when ``rc_out`` is True.
 
     References
     ----------
     .. [1] Melvin, T. M. & Briffa, K. R. (2014) CRUST: Software for the
        implementation of Regional Chronology Standardisation: Part 2, Further
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
-    """ % _MIN_TREES_PER_CURVE
+    """
     _require_dataframe(rwl)
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)

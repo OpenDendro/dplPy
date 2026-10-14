@@ -164,18 +164,18 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     ----------
     data : pandas.DataFrame, dict, or list
         The undated collection. A DataFrame is read as one column per series (the
-        index is ignored -- these are undated); a dict maps names to ring-width
-        arrays; a bare list is auto-named ``S1``, ``S2``, ...
+        index is ignored); a dict maps names to ring-width arrays; a bare list is
+        auto-named ``S1``, ``S2``, ...
     transform : {"pw", "fd", "none"}, default "pw"
         High-pass transform applied before matching: ``pw`` prewhitens (AR), ``fd``
         first-differences, ``none`` uses mean-normalized widths.
     corr : {"spearman", "pearson", "kendall"}, default "spearman"
         Correlation used to score every offset.
     min_overlap : int, default 50
-        Minimum overlapping rings required to score a match (COFECHA UFLOAT uses 40).
+        Minimum overlapping rings required to score a match.
     crit_t : float, default 4.0
         A series joins the master only if its best t against the running mean reaches
-        this. Higher is safer against spurious placement; COFECHA flags t > 3.5.
+        this.
     anchor_year : int, default 1
         Relative calendar year assigned to the earliest ring of the assembled
         chronology.
@@ -183,16 +183,14 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
         A placement whose leave-one-out isolation (the t gap to the next-best,
         well-separated position) falls below this is flagged for review.
     ar_max : int or None, default 10
-        AR order ceiling for ``transform="pw"`` prewhitening. The default follows
-        COFECHA/ARSTAN (cap at 10), which keeps more early rings available for
-        matching; pass ``None`` for dplR's ``floor(10*log10(n))`` (can pick very high
-        orders and trim many early rings).
+        AR order ceiling for ``transform="pw"``. The default follows COFECHA/ARSTAN
+        (cap at 10); ``None`` uses dplR's ``floor(10*log10(n))``.
     first_aic_min : bool, default True
-        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
-        default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
+        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule)
+        rather than the global AIC minimum (dplR's ``ar()``; set False).
     plot : bool, default False
-        Draw a placement chart (each series positioned on the relative axis, coloured
-        by isolation) with the mean floating chronology beneath it.
+        Draw a placement chart (each series on the relative axis, coloured by
+        isolation) with the mean floating chronology beneath it.
     verbose : bool, default True
         Print a short summary.
 

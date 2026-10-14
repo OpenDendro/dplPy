@@ -288,10 +288,12 @@ def _neg_exp_curve(y):
 
 
 def neg_exp_arstan(x, y, pos_slope=False, name="", info=False):
-    """Deterministic negative-exponential detrend (ARSTAN `curve`), with the same
-    line->mean fallback chain as ModNegExp. The ARSTAN counterpart of dplR's
-    ModNegExp: same model f = a*exp(-b*t)+k (a>0, b>0, k>=0), fit deterministically
-    rather than by nonlinear least squares."""
+    """Deterministic negative-exponential detrend, with the same line->mean fallback
+    chain as ModNegExp.
+
+    Fits the same model as ModNegExp -- f = a*exp(-b*t) + k (a>0, b>0, k>=0) --
+    deterministically rather than by nonlinear least squares.
+    """
     def out(curve, meta):
         return (curve, meta) if info else curve
     y = np.asarray(y, dtype=float)

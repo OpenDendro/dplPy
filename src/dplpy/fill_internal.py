@@ -43,9 +43,8 @@ _SIMPLE_METHODS = ("Mean", "Spline", "Linear")
 def _fmm_spline(x, y, xout):
     """Interpolating cubic spline with Forsythe-Malcolm-Moler end conditions,
     matching R's spline(..., method="fmm") -- the method dplR's fill.internal.NA
-    uses. Translated from the classic FMM SPLINE/SEVAL routine; the end knots take
-    the third derivative of the exact cubic through the four nearest points.
-    Returns the spline evaluated at xout."""
+    uses. Returns the spline evaluated at xout.
+    """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     n = x.size
@@ -122,16 +121,16 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
     fill : {"Mean", "Spline", "Linear", "ARSTAN"} or a number, default "Mean"
         how to fill each interior gap:
 
-        - "Mean"   : the series' mean (flat fill). [dplR fill.internal.NA]
+        - "Mean"   : the series' mean (flat fill).
         - "Linear" : straight-line interpolation between the flanking values.
         - "Spline" : cubic-spline interpolation through the present values.
         - a number : that constant value.
-        - "ARSTAN" : Ed Cook's ARSTAN `fillin` -- impute each missing ring from
-          the common (mean) chronology signal, moment-matched to the individual
-          series and modulated by its growth curve (see Notes and _fill_arstan).
+        - "ARSTAN" : impute each missing ring from the common (mean) chronology
+          signal, moment-matched to the series and modulated by its growth curve
+          (see Notes and _fill_arstan).
 
-        The four simple options are a port of dplR's fill.internal.NA(); "Mean",
-        "Linear" and "Spline" interpolate within each series only.
+        "Mean", "Linear" and "Spline" port dplR's fill.internal.NA() and interpolate
+        within each series only.
     **kwargs
         for fill="ARSTAN", forwarded to _fill_arstan (e.g. growth_nyrs,
         long_gap, flank).
@@ -143,11 +142,10 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
 
     Notes
     -----
-    The simple methods know nothing about the other series -- they just bridge
-    each hole -- so use them when you need an NaN-free series for a downstream
-    step, not as if the filled values were measured. "ARSTAN" instead borrows the
-    shared year-to-year signal from all series, which is the point of Cook's
-    method.
+    The simple methods know nothing about the other series -- they just bridge each
+    hole -- so use them when you need an NaN-free series for a downstream step, not
+    as if the filled values were measured. "ARSTAN" instead borrows the shared
+    year-to-year signal from all series.
     """
     _require_dataframe(data)
 
@@ -221,28 +219,12 @@ def _runs_of_nan(col, first, last):
 
 def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
                  stabilize=True, stabilize_nyrs=50):
-    """Fill interior gaps by Ed Cook's ARSTAN `fillin` method (re-expressed).
+    """Fill interior gaps by imputing each missing ring from the population's common
+    signal scaled to the individual series, rather than interpolating.
 
-    Each missing ring is imputed from the population's *common signal* scaled to
-    the individual series, rather than merely interpolated. The stages mirror the
-    ARSTAN subroutine:
-
-    1. For every series, fit a growth curve (a `growth_nyrs`-year smoothing
-       spline) through its present rings. A gap longer than `long_gap` years first
-       gets a low-frequency linear seed from up to `flank` present years on each
-       side (ARSTAN's pearsn1 regression), so the growth spline does not sag into
-       long gaps.
-    2. Build the common chronology: the (biweight) mean of the raw widths across
-       series each year, detrended by an n/3-year spline, then (optionally)
-       variance-stabilized with ARSTAN's variance-stabilization spline option.
-    3. For each missing ring, take the common signal at that year, standardize it
-       against the common signal's mean/SD over the series' span, rescale it to
-       the series' own index mean/SD (moment matching), clamp negatives to zero,
-       and multiply back through the series' growth curve to recover a width.
-
-    Present rings are returned unchanged. This is a re-expression of the FORTRAN
-    algorithm's intent; there is no released reference to validate it against, so
-    treat the filled values as principled estimates, not measurements.
+    A re-expression of ARSTAN's fillin method; there is no released reference to
+    validate it against, so treat the filled values as principled estimates, not
+    measurements. Present rings are returned unchanged.
 
     Parameters
     ----------
@@ -257,8 +239,7 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
     biweight : bool, default True
         aggregate series with Tukey's biweight mean (else arithmetic).
     stabilize : bool, default True
-        variance-stabilize the common chronology (ARSTAN's variance-stabilization
-        option).
+        variance-stabilize the common chronology.
     stabilize_nyrs : int, default 50
         stiffness (years) for the variance-stabilization spline when
         stabilize=True.

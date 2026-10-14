@@ -64,17 +64,11 @@ def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
               round_decimals=3, common_interval=None):
     """Whole-record chronology signal statistics (rbar, EPS, SNR).
 
-    Extended Summary
-    ----------------
-    Computes the mean interseries correlation (rbar), expressed population
-    signal (EPS), and signal-to-noise ratio (SNR) over the entire record, as
-    a single-row summary. This is the non-running counterpart of
-    rwi_stats_running(): it simply calls that function with
-    running_window=False, exactly as dplR's rwi.stats() delegates to
-    rwi.stats.running().
-
-    See rwi_stats_running() for a full description of the parameters and the
-    statistics computed.
+    Computes the mean interseries correlation (rbar), expressed population signal
+    (EPS), and signal-to-noise ratio (SNR) over the entire record as a single-row
+    summary. The non-running counterpart of rwi_stats_running(), which it calls with
+    running_window=False; see that function for full parameter and statistic
+    descriptions.
 
     Parameters
     ----------
@@ -109,7 +103,6 @@ def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/rwi.stats.running.html
     .. [2] Wigley, Briffa & Jones (1984), J. Climate Appl. Meteor., 23, 201-213.
-
     """
     return rwi_stats_running(rwi_data, ids=ids, period=period, corr=corr,
                              prewhiten=prewhiten, running_window=False,
@@ -126,94 +119,72 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
                       round_decimals=3, common_interval=None):
     """Running (moving-window) chronology signal statistics (rbar, EPS, SNR).
 
-    Extended Summary
-    ----------------
-    Computes, for each moving window along the chronology, the mean interseries
+    For each moving window along the chronology, computes the mean interseries
     correlation (rbar) and, from it, the expressed population signal (EPS) and
-    signal-to-noise ratio (SNR) of Wigley et al. (1984). This is a port of
-    dplR's rwi.stats.running(); rwi_stats() is the whole-record special case
+    signal-to-noise ratio (SNR) of Wigley et al. (1984). Port of dplR's
+    rwi.stats.running(); rwi_stats() is the whole-record special case
     (running_window=False).
 
-    When tree/core IDs are supplied (see `ids`), correlations are split into
-    within-tree (rbar_wt) and between-tree (rbar_bt) components, and the
-    effective signal rbar_eff accounts for the averaging of multiple cores per
-    tree (via an effective cores-per-tree factor c_eff). Without IDs, every
-    series is treated as its own tree and rbar_eff == rbar_bt == rbar_tot.
+    When tree/core IDs are supplied (see ``ids``), correlations are split into
+    within-tree (rbar_wt) and between-tree (rbar_bt) components, and the effective
+    signal rbar_eff accounts for averaging multiple cores per tree (via an effective
+    cores-per-tree factor c_eff). Without IDs, every series is its own tree and
+    rbar_eff == rbar_bt == rbar_tot.
 
-    EPS = n * rbar_eff / ((n - 1) * rbar_eff + 1), where n is the number of
-    trees contributing to the between-tree correlations, measures how well the
-    finite sample represents a (hypothetically infinite) population chronology.
-    SNR = n * rbar_eff / (1 - rbar_eff) is the corresponding signal-to-noise
-    ratio (Cook & Pederson 2011).
+    EPS = n * rbar_eff / ((n - 1) * rbar_eff + 1) and
+    SNR = n * rbar_eff / (1 - rbar_eff), where n is the number of trees contributing
+    to the between-tree correlations.
 
-    NOTE: no acceptance threshold (e.g. the frequently cited EPS > 0.85) is
-    applied or implied here. As Wigley et al. (1984) state and Buras (2017)
-    reemphasizes, that threshold was an illustrative example for SSS (see
-    dpl.sss()), not a general criterion for EPS; whether a value is adequate is
-    a judgement for the analyst, not the software.
-
-    Implementation notes
-    --------------------
-    The within-window pairwise correlations are computed with a single
-    pandas .corr(min_periods=...) call, which natively performs
-    pairwise-complete correlation and drops pairs with fewer than
-    min_corr_overlap overlapping years -- replacing dplR's hand-written
-    per-pair correlation loops. Per-series mean normalization (which dplR
-    applies internally) is deliberately skipped because it cannot change any
-    correlation; AR prewhitening, which does change correlations, is applied
-    when requested. The effective cores-per-tree factor is computed by counting
-    cores-with-data per tree directly, rather than back-calculating it from the
-    number of valid within-tree correlation pairs as dplR does; the two agree
-    whenever within-tree overlap is adequate.
+    NOTE: no acceptance threshold (e.g. the frequently cited EPS > 0.85) is applied
+    or implied here; that threshold was an illustrative example for SSS (see
+    dpl.sss()), not a general criterion for EPS.
 
     Parameters
     ----------
     rwi_data : pandas dataframe
-        detrended ring-width indices (e.g. from dpl.detrend()), with years as
-        the index and series as columns.
+        detrended ring-width indices (e.g. from dpl.detrend()), with years as the
+        index and series as columns.
     ids : dict, pandas dataframe, or None, default None
         tree/core structure used to split within- vs between-tree correlations.
         Either a dict mapping {series_name: tree_id}, a dataframe with a 'tree'
-        column indexed by series name (such as produced by dpl.read_ids()), or
-        None to treat every series as its own tree (one core per tree).
+        column indexed by series name (such as produced by dpl.read_ids()), or None
+        to treat every series as its own tree (one core per tree).
     period : str, default "max"
-        "max" uses each pair's own overlapping years (pairwise-complete);
-        "common" restricts each window to years present in every series.
+        "max" uses each pair's own overlapping years (pairwise-complete); "common"
+        restricts each window to years present in every series.
     corr : str, default "Spearman"
         correlation type, "Spearman" or "Pearson".
     prewhiten : boolean, default False
         prewhiten each series with an AR model before computing correlations.
     running_window : boolean, default True
-        if False, a single window spanning the whole record is used (this is
-        what rwi_stats() invokes).
+        if False, a single window spanning the whole record is used (this is what
+        rwi_stats() invokes).
     window_length : int or None, default None
         length of each moving window in years; defaults to min(50, n_years).
     window_overlap : int or None, default None
-        number of years successive windows overlap; defaults to
-        window_length // 2.
+        number of years successive windows overlap; defaults to window_length // 2.
     min_corr_overlap : int or None, default None
-        minimum number of overlapping years required for a series pair to
-        contribute a correlation; defaults to min(30, window_length).
+        minimum number of overlapping years required for a series pair to contribute
+        a correlation; defaults to min(30, window_length).
     zero_is_missing : boolean, default True
         treat exact zeros as missing values (a zero RWI is treated as absent).
     round_decimals : int or None, default 3
-        decimal places to round the real-valued statistic columns to; None
-        leaves them unrounded.
+        decimal places to round the real-valued statistic columns to; None leaves
+        them unrounded.
     common_interval : str, (int, int), or None, default None
-        restrict the data to a common interval before computing statistics.
-        'series', 'years' or 'both' selects a complete overlap-only rectangle
-        via dpl.common_interval() (maximising cores, years, or cells); a
-        (start_year, end_year) pair restricts to that inclusive span of your
-        choosing. None (default) uses the full record. This is the recommended
-        way to get chronology statistics on unevenly-distributed data, where
+        restrict the data to a common interval before computing statistics. 'series',
+        'years' or 'both' selects a complete overlap-only rectangle via
+        dpl.common_interval() (maximising cores, years, or cells); a
+        (start_year, end_year) pair restricts to that inclusive span. None (default)
+        uses the full record. Recommended for unevenly-distributed data, where
         period='common' on the full record can be empty.
 
     Returns
     -------
     result : pandas dataframe with one row per window (or a single row if
         running_window=False). Columns: start_year, mid_year, end_year (running
-        only), n_cores, n_trees, n, n_tot, n_wt, n_bt, rbar_tot, rbar_wt,
-        rbar_bt, c_eff, rbar_eff, eps, snr.
+        only), n_cores, n_trees, n, n_tot, n_wt, n_bt, rbar_tot, rbar_wt, rbar_bt,
+        c_eff, rbar_eff, eps, snr.
 
     Examples
     --------
@@ -226,7 +197,6 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     .. [1] https://rdrr.io/cran/dplR/man/rwi.stats.running.html
     .. [2] Wigley, Briffa & Jones (1984), J. Climate Appl. Meteor., 23, 201-213.
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
-
     """
     _require_dataframe(rwi_data)
 

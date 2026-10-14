@@ -80,91 +80,58 @@ def _read_text(filename, encoding=None):
 
 def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
             join=True, encoding=None):
-    """Imports a common ring width data file
-
-    Extended Summary
-    ----------------
-    This function reads data from common ring width data files (.csv, .rwl)
-    and stores them in pandas dataframes.
+    """Read a common ring-width data file (.csv, .rwl) into a pandas DataFrame.
 
     Parameters
     ----------
     filename : str
         a data file (.CSV, .RWL or .RAW). May be a local path or an http(s) URL
-        (e.g. a file served from the NOAA/ITRDB archive) -- both are read the
-        same way.
+        (e.g. from the NOAA/ITRDB archive) -- both are read the same way.
     header : bool or None, default None
-        Whether a 3-line site-metadata header sits at the top of the file.
-        ``None`` (the default) auto-detects the header the way dplR does, so
-        the great majority of real ITRDB files "just work" without the caller
-        having to know.  Pass ``True`` or ``False`` to force the behaviour.
+        whether a 3-line site-metadata header sits at the top of the file. ``None``
+        auto-detects it the way dplR does; pass ``True``/``False`` to force.
     skip_lines : int, default 0
-        indicates how many of the first few lines of the file to skip
-        when reading it.
+        how many of the first lines of the file to skip when reading it.
     format : {None, "tucson", "csv"}, default None
-        Force the file format regardless of suffix. ``None`` infers it: a .csv
-        suffix is read as CSV; .rwl/.raw as Tucson; and any other suffix (e.g.
-        .txt, or none at all) is decided by sniffing the content, so a valid
-        Tucson file with a nonstandard extension still reads. Pass "tucson" or
-        "csv" to override entirely. ("rwl"/"raw" are accepted as aliases for
-        "tucson".)
+        force the file format regardless of suffix. ``None`` infers it: .csv as CSV,
+        .rwl/.raw as Tucson, any other suffix by sniffing content. ("rwl"/"raw" are
+        aliases for "tucson".)
     strict : bool, default True
-        ``True`` (strict, the default) refuses a file with an unrecoverable
-        problem, so an unaware caller gets safe, fail-loud behaviour.
-        ``False`` (salvage) recovers as much as possible instead of raising: a
-        series with a self-overlap or a measurement-precision shift is dropped, a
-        duplicate series ID (two overlapping cores) has its later block(s)
-        renamed and kept, and a file with nothing usable returns ``None``. Every
-        such action is warned about and recorded on ``df.attrs["dplpy_salvage"]``
-        (a list of {series, issue, action, detail}).
+        ``True`` refuses a file with an unrecoverable problem (fail-loud). ``False``
+        (salvage) recovers as much as possible: a self-overlapping or
+        precision-shifted series is dropped, a duplicate series ID is renamed and
+        kept, and a file with nothing usable returns ``None``. Every action is warned
+        about and recorded on ``df.attrs["dplpy_salvage"]``.
     join : bool, default True
         ``True`` (matching dplR) merges a series written as two or more disjoint
-        same-ID blocks (e.g. 1651-1774 and 1800-1974) into one series. ``False``
-        keeps them as SEPARATE series, renaming the 2nd+ block to a unique ID --
-        the per-segment view a crossdating QA (COFECHA-style) needs.
+        same-ID blocks into one. ``False`` keeps them as separate series (the
+        2nd+ block renamed) -- the per-segment view a crossdating QA needs.
     encoding : str or None, default None
-        Character encoding of the file. ``None`` reads it as UTF-8 (which also
-        covers ASCII); a file that is not valid UTF-8 -- e.g. an accented
-        investigator name in a header comment, common in European ITRDB files --
-        then falls back to latin1 (lossless) with a warning, instead of crashing.
-        Pass an explicit encoding (e.g. ``"latin1"``, ``"cp1252"``) to silence the
-        warning and set it exactly. The encoding used is recorded in
-        ``df.attrs["dplpy_encoding"]``.
+        character encoding. ``None`` reads as UTF-8 (covers ASCII) and falls back to
+        latin1 with a warning for non-UTF-8 bytes (e.g. an accented investigator
+        name). Pass an explicit encoding to silence the warning. The encoding used is
+        recorded in ``df.attrs["dplpy_encoding"]``.
 
     Returns
     -------
     data : pandas dataframe
-        Year-indexed ring widths. Besides the data, non-fatal advisories about a
-        successfully-read file are attached to ``df.attrs`` (and a concise
-        heads-up is printed): ``dplpy_beyond_column`` lists rows with characters
-        past the last data column (col 72) that were not parsed -- most
-        importantly a value that overflowed its field and was truncated -- and
-        ``dplpy_interior_gaps`` lists series with a blank year between measured
-        years (a short one is flagged as a possible dropped value; a long one is
-        recorded only, as it is usually an intentional structural gap).
-        ``dplpy_case_merged`` lists cores that were reassembled from IDs differing
-        only in letter case (e.g. 'FDD08A' / 'FDD08a') when their years are disjoint
-        and a stop marker was missing -- a case flip that had split one core (merged
-        only under ``join=True``). ``dplpy_case_variant_ids`` lists any case-variant
-        ID sets that were NOT merged (e.g. under ``join=False``, or when both blocks
-        were properly terminated) and so remain as separate series.
-        ``df.attrs["dplpy_blank_lines"]`` records the 1-indexed positions of any
-        blank input lines, which are dropped silently (they are harmless -- a
-        trailing newline or a "double-spaced" file -- so they are not warned about).
+        Year-indexed ring widths. Non-fatal advisories about the file are attached to
+        ``df.attrs`` (and a concise heads-up is printed): ``dplpy_beyond_column``,
+        ``dplpy_interior_gaps``, ``dplpy_case_merged``, ``dplpy_case_variant_ids``,
+        ``dplpy_blank_lines`` and ``dplpy_encoding`` (plus ``dplpy_salvage`` in
+        salvage mode).
 
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
     >>> data = dpl.readers("../tests/data/rwl/file.rwl")           # header auto-detected
-    >>> data = dpl.readers("../tests/data/rwl/file.rwl", header=True)
     >>> data = dpl.readers("https://www.ncei.noaa.gov/pub/data/paleo/treering/"
     ...                    "measurements/northamerica/usa/ak132x.rwl")  # read from a URL
 
     References
     ----------
     .. [1] https:/opendendro.org/dplpy-man/#readers
-
     """
     if not isinstance(strict, bool):
         raise ValueError("strict must be True (strict) or False (salvage), got "

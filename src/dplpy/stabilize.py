@@ -130,83 +130,71 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
                     f=0.5, clip_negative=True, return_info=False):
     """Variance-stabilize an already-built chronology.
 
-    Unlike :func:`chron_stabilized` (a port of dplR's chron.stabilized(), which
-    takes the RWI matrix and builds its own standard mean-value chronology
-    internally), this operates on a chronology you already built with
-    :func:`chron` or :func:`chron_ars` -- standard, residual, or ARSTAN -- which
-    is how ARSTAN itself is organized (variance stabilization is a post-
-    construction step, menu option ``isb``).
+    Scales the departures of a chronology you already built with :func:`chron` or
+    :func:`chron_ars` (standard, residual, or ARSTAN) to remove time-varying
+    variance. Unlike :func:`chron_stabilized`, which takes the RWI matrix and builds
+    its own standard chronology, this takes the finished chronology.
 
     Parameters
     ----------
     chron : pandas.Series or pandas.DataFrame
-        The chronology to stabilize. A Series is used directly; a DataFrame (e.g.
-        the output of chron()/chron_ars()) uses ``column`` and, if present, its
+        the chronology to stabilize. A Series is used directly; a DataFrame (e.g.
+        chron()/chron_ars() output) uses ``column`` and, if present, its
         ``samp_depth`` column.
     method : {"rbar", "spline", "both"}
-        Required, explicit (the families do different things):
+        required, explicit:
 
         - ``"rbar"``   -- Osborn (1997) / Frank (2006) N_eff scaling; corrects
-          variance driven by changing sample size (and, with running rbar,
-          changing interseries correlation). Needs sample depth + rbar (see
-          ``rwi`` / the precomputed inputs).
-        - ``"spline"`` -- ARSTAN's ad-hoc absolute-departure spline (stabit):
-          flattens all time-varying variance whatever the cause; needs only the
-          chronology. Can remove real low-frequency variance (Osborn 1997).
-        - ``"both"``   -- ARSTAN ``isb=2`` / Frank: ``"rbar"`` then a 67%
-          ``"spline"``, in sequence.
+          variance driven by changing sample size (and, with running rbar, changing
+          interseries correlation). Needs sample depth and rbar.
+        - ``"spline"`` -- ARSTAN's ad-hoc absolute-departure spline; flattens all
+          time-varying variance whatever the cause, and can remove real
+          low-frequency variance. Needs only the chronology.
+        - ``"both"``   -- ``"rbar"`` then a 67% ``"spline"``, in sequence.
     column : str, default "std"
-        Which column to stabilize when ``chron`` is a DataFrame.
+        which column to stabilize when ``chron`` is a DataFrame.
     rwi : pandas.DataFrame, optional
-        The source ring-width-index matrix for the chronology (for the ``"rbar"``
-        family). When given, rbar, the running rbar, and sample depth are derived
-        from it. For a residual or ARSTAN chronology this should be the residual
-        (prewhitened) matrix -- following ARSTAN, which uses the residual rbar for
-        the ARSTAN chronology.
+        the source ring-width-index matrix (for the ``"rbar"`` family); rbar, running
+        rbar, and sample depth are derived from it. For a residual or ARSTAN
+        chronology pass the residual (prewhitened) matrix.
     rbar : float, optional
-        Precomputed scalar rbar (for ``rbar_mode="constant"`` without ``rwi``).
+        precomputed scalar rbar (for ``rbar_mode="constant"`` without ``rwi``).
     running_rbar : array-like, optional
-        Precomputed per-year running rbar (for ``rbar_mode="running"`` without
+        precomputed per-year running rbar (for ``rbar_mode="running"`` without
         ``rwi``).
     samp_depth : array-like, optional
-        Per-year sample depth. Taken from the DataFrame's ``samp_depth`` column or
+        per-year sample depth. Taken from the DataFrame's ``samp_depth`` column or
         from ``rwi`` when not given.
     rbar_mode : {"running", "constant"}, default "running"
-        Running rbar (Frank RUNNINGr; the widely used default) or a single
-        time-constant rbar (Osborn/ARSTAN Briffa MEANr).
+        running rbar (Frank RUNNINGr) or a single time-constant rbar (Osborn/Briffa
+        MEANr).
     win_length, min_seg_ratio : int, float
-        Running-rbar window length and minimum overlap ratio (as in
+        running-rbar window length and minimum overlap ratio (as in
         chron_stabilized).
     spline_period : int, float or None, default None
-        Spline stiffness for the ``"spline"``/``"both"`` families. ``None`` = the
-        67% spline (``floor(0.67*n)`` years, ARSTAN's default for the combined
-        method); an int > 1 is a fixed wavelength in years; a float in (0, 1) is a
-        fraction of length; a negative value is a percent spline.
+        spline stiffness for the ``"spline"``/``"both"`` families. ``None`` = the 67%
+        spline (``floor(0.67*n)`` years); an int > 1 is a fixed wavelength in years; a
+        float in (0, 1) is a fraction of length; a negative value is a percent spline.
     f : float, default 0.5
-        Spline frequency response (50% amplitude cutoff).
+        spline frequency response (50% amplitude cutoff).
     clip_negative : bool, default True
-        Clamp the stabilized chronology at >= 0 (ARSTAN behavior).
+        clamp the stabilized chronology at >= 0.
     return_info : bool, default False
-        Also return a dict of diagnostics (rbar used, N_eff, sample depth).
+        also return a dict of diagnostics (rbar used, N_eff, sample depth).
 
     Returns
     -------
     pandas.DataFrame
-        Indexed by year, with the stabilized chronology in column ``vsc`` and, when
+        indexed by year, with the stabilized chronology in column ``vsc`` and, when
         known, ``samp_depth``. If ``return_info`` is True, returns
         ``(DataFrame, info_dict)``.
 
     Notes
     -----
-    Both families restandardize to the input chronology's **full-period** mean and
-    SD. This differs from ARSTAN's ``stabbm``, which rescales to a user-chosen
-    reference period; the full-period convention keeps the stabilized chronology on
-    the same overall scale as the input while removing the time-varying variance.
-
-    For the **ARSTAN** chronology, ARSTAN stabilizes the residual chronology and
-    *then* re-reddens, so faithful ARSTAN stabilization of the ARSTAN chronology is
-    produced by ``chron_ars(stabilize=...)`` (which does it in that order), not by
-    calling this function on an already re-reddened series.
+    Both families restandardize to the input chronology's full-period mean and SD.
+    For the ARSTAN chronology, stabilization must precede re-reddening, so use
+    ``chron_ars(stabilize=...)`` rather than calling this on an already re-reddened
+    series.
 
     References
     ----------

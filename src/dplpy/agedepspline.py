@@ -81,14 +81,9 @@ def _ads_curve(y, stiffness):
 def ads(y, nyrs0=50, pos_slope=True):
     """Age-dependent smoothing spline of a single series (dplR's ads()).
 
-    Extended Summary
-    ----------------
-    Fits a smoothing spline whose stiffness increases with cambial age: the i-th
+    Fit a smoothing spline whose stiffness increases with cambial age: the i-th
     ring is fit with an (nyrs0 + i - 1)-year spline, so young rings are smoothed
-    least and the curve grows stiffer with age (Melvin 2004; Melvin et al. 2007).
-    The underlying cubic smoothing spline follows Cook & Peters (1981) with a 50%
-    frequency cutoff. Ports dplR's ads() (the same banded system, solved with
-    SciPy).
+    least and the curve grows stiffer with age. Ports dplR's ads().
 
     Parameters
     ----------
@@ -98,8 +93,8 @@ def ads(y, nyrs0=50, pos_slope=True):
         initial spline stiffness (wavelength, in years) at the first ring.
     pos_slope : bool, default True
         if False, once the spline stops decreasing its tail is held flat and the
-        spline is refit -- preventing an artefactual upturn at the end of the
-        series (dplR uses pos.slope=FALSE inside detrend()).
+        spline is refit, preventing an artefactual upturn at the end of the series
+        (dplR uses pos.slope=FALSE inside detrend()).
 
     Returns
     -------

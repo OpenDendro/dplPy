@@ -56,57 +56,46 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
         common_interval=None):
     """Subsample signal strength (SSS) as a per-year series.
 
-    Extended Summary
-    ----------------
-    For each year, computes how well the subsample of series present in that
-    year represents the full N-series chronology, following Wigley et al.
-    (1984):
+    For each year, computes how well the subsample of series present that year
+    represents the full N-series chronology (Wigley et al. 1984):
 
         SSS(t) = n(t) * (1 + (N - 1) * rbar) / (N * (1 + (n(t) - 1) * rbar))
 
-    where N is the total number of trees in the record, rbar is the effective
-    mean interseries correlation (both taken, fixed, from a whole-record
-    dpl.rwi_stats() call), and n(t) is the number of trees (or cores, if no
-    tree IDs are given) present in year t. SSS rises toward 1 as n(t)
-    approaches N.
+    where N is the total number of trees in the record, rbar is the effective mean
+    interseries correlation (both fixed, from a whole-record dpl.rwi_stats() call),
+    and n(t) is the number of trees (or cores, if no tree IDs are given) present in
+    year t. Mirrors dplR's sss(), holding rbar and N constant while only the per-year
+    sample depth varies -- distinct from the running EPS of dpl.rwi_stats_running(),
+    which recomputes rbar in each window.
 
-    This mirrors dplR's sss(): the correlation and full sample size are held
-    constant and only the per-year sample depth varies. It is therefore
-    distinct from the running EPS produced by dpl.rwi_stats_running(), which
-    recomputes rbar within each moving window.
-
-    No acceptance threshold is applied. As Buras (2017) clarifies, SSS is the
-    statistic Wigley et al. (1984) actually intended for assessing declining
-    reconstruction skill back in time (the frequently cited 0.85 value was an
-    illustrative SSS example, not a rule); whether a given SSS is adequate is a
-    judgement for the analyst.
+    No acceptance threshold is applied; SSS is the statistic Wigley et al. (1984)
+    intended for assessing declining reconstruction skill back in time (the
+    frequently cited 0.85 value was an illustrative example, not a rule).
 
     Parameters
     ----------
     rwi_data : pandas dataframe
-        detrended ring-width indices (e.g. from dpl.detrend()), years as index
-        and series as columns.
+        detrended ring-width indices (e.g. from dpl.detrend()), years as index and
+        series as columns.
     ids : dict, pandas dataframe, or None, default None
-        tree/core structure (see dpl.rwi_stats() / dpl.read_ids()). When given,
-        both N and the per-year sample depth are counted in trees; when None,
-        every series is its own tree and they are counted in cores.
+        tree/core structure (see dpl.rwi_stats() / dpl.read_ids()). When given, both
+        N and the per-year sample depth are counted in trees; when None, every series
+        is its own tree and they are counted in cores.
     corr : str, default "Spearman"
         correlation type used for the underlying rbar ("Spearman" or "Pearson").
     zero_is_missing : boolean, default True
-        treat exact zeros as missing (applied consistently to the rbar
-        calculation and the per-year sample-depth count).
+        treat exact zeros as missing (applied consistently to the rbar calculation
+        and the per-year sample-depth count).
     common_interval : str, (int, int), or None, default None
-        restrict to a common interval before computing SSS: 'series', 'years'
-        or 'both' selects one via dpl.common_interval(), and a
-        (start_year, end_year) pair restricts to that span. rbar, N, n(t) and
-        the returned years are then all taken from that trimmed block --
-        equivalent to dplR's sss(common.interval(rwi)). None (default)
-        reproduces dplR's plain sss() over the full record.
+        restrict to a common interval before computing SSS: 'series', 'years' or
+        'both' selects one via dpl.common_interval(), and a (start_year, end_year)
+        pair restricts to that span. rbar, N, n(t) and the returned years are then all
+        taken from that trimmed block. None (default) uses the full record.
 
     Returns
     -------
-    result : pandas Series named "sss", indexed by year, with the per-year
-        subsample signal strength (over the common interval if one was chosen).
+    result : pandas Series named "sss", indexed by year, with the per-year subsample
+        signal strength (over the common interval if one was chosen).
 
     Examples
     --------
@@ -119,7 +108,6 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
     .. [1] https://rdrr.io/cran/dplR/man/sss.html
     .. [2] Wigley, Briffa & Jones (1984), J. Climate Appl. Meteor., 23, 201-213.
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
-
     """
     _require_dataframe(rwi_data)
 

@@ -292,71 +292,61 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
                   segmented=False, segment_topk=5, verbose=True, **kwargs):
     """Estimate the calendar dating of a floating (undated) ring-width series.
 
+    Slide the floating series against a dated master and score each offset by
+    correlation, reporting the best-fit placement with crossdating statistics
+    (t-value, effective df, Bonferroni-corrected p, isolation factor).
+
     Parameters
     ----------
     data : pandas.DataFrame or pandas.Series
-        The **dated** reference (year-indexed). A DataFrame is treated as a
-        collection of ring-width series and the master chronology is built by
-        averaging them; a Series (or one-column DataFrame) is used directly as the
-        master -- e.g. a single chronology column such as ``crn["std"]`` from
-        ``dpl.read_crn``. For an already-residual/prewhitened chronology (an ARSTAN
-        ``res``/``ars``), pass ``transform="none"`` to avoid prewhitening twice.
+        The **dated** reference (year-indexed). A DataFrame is a collection of
+        ring-width series, averaged into the master; a Series (or one-column
+        DataFrame) is used directly as the master -- e.g. ``crn["std"]`` from
+        ``dpl.read_crn``. For an already-residual/prewhitened chronology, pass
+        ``transform="none"`` to avoid prewhitening twice.
     series : sequence or pandas.Series/DataFrame
-        The floating (undated) ring-width series -- just the ring values, oldest
-        to youngest; any calendar index is ignored.
+        The floating (undated) ring-width series -- ring values oldest to youngest;
+        any calendar index is ignored.
     series_name : str or None, default None
-        A label for the floating series (used in outputs and the plot title). When
-        None (the default), it is taken from the series itself if available -- a
-        named pandas Series, or a one-column DataFrame's column header -- and falls
-        back to "Unknown" for a bare list/array. Pass a string (e.g.
-        "Alaska subfossil") to set it explicitly.
+        Label for the floating series. None takes it from the series itself (a named
+        Series or one-column DataFrame header), falling back to "Unknown".
     min_overlap : int, default 50
-        Minimum number of overlapping rings required to score an offset.
+        Minimum overlapping rings required to score an offset.
     transform : {"pw", "fd", "none"}, default "pw"
         High-pass transform applied (after mean-normalization) before correlating:
-        ``"pw"`` Yule-Walker AR prewhitening (residual series, the default),
-        ``"fd"`` first differencing, or ``"none"``. First differencing can sharpen
-        the common high-frequency signal but sharply reduces the effective degrees
-        of freedom (Wilson 2026).
+        ``"pw"`` Yule-Walker AR prewhitening, ``"fd"`` first differencing, or
+        ``"none"``. First differencing sharpens the high-frequency signal but
+        sharply reduces the effective degrees of freedom.
     prewhiten : bool, optional
-        Deprecated back-compatible alias: ``prewhiten=True`` -> ``transform="pw"``,
-        ``prewhiten=False`` -> ``transform="none"``. If given, it overrides
-        ``transform``.
+        Deprecated alias: ``True`` -> ``transform="pw"``, ``False`` ->
+        ``transform="none"``. Overrides ``transform`` if given.
     biweight : bool, default True
         Build the master with a Tukey biweight robust mean (else arithmetic mean).
     corr : {"spearman", "pearson", "kendall"}, default "spearman"
-        Correlation used to score each offset (one-sided, alternative "greater").
+        Correlation used to score each offset (one-sided).
     ar_max : int or None, default 10
-        AR order ceiling for ``transform="pw"`` prewhitening. The default follows
-        COFECHA/ARSTAN (cap at 10); pass ``None`` for dplR's ``floor(10*log10(n))``,
-        which can select very high orders and discard many early rings of a series.
+        AR order ceiling for ``transform="pw"``. The default follows COFECHA/ARSTAN
+        (cap at 10); ``None`` uses dplR's ``floor(10*log10(n))``.
     first_aic_min : bool, default True
-        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule, the
-        default here) rather than the global AIC minimum (dplR's ``ar()``; set False).
+        Select the AR order at the FIRST local AIC minimum (COFECHA/ARSTAN rule)
+        rather than the global AIC minimum (dplR's ``ar()``; set False).
     plot : bool, default False
         Plot the sliding t-value against the series' end year, marking the best fit.
     return_rwl : bool, default False
-        Also return the floating series placed at its best-fit calendar years
-        (``placed``) and combined with the reference (``combined``).
+        Also return the floating series placed at its best-fit years (``placed``)
+        and combined with the reference (``combined``).
     segmented : bool, default False
         Also date each overlapping segment of the floater independently against the
-        master (COFECHA UDATE-style) and check that the segments agree. Adds
-        ``result["segments"]`` (per-segment implied end year and correlation),
-        ``result["consensus"]`` (a vote count of each segment's single-best implied
-        end year), ``result["segment_candidates"]`` (each segment's top few placements;
-        see ``segment_topk``), and ``result["internal_error"]`` (a dict describing a
-        detected missing/false ring, or None). At least four segments are needed to
-        test for an internal error, so short floaters report the per-segment dates
-        without a verdict. A coherent one-year step between older and younger segments
-        flags an internal dating error that the whole-series fit cannot see; with
-        ``plot`` it also draws a staircase diagnostic. The single-best-t
-        placement remains the primary result.
+        master and check that they agree (COFECHA UDATE-style). Adds
+        ``result["segments"]``, ``result["consensus"]``,
+        ``result["segment_candidates"]`` and ``result["internal_error"]`` (a dict
+        describing a detected missing/false ring, or None). A coherent one-year step
+        between older and younger segments flags an internal dating error the
+        whole-series fit cannot see; at least four segments are needed for that
+        verdict. The single-best-t placement remains the primary result.
     segment_topk : int, default 5
         With ``segmented``, how many best placements to record per segment in
-        ``result["segment_candidates"]`` (a tidy DataFrame with columns
-        ``ring_lo``, ``ring_hi``, ``rank``, ``impl_end`` and ``r``). Lets you see
-        whether a segment's best date is decisive or a near-tie. Does not affect the
-        consensus or the error diagnostic, which use each segment's single best.
+        ``result["segment_candidates"]``.
     verbose : bool, default True
         Print a short summary of the best-fit dating.
 
@@ -370,12 +360,11 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
 
     Notes
     -----
-    Ports dplR's ``xdate.floater`` (default ``n=NULL`` mean normalization) and adds
-    the crossdating statistics of Baillie & Pilcher (1973), Wigley et al. (1987)
-    and Wilson (2026): the t-value, autocorrelation-adjusted effective degrees of
-    freedom, a Bonferroni-corrected p-value, and an isolation factor. The
-    correlation scoring reuses dplPy's crossdating internals, so results are
-    consistent with ``dpl.xdate``.
+    Ports dplR's ``xdate.floater`` and adds crossdating statistics (t-value,
+    autocorrelation-adjusted effective degrees of freedom, a Bonferroni-corrected
+    p-value, and an isolation factor; Baillie & Pilcher 1973, Wigley et al. 1987,
+    Wilson 2026). The correlation scoring reuses dplPy's crossdating internals, so
+    results are consistent with ``dpl.xdate``.
     """
     plot = _plot_kwarg(plot, kwargs)
 
