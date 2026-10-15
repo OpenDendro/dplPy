@@ -10,8 +10,10 @@ and commit log.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-15
+
 This release is the result of a pre-release audit of the whole library (about
-95 items) before the v0.9.0 beta. Many of the entries below change numbers you
+95 items) ahead of the move toward v1.0.0. Many of the entries below change numbers you
 may have seen from earlier versions; where they do, the old behaviour was wrong,
 undocumented, or inconsistent between functions, and the entry says what moved.
 Renamed parameters all keep their old names as deprecated aliases for now.
@@ -580,6 +582,7 @@ Renamed parameters all keep their old names as deprecated aliases for now.
 - Added narrative guides and reference pages (mkdocs + mkdocstrings), and updated
   the README, citation/DOI metadata, and background references.
 
-[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/OpenDendro/dplPy/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OpenDendro/dplPy/compare/v0.6.0...v0.7.0

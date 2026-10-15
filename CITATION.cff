@@ -32,8 +32,8 @@ repository-code: "https://github.com/OpenDendro/dplPy"
 url: "https://opendendro.github.io/dplPy"
 repository-artifact: "https://pypi.org/project/dplpy/"
 license: GPL-3.0-or-later
-version: 0.8.0
-date-released: "2026-10-12"
+version: 0.9.0
+date-released: "2026-10-15"
 keywords:
   - dendrochronology
   - tree rings
