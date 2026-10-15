@@ -84,23 +84,48 @@ import pandas as pd
 import scipy.stats
 import datetime
 
-from ._validate import _require_dataframe, _normalize_corr, _plot_kwarg
+from ._validate import (_require_dataframe, _normalize_corr, _plot_kwarg, _warn,
+                        _normalize_choice, _require_year_index)
 from .stats import get_ar1
 from .xdate import (normalize_for_crossdating, dense_year_grid,
-                    _row_biweight, _row_mean, _ar_yw_prewhiten, _corr_pval)
+                    _row_biweight, _row_mean, _fast_corr)
 
 _TRANSFORMS = ("pw", "fd", "none")
 
 
+def _bp_t(r, df):
+    """Baillie & Pilcher (1973) t from a correlation ``r`` over ``df`` degrees of
+    freedom: ``t = r * sqrt(df - 2) / sqrt(1 - r^2)``. Vectorized; ``r`` is clipped
+    just inside +/-1 so a perfect correlation gives a large finite t. The one
+    Baillie-Pilcher t for xdate_floater and xdate_undated."""
+    r = np.clip(np.asarray(r, dtype=float), -0.999999, 0.999999)
+    df = np.asarray(df, dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return r * np.sqrt(df - 2.0) / np.sqrt(1.0 - r * r)
+
+
+def _trim_nan(values):
+    """Drop leading and trailing NaN of a 1-D array; interior NaN are KEPT in
+    place so array index stays ring position (audit A3). Returns (trimmed,
+    n_leading_dropped)."""
+    v = np.asarray(values, dtype=float)
+    ok = np.flatnonzero(~np.isnan(v))
+    if ok.size == 0:
+        return v[:0], 0
+    return v[ok[0]:ok[-1] + 1], int(ok[0])
+
+
 def _as_series_values(series):
-    """Coerce the floating series to a 1-D float array of its (non-NaN) values."""
+    """Coerce the floating series to a 1-D float array of ring positions, oldest
+    first: leading/trailing NaN are stripped, interior NaN (unmeasured rings) are
+    kept in place so that array index == ring position (audit A3)."""
     if isinstance(series, pd.DataFrame):
         if series.shape[1] != 1:
             raise ValueError("`series` as a DataFrame must have exactly one "
                              "column (the floating series).")
         series = series.iloc[:, 0]
     vals = np.asarray(pd.Series(series).to_numpy(), dtype=float)
-    return vals[~np.isnan(vals)]
+    return _trim_nan(vals)[0]
 
 
 def _series_label(series):
@@ -119,11 +144,14 @@ def _series_label(series):
     return name or None
 
 
-def _build_master(data, transform, biweight, ar_max=None, first_aic_min=False):
+def _build_master(data, transform, biweight, ar_max=10, first_aic_min=True):
     """Master chronology from the dated collection: mean-normalize each series,
     apply the high-pass transform, then a robust row mean. Returns (values, years)
-    with NaN rows dropped. ``ar_max``/``first_aic_min`` control AR order selection
-    when ``transform=="pw"`` (see :func:`_ar_yw_prewhiten`)."""
+    on the DENSE one-year grid from the master's first to last measured year --
+    years with no measurement in any series stay NaN in place (never dropped, so
+    index offset == calendar offset; audit A3). ``ar_max``/``first_aic_min``
+    control AR order selection when ``transform=="pw"`` (see
+    `xdate.normalize_for_crossdating()`)."""
     ready = normalize_for_crossdating(data, prewhiten=(transform == "pw"),
                                       ar_max=ar_max, first_aic_min=first_aic_min)
     ready, years, _, _ = dense_year_grid(ready)
@@ -136,20 +164,27 @@ def _build_master(data, transform, biweight, ar_max=None, first_aic_min=False):
         raise ValueError("no reference series had enough data to build a master.")
     row_master = _row_biweight if biweight else _row_mean
     master = row_master(M[:, good])
-    ok = ~np.isnan(master)
-    return master[ok], years[ok].astype(int)
+    master, lead = _trim_nan(master)
+    return master, years[lead:lead + master.shape[0]].astype(int)
 
 
-def _transform_series(y_raw, transform, ar_max=None, first_aic_min=False):
-    """Mean-normalize then transform the floating series; return its values.
-    ``ar_max``/``first_aic_min`` control AR order selection when ``transform=="pw"``
-    (see :func:`_ar_yw_prewhiten`)."""
-    y = y_raw / np.nanmean(y_raw)
-    if transform == "pw" and len(y) > 3:
-        y = _ar_yw_prewhiten(y, ar_max=ar_max, first_aic_min=first_aic_min)
-    elif transform == "fd":
-        y = np.diff(y)
-    return y[~np.isnan(y)]
+def _transform_series(y_raw, transform, ar_max=10, first_aic_min=True):
+    """Mean-normalize then transform the floating series with the same
+    `xdate.normalize_for_crossdating()` transform the master gets. Returns an
+    array the SAME LENGTH as ``y_raw`` (index == ring position): the first
+    ``order`` values of a prewhitened series, the first value of a differenced
+    one, and any interior unmeasured ring are NaN in place."""
+    y_raw = np.asarray(y_raw, dtype=float)
+    frame = pd.DataFrame({"floater": y_raw}, index=pd.RangeIndex(len(y_raw)))
+    if transform == "pw":
+        ready = normalize_for_crossdating(frame, prewhiten=True, ar_max=ar_max,
+                                          first_aic_min=first_aic_min)
+    else:
+        ready = normalize_for_crossdating(frame, prewhiten=False)
+    y = ready["floater"].to_numpy(dtype=float)
+    if transform == "fd":
+        y = np.concatenate([[np.nan], np.diff(y)])      # label by the later ring
+    return y
 
 
 def _abs_ac1(values):
@@ -164,6 +199,41 @@ def _abs_ac1(values):
 # --- segment-consensus dating (COFECHA UDATE-style) --------------------------
 _SEG_LEN = 50        # segment window scanned across the master
 _SEG_LAG = 25        # step between segments (50% overlap)
+_SEG_MIN_FRAC = 0.8  # a segment placement needs this fraction of complete pairs
+
+
+def _slide_corr(x, seg, method, min_pairs):
+    """Correlation of ``seg`` with every length-``len(seg)`` window of ``x``
+    (window start j = 0..len(x)-len(seg)), over pairwise-complete pairs, NaN
+    where fewer than ``min_pairs`` pairs are complete. Complete windows are
+    ranked/centred once and correlated in one matrix product (the vectorization
+    `xdate._lag_table()` uses); windows with a NaN fall back to `_fast_corr()`."""
+    L = seg.shape[0]
+    nw = x.shape[0] - L + 1
+    out = np.full(max(nw, 0), np.nan)
+    if nw <= 0:
+        return out
+    W = np.lib.stride_tricks.sliding_window_view(x, L)
+    seg_ok = ~np.isnan(seg)
+    full = ~np.isnan(W).any(axis=1)
+    if seg_ok.all() and full.any() and method != "kendall":
+        if method == "spearman":
+            sv = scipy.stats.rankdata(seg)
+            Mv = scipy.stats.rankdata(W[full], axis=1)
+        else:
+            sv, Mv = seg, W[full]
+        a = sv - sv.mean()
+        B = Mv - Mv.mean(axis=1, keepdims=True)
+        den = np.sqrt(np.dot(a, a) * (B * B).sum(axis=1))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[full] = np.where(den > 0, (B @ a) / den, np.nan)
+        rest = np.where(~full)[0]
+    else:
+        rest = np.arange(nw)
+    for j in rest:
+        if int((seg_ok & ~np.isnan(W[j])).sum()) >= min_pairs:
+            out[j] = _fast_corr(W[j], seg, method)
+    return out
 
 
 def _segment_consensus(x, yrs, y, method, master_year, topk=5):
@@ -173,6 +243,9 @@ def _segment_consensus(x, yrs, y, method, master_year, topk=5):
     ring); a single dominant year means the floater is internally consistent, while
     a coherent one-year step between older and younger segments is the signature of
     a missing or false ring. Returns (segments_df, consensus_series, candidates_df).
+    ``x`` (the master) and ``y`` (the floater) may carry NaN in place; each
+    placement is scored on its pairwise-complete pairs and needs at least
+    ``_SEG_MIN_FRAC`` of the segment complete.
 
     segments_df has one row per segment (oldest rings first): ``ring_lo``/``ring_hi``
     (1-based ring positions within the floater), ``impl_end`` (implied youngest-ring
@@ -181,7 +254,7 @@ def _segment_consensus(x, yrs, y, method, master_year, topk=5):
     the staircase plot), most-supported first. ``candidates_df`` lists, for each
     segment, its ``topk`` best placements (``rank`` 1..topk, ``impl_end``, ``r``) --
     so a near-tie between two dates is visible instead of hidden behind the winner."""
-    nx, ny = len(x), len(y)
+    ny = len(y)
     seg_len = min(_SEG_LEN, ny)
     if ny <= seg_len:
         starts = [0]
@@ -193,8 +266,7 @@ def _segment_consensus(x, yrs, y, method, master_year, topk=5):
     for a in starts:
         L = min(seg_len, ny - a)
         seg = y[a:a + L]
-        rs = np.array([_corr_pval(x[j:j + L], seg, method)[0]
-                       for j in range(0, nx - L + 1)], dtype=float)
+        rs = _slide_corr(x, seg, method, max(3, int(np.ceil(_SEG_MIN_FRAC * L))))
         finite = np.where(np.isfinite(rs))[0]
         if finite.size == 0:
             continue
@@ -303,19 +375,23 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         ring-width series, averaged into the master; a Series (or one-column
         DataFrame) is used directly as the master -- e.g. ``crn["std"]`` from
         ``dpl.read_crn``. For an already-residual/prewhitened chronology, pass
-        ``transform="none"`` to avoid prewhitening twice.
+        ``transform="none"`` to avoid prewhitening twice. Years with no
+        measurement in any series are kept as NaN on the calendar grid (they are
+        never dropped), and every offset is scored on its complete pairs.
     series : sequence or pandas.Series/DataFrame
         The floating (undated) ring-width series -- ring values oldest to youngest;
-        any calendar index is ignored.
+        any calendar index is ignored. An interior NaN is an unmeasured ring and
+        keeps its position (it is not compressed out).
     series_name : str or None, default None
         Label for the floating series. None takes it from the series itself (a named
         Series or one-column DataFrame header), falling back to "Unknown".
     min_overlap : int, default 50
-        Minimum overlapping rings required to score an offset.
+        Minimum overlapping (pairwise-complete) rings required to score an offset.
     transform : {"pw", "fd", "none"}, default "pw"
-        High-pass transform applied (after mean-normalization) before correlating:
-        ``"pw"`` Yule-Walker AR prewhitening, ``"fd"`` first differencing, or
-        ``"none"``. First differencing sharpens the high-frequency signal but
+        High-pass transform applied (after mean-normalization) before correlating,
+        case-insensitive: ``"pw"`` AR prewhitening (`xdate.normalize_for_crossdating()`,
+        the package-standard ``autoreg._prewhiten``), ``"fd"`` first differencing,
+        or ``"none"``. First differencing sharpens the high-frequency signal but
         sharply reduces the effective degrees of freedom.
     prewhiten : bool, optional
         Deprecated alias: ``True`` -> ``transform="pw"``, ``False`` ->
@@ -365,6 +441,10 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     p-value, and an isolation factor; Baillie & Pilcher 1973, Wigley et al. 1987,
     Wilson 2026). The correlation scoring reuses dplPy's crossdating internals, so
     results are consistent with ``dpl.xdate``.
+
+    References
+    ----------
+    .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate_floater
     """
     plot = _plot_kwarg(plot, kwargs)
 
@@ -375,12 +455,13 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     if isinstance(data, pd.Series):
         data = data.to_frame()
     _require_dataframe(data)
+    data = _require_year_index(data, "data")
     method = _normalize_corr(corr)
     if prewhiten is not None:                   # back-compat alias
+        _warn("xdate_floater(): prewhiten= is deprecated; use transform='pw' or "
+              "transform='none' instead.", DeprecationWarning)
         transform = "pw" if prewhiten else "none"
-    if transform not in _TRANSFORMS:
-        raise ValueError("transform must be one of %s, got '%s'."
-                         % (str(_TRANSFORMS), transform))
+    transform = _normalize_choice(transform, _TRANSFORMS, "transform")
 
     # No explicit label: take one from the series itself (a named pandas Series, or
     # a one-column DataFrame's header), falling back to "Unknown" for a bare
@@ -393,19 +474,24 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
     if n_series == 0:
         raise ValueError("`series` contains no finite ring-width values.")
 
+    # Master and floater both stay on their dense position grids with NaN in
+    # place (audit A3); only leading/trailing NaN are trimmed, so the youngest
+    # ring is the last position of ``y`` and index offsets are calendar offsets.
     x, yrs = _build_master(data, transform, biweight,
                            ar_max=ar_max, first_aic_min=first_aic_min)
     nx = len(x)
-    y = _transform_series(y_raw, transform,
-                          ar_max=ar_max, first_aic_min=first_aic_min)
+    y, _ = _trim_nan(_transform_series(y_raw, transform,
+                                       ar_max=ar_max, first_aic_min=first_aic_min))
     ny = len(y)
+    n_valid = int((~np.isnan(y)).sum())
+    nx_valid = int((~np.isnan(x)).sum())
 
-    if min_overlap > ny:
-        raise ValueError("min_overlap (%d) must be <= the series length after "
-                         "transform (%d)." % (min_overlap, ny))
-    if min_overlap > nx:
+    if min_overlap > n_valid:
+        raise ValueError("min_overlap (%d) must be <= the number of measured rings "
+                         "after transform (%d)." % (min_overlap, n_valid))
+    if min_overlap > nx_valid:
         raise ValueError("min_overlap (%d) exceeds the reference master length "
-                         "(%d)." % (min_overlap, nx))
+                         "(%d measured years)." % (min_overlap, nx_valid))
 
     # lag-1 autocorrelation of each (transformed) series -> effective-df reduction
     ac1_ref, ac1_und = _abs_ac1(x), _abs_ac1(y)
@@ -415,7 +501,7 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
         print("Reference master years: %d to %d (%d)"
               % (int(yrs.min()), int(yrs.max()), nx))
         print("Floating series length: %d (transform '%s' -> %d)"
-              % (n_series, transform, ny))
+              % (n_series, transform, n_valid))
         print("Minimum overlap for search:", min_overlap)
 
     # Slide the floating series across the master over every offset with at least
@@ -437,25 +523,33 @@ def xdate_floater(data: pd.DataFrame, series, series_name=None,
             return int(yrs[nx - 1]) + (j - (nx - 1))
         return int(yrs[j])
 
+    # Each offset is scored on the pairwise-complete pairs of the overlap (NaN in
+    # either the master or the floater simply drop out); ``n`` is that count.
     rows = []
     for d in range(nx - min_overlap, min_overlap - ny - 1, -1):
         lo, hi = max(0, d), min(nx - 1, d + ny - 1)
         if hi - lo + 1 < min_overlap:           # guard; the extremes hit it exactly
             continue
         xseg, yseg = x[lo:hi + 1], y[lo - d:hi - d + 1]
-        r, _ = _corr_pval(xseg, yseg, method)
+        n = int((~np.isnan(xseg) & ~np.isnan(yseg)).sum())
+        if n < min_overlap:
+            continue
+        r = _fast_corr(xseg, yseg, method)
         max_year = _master_year(d + ny - 1)     # calendar year of the floater's youngest ring
         rows.append({"min_year": max_year - n_series + 1, "max_year": max_year,
-                     "r": r, "n": len(xseg)})
+                     "r": r, "n": n})
 
     stats = pd.DataFrame(rows, columns=["min_year", "max_year", "r", "n"])
+    if stats.empty:
+        raise ValueError("no offset overlaps the reference by at least min_overlap=%d "
+                         "measured rings." % min_overlap)
 
     # crossdating statistics (Baillie & Pilcher t; effective df adjusted for
     # autocorrelation; one-tailed p, Bonferroni-corrected for the offsets tested)
     r = stats["r"].to_numpy(dtype=float)
     eff_df = stats["n"].to_numpy(dtype=float) * ac_factor
     with np.errstate(invalid="ignore", divide="ignore"):
-        t = r * np.sqrt(eff_df - 2.0) / np.sqrt(1.0 - r ** 2)
+        t = _bp_t(r, eff_df)
         p = scipy.stats.t.sf(t, df=eff_df)      # one-tailed p-value of t
     n_offsets = int(np.isfinite(t).sum())
     p_bonf = np.minimum(p * n_offsets, 1.0)

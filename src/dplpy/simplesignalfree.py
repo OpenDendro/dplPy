@@ -35,12 +35,18 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from .readers import readers
+from ._validate import (_require_dataframe, _warn, _alias_kwarg, _reject_kwargs,
+                        _normalize_choice, _drop_allnan_columns)
 from .stats import stats
 from .chron import chron
 from .tbrm import tbrm_rows
-from .smoothingspline import spline
+from .smoothingspline import spline, get_period, _caps
 from .agedepspline import ads
+from .detrend import _normalize_fit, _normalize_method, _FIT_CANON
+
+# dplR's ssf() default spline is 0.6667 of the series length (detrend's is 0.67);
+# both resolve through smoothingspline.get_period (audit E20).
+_SSF_DEFAULT_FRACTION = 0.6667
 
 
 def _neg_curve_message(curves, series_names, chron=None, years=None):
@@ -101,43 +107,60 @@ def _sf_rescale(sf, dat_vals, crust, difference):
 
 
 def ssf(rwl,
-        method="Spline",
-        nyrs=None,
-        difference=False,
+        fit="Spline",
+        method="ratio",
+        spline_period=None,
         max_iterations=25,
-        mad_threshold=5e-04,
+        tol=5e-04,
         recode_zeros=False,
         return_info=False,
         verbose=True,
-        preset=None):
+        preset=None,
+        **kwargs):
     """Simple signal-free chronology (dplR's ssf()).
 
     Build a signal-free chronology (Melvin & Briffa 2008): form an initial
     chronology, divide every series by it to strip the common signal, rescale and
     re-detrend the resulting signal-free measurements, and build a new chronology,
     repeating until the high-frequency chronology stops changing (the sample-depth-
-    weighted median absolute difference falls below ``mad_threshold``) or
-    ``max_iterations`` is reached. Reproduces dplR's ssf().
+    weighted median absolute difference falls below ``tol``) or ``max_iterations``
+    is reached. Reproduces dplR's ssf().
 
     Parameters
     ----------
     rwl : pandas.DataFrame
-        ring-width series (raw), years as the index and series as columns.
-    method : {"Spline", "AgeDepSpline"}, default "Spline"
-        detrending curve used at each iteration: a cubic smoothing spline
-        (2/3-length stiffness) or an age-dependent spline (dpl.ads()).
-    nyrs : int or None, default None
-        spline stiffness. None uses 2/3 of each series' length for "Spline" or
-        50 for "AgeDepSpline"; a value in (0, 1) is a fraction of series length.
-    difference : bool, default False
-        detrend by subtraction (series - curve) rather than division.
+        ring-width series (raw), years as the index and series as columns. Series
+        with no measured values are dropped with a warning.
+    fit : {"Spline", "AgeDepSpline"}, default "Spline"
+        detrending curve used at each iteration (the ``detrend`` vocabulary,
+        case-insensitive): a cubic smoothing spline or an age-dependent spline
+        (``dpl.ads``, fit with ``pos_slope=True`` as in dplR's ssf). Any other
+        name raises. Before 0.9.0 this was called ``method=``; a curve name passed
+        to ``method`` is still honoured with a DeprecationWarning.
+    method : {"ratio", "difference"}, default "ratio"
+        how indices are formed: ``"ratio"`` divides series by curve, ``"difference"``
+        subtracts (the former ``difference=True`` flag, accepted with a
+        DeprecationWarning).
+    spline_period : int or float or None, default None
+        stiffness of the curve. For ``fit="Spline"`` it is the spline wavelength
+        (``get_period`` rule): None uses dplR ssf's 0.6667 of each series' length,
+        a value in ``(0, 1]`` a fraction of length, a negative value a percent of
+        length, and a value > 1 a fixed wavelength in years. For
+        ``fit="AgeDepSpline"`` it is the initial stiffness ``nyrs0`` (None = 50)
+        and must be an integer > 1 -- a fraction is only valid for ``Spline``.
+        The former name ``nyrs=`` is accepted with a DeprecationWarning.
     max_iterations : int, default 25
-        maximum signal-free iterations before giving up.
-    mad_threshold : float, default 5e-4
+        maximum signal-free iterations before giving up. Under ``preset="crust"``
+        it is raised to at least 40 (CRUST's limit), as difficult sites can need
+        more than 25 iterations to converge.
+    tol : float, default 5e-4
         convergence threshold on the median absolute difference of the
-        high-frequency chronology between successive iterations.
+        high-frequency chronology between successive iterations (dplR's
+        ``mad.threshold``; the former name ``mad_threshold=`` is accepted with a
+        DeprecationWarning).
     recode_zeros : bool, default False
         recode zero ring-widths to 0.001 before processing (avoids div-by-zero).
+        The input frame is not modified.
     return_info : bool, default False
         if True, return a dict of the full iteration history (chronologies,
         signal-free measurements and curves, MAD vector, ...) instead of just
@@ -148,10 +171,10 @@ def ssf(rwl,
         None reproduces the basic signal-free method (dplR's ssf; Melvin & Briffa
         2008). "crust" adds CRUST's robustness guards (Melvin & Briffa 2014):
         multiplicative rescaling of the signal-free measurements, the raw
-        measurement kept in any year where the chronology is near zero (< 0.01), and
-        the fitted curves floored at 0.02 mm. These make ssf robust to sensitive
-        sites with many absent rings (e.g. co021) that the basic method cannot
-        standardise.
+        measurement kept in any year where the chronology is near zero (< 0.01),
+        the fitted curves floored at 0.02 mm, and up to 40 iterations. These make
+        ssf robust to sensitive sites with many absent rings (e.g. co021) that the
+        basic method cannot standardise. Case-insensitive.
 
     Returns
     -------
@@ -172,20 +195,41 @@ def ssf(rwl,
        implementation of Regional Chronology Standardisation: Part 2, Further
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
-    if preset not in (None, "crust"):
-        raise ValueError("preset must be None or 'crust', got '" + str(preset) + "'.")
+    # --- deprecated spellings (audit D3 / D5) -------------------------------
+    spline_period = _alias_kwarg(kwargs, "nyrs", "spline_period", spline_period, "ssf")
+    tol = _alias_kwarg(kwargs, "mad_threshold", "tol", tol, "ssf")
+    if "difference" in kwargs:
+        method = "difference" if _alias_kwarg(kwargs, "difference", "method",
+                                              None, "ssf") else "ratio"
+    _reject_kwargs(kwargs)
+    if str(method).strip().lower() in _FIT_CANON:
+        # the pre-0.9.0 meaning of method= was the curve name
+        _warn("ssf(): method='" + str(method) + "' names a curve; the curve is now "
+              "chosen with fit= and method= selects 'ratio' or 'difference'. "
+              "Treating it as fit='" + str(method) + "'.", DeprecationWarning)
+        fit, method = method, "ratio"
+    fit = _normalize_fit(fit)
+    if fit not in ("Spline", "AgeDepSpline"):
+        raise ValueError("ssf: fit must be 'Spline' or 'AgeDepSpline', got '"
+                         + str(fit) + "'.")
+    method = _normalize_method(method)
+    difference = (method == "difference")
+    preset = _normalize_choice(preset, ("crust",), "preset", none_ok=True)
     crust = preset == "crust"
+    nyrs = spline_period
+    mad_threshold = float(tol)
 
     if max_iterations > 25:
-        print("Warning: Having to set max_iterations > 25 may indicate non-ideal data for signal-free detrending.")
-    if  not(1e-04 < mad_threshold < 1e-03):
-        print("Warning: The stopping criteria should probably be between 1e-4 and 1e-3 unless you have a good reason to think otherwise.")
+        _warn("Having to set max_iterations > 25 may indicate non-ideal data for "
+              "signal-free detrending.")
+    if not (1e-04 < mad_threshold < 1e-03):
+        _warn("The stopping criteria (tol) should probably be between 1e-4 and 1e-3 "
+              "unless you have a good reason to think otherwise.")
 
     if crust:
         # CRUST allows up to 40 signal-free iterations; difficult sites (e.g.
         # co021) can need a few more than the basic default of 25 to converge.
         max_iterations = max(max_iterations, 40)
-    
 
     # error msgs for later
 
@@ -199,16 +243,11 @@ def ssf(rwl,
 
     inputNAmsg = "[6] Input data contain at least one row (year) with all NA values, creating div0 problems. See help (?ssf)."
 
-    # make a copy of rwl just in case we change it.     
-    dat = rwl
+    # work on a copy so the caller's frame is never modified (audit A2)
+    dat = _require_dataframe(rwl).copy()
+    dat = _drop_allnan_columns(dat, "rwl")
 
-    # check class of rwl
-    if not isinstance(dat, pd.DataFrame):
-        print("Input data needs to be a rwl DataFrame. Attempting to coerce.")
-        dat = readers(dat)  #will error if cannot coerce 
-
-    
-   # recode zeros to 0.001 if asked.
+    # recode zeros to 0.001 if asked.
     if recode_zeros:
         dat[dat == 0] = 0.001
 
@@ -228,8 +267,8 @@ def ssf(rwl,
     if zeroColCheck.any():
         raise ValueError(zeroColMsg)
 
-    # get some detrending options
-    method2 = method if method in ["Spline", "AgeDepSpline"] else "AgeDepSpline"
+    # the curve name, as the iteration history reports it
+    method2 = fit
 
     # useful vars
     nSeries = dat.shape[1]
@@ -266,15 +305,15 @@ def ssf(rwl,
 
     # Let's do it. First, here is a simplish detrending function modified from
     # detrend.series(). The issue with using detrend() is that negative values are
-    # not allowed for the detrend funcs. Maybe they should be (e.g., z-scored 
+    # not allowed for the detrend funcs. Maybe they should be (e.g., z-scored
     # data) but they aren't as of right now. So here is a simplified detrend function.
-    def getCurve(y, method=method2, 
-                 nyrs=None, 
+    def getCurve(y, method=method2,
+                 nyrs=None,
                  posSlope=True):
 
         ## Remove NA from the data (they will be reinserted later)
         good_y = np.where(~np.isnan(y))[0]
-        
+
         if len(good_y) == 0:
             raise ValueError("All values are 'NA'")
         elif any(np.diff(good_y) != 1):
@@ -289,35 +328,24 @@ def ssf(rwl,
         y2[y2 == 0] = 0.001
 
         if method == "Spline":
-            ## Age dep smoothing spline with nyrs (50 default) as the init stiffness
-            ## are NULL
-            if nyrs is None:
-                nyrs2 = len(y2) * 0.6667
-            elif 0 < nyrs < 1:
-                nyrs2 = len(y2) * nyrs
-            else:
-                nyrs2 = nyrs
-
-            y_inds = np.arange(1, len(y2) + 1)
-
-            # dplR's caps() truncates its nyrs to an integer (caps.R:
-            # "stiffness = as.integer(nyrs)"), so nyrs = length(y2)*0.6667 is
-            # effectively floored before the spline is fit. Match that here --
-            # passing the raw float instead leaves the spline slightly off caps.
-            Curve = spline(y=y2, x=y_inds, period=int(nyrs2))
+            # the spline wavelength resolves through get_period (E20) with dplR
+            # ssf's 0.6667-of-length default; caps() truncates it to an integer
+            # (caps.R: "stiffness = as.integer(nyrs)"), as _caps does.
+            nyrs2 = get_period(nyrs, len(y2), default=_SSF_DEFAULT_FRACTION)
+            Curve = _caps(np.asarray(y2, dtype=float), nyrs2)
             # Put NA back in
             Curve2 = np.full_like(y, np.nan)
             Curve2[good_y] = Curve
 
-        elif "AgeDepSpline" in method2: 
+        else:   # AgeDepSpline: spline_period is the initial stiffness nyrs0
             nyrs2 = 50 if nyrs is None else nyrs
             Curve = ads(y=y2, nyrs0=nyrs2, pos_slope=True)
             Curve2 = np.full_like(y, np.nan)
             Curve2[good_y] = Curve
 
         return Curve2
-    
-   
+
+
     def apply_getCurve(dat, method, nyrs=None):
         n_rows, n_cols = dat.shape
         datCurves = np.full_like(dat, np.nan)
@@ -335,10 +363,10 @@ def ssf(rwl,
 
     # STEP 1 - GET AN INITIAL CHRONOLOGY
     # fit curves
-    datCurves = apply_getCurve(dat, 
-                               method=method2, 
+    datCurves = apply_getCurve(dat,
+                               method=method2,
                                nyrs=nyrs)
-    
+
     if np.any(datCurves[~np.isnan(datCurves)] <= 0):
         raise ValueError(_neg_curve_message(datCurves, dat.columns))
 
@@ -348,7 +376,7 @@ def ssf(rwl,
     else:
         datRWI = dat.values / datCurves
 
-    datRWI= pd.DataFrame(datRWI) 
+    datRWI= pd.DataFrame(datRWI)
     datRWI.insert(0, "Years", dat.index)
     datRWI.set_index("Years", inplace=True)
 
@@ -370,7 +398,7 @@ def ssf(rwl,
     datSampDepth = iter0Crn.iloc[:,1] # for later
     normalizedSampleDepth = np.sqrt(datSampDepth - 1) / np.sqrt(np.max(datSampDepth)-1) # for later
     iter0Crn_col0 = iter0Crn.iloc[:, 0].values # just keep the chron
-    
+
     # STEP 2 - Divide each series of measurements by the chronology
     # NB: This can produce some very very funky values when iter0Crn is near zero.
     # E.g., in co021 row 615 has a tbrm RWI of 0.0044 which makes for some huge SF
@@ -408,10 +436,10 @@ def ssf(rwl,
     # head off any zeros in the chron unless the data themseleves are bunk
     if any(sfCrn_Mat[:, 0] == 0):
         sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False,plot=False).iloc[:, 0]
-    
+
     # And calc the high freq crn that will be used to determine MAD stopping crit
     hfCrn_Mat[:, 0] = sfCrn_Mat[:, 0] - spline(y=sfCrn_Mat[:, 0], x=np.arange(1, len(sfCrn_Mat[:, 0]) + 1), period=int(np.floor(medianSegLength)))
-    
+
     # STEP 8 - Repeat (2) through (7) until the MAD threshold
     # is reached or we hit maxIter
     if verbose:
@@ -446,13 +474,13 @@ def ssf(rwl,
             raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, k],
                                                 dat.columns, sfCrn_Mat[:, k - 1],
                                                 dat.index.to_numpy()))
-    
-        # STEP 6 - divide original measurements by curve obtained from signal free curves    
+
+        # STEP 6 - divide original measurements by curve obtained from signal free curves
         if difference:
             sfRWI_Array[:, :, k] = dat.values - sfRWRescaledCurves_Array[:, :, k]
         else:
             sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
-        
+
         # STEP 7 - create kth signal-free chronology (biweight mean per year;
         # see the iter-0 note -- tbrm_rows replaces the per-iteration chron rebuild)
         sfCrn_Mat[:, k] = tbrm_rows(sfRWI_Array[:, :, k])
@@ -460,20 +488,20 @@ def ssf(rwl,
         # chrons with years that mostly zeros if the chron is built with tukey's
         # biweight robust mean (e.g., co021). This causes problems with div0 later on
         # so if there are any zeros in the chron, switch straight mean which should
-        # head off any zeros in the chron unless the data themseleves are bunk   
+        # head off any zeros in the chron unless the data themseleves are bunk
         if any(sfCrn_Mat[:, k] == 0):
             sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
 
         # Now look at diffs in fit using median abs diff in the high freq resids
         # This is the (high freq) resids from the current iter minus the resids from prior iter
         hfCrn_Mat[:, k] = sfCrn_Mat[:, k] - spline(y=sfCrn_Mat[:, k], x=np.arange(1, len(sfCrn_Mat[:, k]) + 1), period=int(np.floor(medianSegLength)))
-        
+
         hfCrnResids_Mat[:, k - 1] = hfCrn_Mat[:, k] - hfCrn_Mat[:, k - 1]
         # calculate the median absolute differences weighted by the normalized sample depth
         medianAbsDiff = np.median(np.abs(hfCrn_Mat[:, k] * normalizedSampleDepth - hfCrn_Mat[:, k - 1] * normalizedSampleDepth))
-        
+
         MAD_Vec[k - 1] = medianAbsDiff
-        
+
         if verbose:
             print(f"Iteration: {k+1}  Median Abs Diff: {round(medianAbsDiff, 5)}  ({round(mad_threshold / medianAbsDiff * 100, 5)}% of threshold)")
 
@@ -504,23 +532,22 @@ def ssf(rwl,
     # dplR's finalCrn <- sfCrn_Mat[,k].
     finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k], "samp_depth": datSampDepth}, index=dat.index)
 
+    infoList = {"fit": method2, "method": method, "spline_period": nyrs,
+                "max_iterations": max_iterations, "tol": mad_threshold}
     if method2 == "AgeDepSpline":
-        infoList = {"method": method2, "nyrs": nyrs, "pos_slope": True,
-                        "max_iterations": max_iterations, "mad_threshold": mad_threshold}
-    else:
-        infoList = {"method": method2, "nyrs": nyrs, "max_iterations": max_iterations, 
-                        "mad_threshold": mad_threshold}
-    
+        infoList["pos_slope"] = True
+
     if verbose:
         print("Simple Signal Free Chronology Complete")
         print("ssf was called with these arguments")
-        print(f"Detrending method: {method2}")
-        print(f"nyrs: {nyrs}")
+        print(f"fit: {method2}")
+        print(f"method: {method}")
+        print(f"spline_period: {nyrs}")
         if method2 == "AgeDepSpline":
             print("pos_slope: True")
         print(f"max_iterations: {max_iterations}")
-        print(f"mad_threshold: {mad_threshold}")
-    
+        print(f"tol: {mad_threshold}")
+
     if return_info:
         # The full iteration history is a mix of DataFrames, 3-D arrays and a
         # dict, so it is returned as a dict (not coerced to a DataFrame, which

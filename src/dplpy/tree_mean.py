@@ -51,7 +51,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _carry_attrs
 from .rwi_stats import _resolve_tree_mapping     # shared {series: tree} resolver
 
 
@@ -64,7 +64,7 @@ def tree_mean(rwl, ids, na_rm=False):
         A ring-width dataset (years x cores/series).
     ids : pandas.DataFrame or dict
         The tree/core structure that says which tree each series belongs to --
-        the output of :func:`read_ids` (a DataFrame indexed by series name with
+        the output of `read_ids()` (a DataFrame indexed by series name with
         a ``tree`` column), or a plain ``{series_name: tree_id}`` dict. Series
         are matched to trees by name, so ``ids`` need not be in column order.
     na_rm : bool, default False
@@ -78,7 +78,9 @@ def tree_mean(rwl, ids, na_rm=False):
     pandas.DataFrame
         A ring-width dataset (years x trees). Columns are the unique tree IDs, in
         order of first appearance among the input columns; the year index is
-        preserved. Feed it straight to :func:`detrend` / :func:`chron`.
+        preserved, and the input's provenance attrs are carried over (the
+        output is still raw widths, ``kind="rwl"``). Feed it straight to
+        `detrend()` / `chron()`.
 
     Examples
     --------
@@ -88,7 +90,7 @@ def tree_mean(rwl, ids, na_rm=False):
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#tree_mean
+    .. [1] https://opendendro.github.io/dplPy/reference/statistics/#tree_mean
     """
     frame = _require_dataframe(rwl)
     if not isinstance(na_rm, bool):
@@ -116,4 +118,5 @@ def tree_mean(rwl, ids, na_rm=False):
         else:
             res[:, i] = np.mean(sub, axis=1)            # any NaN core -> NaN, as in dplR
 
-    return pd.DataFrame(res, index=frame.index, columns=u_trees)
+    out = pd.DataFrame(res, index=frame.index, columns=u_trees)
+    return _carry_attrs(frame, out, kind="rwl", keep_measurement=True)

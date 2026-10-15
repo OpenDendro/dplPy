@@ -272,3 +272,72 @@ def test_wide_multisite_no_fragmentation_warning(tmp_path):
         with contextlib.redirect_stdout(io.StringIO()):
             df = dpl.read_crn(str(p))
     assert df.shape[1] == 120                              # 60 sites x (value + depth)
+
+
+# --- v0.9.0 audit follow-ups (A6, C7, G2, G10) --------------------------------
+def test_bc_layout_detected_from_sign_in_column_6(tmp_path):
+    # A6: a 4-digit BC year in dplR's layout ('MWK51-1265') used to be read as
+    # +1265 because the sign-stripped digits were a plausible AD year; the three
+    # decades then collided. The '-' in column 6 is now decisive.
+    lines = [
+        _bc_row("MWK51", -1265, [(9990, 0)] * 5                 # front padding to the decade
+                + [(1000, 5), (1100, 5), (1200, 5), (1300, 5), (1400, 5)]),
+        _bc_row("MWK51", -1260, [(900, 6)] * 10),
+        _bc_row("MWK51", -1250, [(800, 7), (810, 7), (820, 7)]),
+    ]
+    with pytest.warns(UserWarning, match="decade field"):
+        df = _read(tmp_path, "bc4.crn", lines)
+    assert list(df.columns) == ["std", "samp_depth"]
+    assert int(df.index.min()) == -1265 and int(df.index.max()) == -1248
+    assert len(df) == 18                                   # contiguous -1265..-1248
+    assert df.loc[-1265, "std"] == pytest.approx(1.0)
+    assert df.loc[-1260, "std"] == pytest.approx(0.9)
+    assert df.loc[-1250, "std"] == pytest.approx(0.8)
+    assert df.attrs["kind"] == "crn"
+
+
+def test_header_year_mismatch_warns(tmp_path):
+    # A6: the first data decade is cross-checked against the header's year range.
+    lines = ["SITEAB 1 A TEST SITE NAME", "SITEAB 2 COUNTRY  SPP  1000M 3730-11813  1900 1950",
+             "SITEAB 3 AUTHOR",
+             _row("SITEAB", 1800, [(1000, 5), (1100, 6)])]
+    with pytest.warns(UserWarning, match="header declares"):
+        _read(tmp_path, "mis.crn", lines)
+    ok = ["SITEAB 1 A TEST SITE NAME", "SITEAB 2 COUNTRY  SPP  1000M 3730-11813  1800 1801",
+          "SITEAB 3 AUTHOR", _row("SITEAB", 1800, [(1000, 5), (1100, 6)])]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _read(tmp_path, "ok.crn", ok)
+
+
+def test_verbose_false_prints_nothing(tmp_path, capsys):
+    # G2
+    p = tmp_path / "q.crn"
+    p.write_text("\n".join(_HDR + [_row("SITEAB", 1900, [(1000, 5), (1100, 6)])]) + "\n")
+    df = dpl.read_crn(str(p), verbose=False)
+    assert capsys.readouterr().out == ""
+    assert df.attrs["kind"] == "crn"
+    dpl.read_crn(p)                                        # pathlib accepted; default prints
+    assert "successfully read" in capsys.readouterr().out
+
+
+def test_url_read_passes_timeout(tmp_path):
+    # C7
+    import urllib.request
+    from unittest.mock import patch, MagicMock
+    raw = ("\n".join(_HDR + [_row("SITEAB", 1900, [(1000, 5)])]) + "\n").encode("latin-1")
+    seen = {}
+
+    def fake_urlopen(url, *a, **k):
+        seen.update(k)
+        m = MagicMock()
+        m.read.return_value = raw
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        return m
+
+    with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
+        with contextlib.redirect_stdout(io.StringIO()):
+            df = dpl.read_crn("https://example.org/x.crn")
+    assert seen.get("timeout") is not None
+    assert df.loc[1900, "std"] == pytest.approx(1.0)

@@ -54,34 +54,31 @@ Other important arguments:
 - `method` — `"ratio"` (default; divide by the curve) or `"difference"`
   (subtract). Ratios are the traditional RWI; differences suit
   variance-stabilized workflows.
-- `period` / `f` — spline stiffness (wavelength) and frequency response. `period`
-  defaults to a 67 %-of-length spline; a negative value is read as a *percent
+- `spline_period` / `f` — spline stiffness (wavelength) and frequency response.
+  `spline_period` defaults to a 67 %-of-length spline; a negative value is read as a *percent
   spline* (ARSTAN convention), and a value in `(0, 1]` as a fraction of length.
   `f` is the amplitude cutoff at that wavelength (default 0.5 = 50 %).
 - `pos_slope` — whether to allow a positively-sloped fitted curve.
+- `plot` — `False` by default (as in dplR's `detrend` for a data frame). `True`
+  draws one figure per series; `plot="sequential"` steps through them one at a
+  time.
 - `return_info` / `verbose` — return or print the per-series curve choices.
 
 You can also pass a *list* of curves to try in order (as in dplR), and detrend a
 single series (`pandas.Series`) as well as a whole collection.
 
-!!! warning "Internal gaps and position-based fits"
+!!! note "Internal gaps"
 
     dplPy fits every curve to the series with its missing years (`NaN`) dropped,
     so a `-9.99`-style gap value can never corrupt a fit. **`Spline`** fits a
-    smoothing spline over the real calendar years, so it spans an interior gap
-    correctly in time, and **`Mean`** is order-invariant — neither is affected by
-    a gap. Every *other* fit is fitted against cambial age reconstructed as
-    `1, 2, …, n` over the surviving rings: the parametric growth curves
-    (`ModNegExp`, `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp`), the
-    `LinearAny` / `LinearNegative` fits, and **`AgeDepSpline`** (whose stiffness
-    tracks ring position). For these, an interior gap compresses the age axis
-    after the gap — a ring at true cambial age 50 is fit as age 45 if five earlier
-    rings are missing. For a smooth growth curve this is a minor, benign
-    distortion (not the catastrophe a sentinel value would cause), but it is not
-    exact. `detrend` warns when a position-based fit meets a series with interior
-    gaps; you can then switch to `fit="Spline"` or infill first with
-    [`fill_internal`](../reference/utilities.md) (e.g. `fill="ARSTAN"`, Ed Cook's
-    opt-in regional-signal imputation) — dplPy never fills silently. See
+    smoothing spline over the real calendar years and **`Mean`** is
+    order-invariant. Every *other* fit (the parametric growth curves, the
+    `LinearAny` / `LinearNegative` fits, and **`AgeDepSpline`**) is fitted against
+    the true ring position `year - first_year + 1`, so a gap advances cambial age
+    exactly as the calendar does and the rings after it are fit at their real age.
+    The gap years stay `NaN` in the output. If you want values there, infill
+    first with [`fill_internal`](../reference/utilities.md) (e.g. `fill="ARSTAN"`,
+    Ed Cook's opt-in regional-signal imputation) — dplPy never fills silently. See
     [Handling internal gaps](internal-gaps.md).
 
 
@@ -93,14 +90,14 @@ signal that curve-by-curve detrending removes:
 
 ```python
 rwi = dpl.rcs(rwl, po=pith_offsets, biweight=True)             # default AgeDepSpline, ratios
-rwi = dpl.rcs(rwl, po=pith_offsets, fit="Spline", period=0.1)  # fixed 10%-of-length spline
+rwi = dpl.rcs(rwl, po=pith_offsets, fit="Spline", spline_period=0.1)  # fixed 10%-of-length spline
 ```
 
 The regional curve is chosen with `fit=` — the same curve vocabulary as
 `detrend()`: `"AgeDepSpline"` (the default, and ARSTAN's recommended RCS curve),
 `"Spline"`, the parametric growth curves (`"ModNegExp"`, `"Hugershoff"`, …), or
 `None` for the unsmoothed age-aligned mean. `method=` selects the arithmetic
-(`"ratio"`, the default, or `"difference"`), `period=` sets the `"Spline"`
+(`"ratio"`, the default, or `"difference"`), `spline_period=` sets the `"Spline"`
 stiffness (a fraction of the curve length, default `0.1`; `-10` is the ARSTAN
 percent-of-length spline), and `pos_slope=False` (the default) keeps the old-age
 end of the curve from rising. `po` is a pith-offset table (see
@@ -111,8 +108,10 @@ regional curve the CRUST way (Melvin & Briffa 2014).
 
     `rcs()` and `sfrcs()` inputs were harmonized with `detrend()`: the curve is
     now `fit=` (was `method="caps"`/`"ads"`), the arithmetic is `method=`
-    (`"ratio"`/`"difference"`, was the boolean `ratios=`), stiffness is `period=`
-    (was `nyrs=`), the default curve is `fit="AgeDepSpline"` (was the fixed
+    (`"ratio"`/`"difference"`, was the boolean `ratios=`), stiffness is
+    `spline_period=` (0.8.0 called it `period=`, before that `nyrs=`; both older
+    names still work as deprecated aliases), the default curve is
+    `fit="AgeDepSpline"` (was the fixed
     spline), `pos_slope` now defaults to `False`, and the figure switch is
     `plot=` (`make_plot=` is deprecated). The pith-offset convention also changed
     — see the note below.

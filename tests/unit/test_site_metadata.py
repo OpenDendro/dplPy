@@ -114,3 +114,33 @@ def test_write_crn_still_rejects_bad_header():
 
 def test_sitemetadata_is_exported():
     assert hasattr(dpl, "SiteMetadata")
+
+
+# --------------------------------------------------------------------------- #
+# A18: packing decimal degrees / metres into the ITRDB .crn header fields
+# --------------------------------------------------------------------------- #
+def test_decimal_to_dm_is_inverse_of_reader_decoder():
+    from dplpy.site_metadata import _decimal_to_dm, pack_crn_coordinates, pack_crn_elevation
+    from dplpy.readers import _dm_to_decimal
+    for txt, lon in (("3731", False), ("-11812", True), ("1917", False), ("09856", True),
+                     ("-2053", False), ("00406", True)):
+        dec = _dm_to_decimal(txt)
+        assert _decimal_to_dm(dec, lon=lon) == txt
+    assert _decimal_to_dm(37.99999, lon=False) == "3800"      # minute rounding carries
+    assert pack_crn_coordinates(37.5167, -118.2) == "3731-11812"
+    assert pack_crn_coordinates(19.2833, 98.9333) == "1917 09856"
+    assert pack_crn_coordinates("3731", "-11812") == "3731-11812"   # packed strings pass
+    assert pack_crn_coordinates("37.5167", "-118.2") == "3731-11812"  # decimal strings packed
+    assert pack_crn_coordinates(-35.5, -71.2) == "-3530-7112"        # Chile fits in 10
+    assert pack_crn_elevation(2375) == "2375M"
+    assert pack_crn_elevation("2375M") == "2375M"
+    assert pack_crn_elevation("2375") == "2375M"
+    with pytest.raises(ValueError):
+        pack_crn_elevation(123456)
+
+
+def test_to_crn_header_keeps_decimal_values():
+    # the dataclass stays in decimal degrees; packing is the writer's job
+    sm = SiteMetadata(site_id="X", latitude=37.5167, longitude=-118.2, elevation_m=3470)
+    h = sm.to_crn_header()
+    assert h["latitude"] == 37.5167 and h["elevation"] == 3470

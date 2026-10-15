@@ -113,9 +113,63 @@ def test_leading_nan_preserved(crn, rwi):
 
 # --- diagnostics + validation -------------------------------------------------
 def test_return_info(crn, rwi):
-    out, info = dpl.stabilize_chron(crn, "rbar", rwi=rwi, return_info=True)
-    assert {"method", "rbar", "n_eff", "samp_depth"} <= set(info)
+    # D9: return_info=True returns ONE dict with the DataFrame under the stable
+    # primary key "vsc" plus the diagnostics (as the other return_info= functions)
+    info = dpl.stabilize_chron(crn, "rbar", rwi=rwi, return_info=True)
+    assert isinstance(info, dict)
+    assert {"vsc", "method", "rbar", "n_eff", "samp_depth"} <= set(info)
+    assert isinstance(info["vsc"], pd.DataFrame) and "vsc" in info["vsc"].columns
     assert len(info["n_eff"]) == len(crn)
+    plain = dpl.stabilize_chron(crn, "rbar", rwi=rwi)
+    pd.testing.assert_frame_equal(info["vsc"], plain)
+
+
+def test_window_length_alias_and_too_long_window_raises(crn, rwi):
+    # D3: win_length= -> window_length= (deprecated alias); B10: a running rbar
+    # needs a window shorter than the chronology, else ValueError (not a silent
+    # rbar=0 degrade)
+    base = dpl.stabilize_chron(crn, "rbar", rwi=rwi, window_length=40)
+    with pytest.warns(DeprecationWarning):
+        alias = dpl.stabilize_chron(crn, "rbar", rwi=rwi, win_length=40)
+    pd.testing.assert_frame_equal(base, alias)
+    with pytest.raises(ValueError, match="window_length"):
+        dpl.stabilize_chron(crn, "rbar", rwi=rwi, window_length=len(crn))
+    short = crn.iloc[:40]
+    with pytest.raises(ValueError, match="window_length"):
+        dpl.stabilize_chron(short, "rbar", rwi=rwi.iloc[:40])          # default 50 > 40
+    ok = dpl.stabilize_chron(short, "rbar", rwi=rwi.iloc[:40], rbar_mode="constant")
+    assert np.isfinite(ok["vsc"].to_numpy()).any()
+    with pytest.raises(TypeError):
+        dpl.stabilize_chron(crn, "rbar", rwi=rwi, bogus=1)
+
+
+def test_method_and_rbar_mode_case_insensitive(crn, rwi):
+    a = dpl.stabilize_chron(crn, "rbar", rwi=rwi, rbar_mode="constant")
+    b = dpl.stabilize_chron(crn, "Rbar", rwi=rwi, rbar_mode="CONSTANT")
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_stabilize_chron_carries_attrs_as_crn(crn, rwi):
+    c = crn.copy()
+    c.attrs["site"] = "x"
+    out = dpl.stabilize_chron(c, "spline")
+    assert out.attrs["kind"] == "crn" and out.attrs["site"] == "x"
+
+
+def test_spline_component_handles_nan_ok_and_clip():
+    from dplpy.stabilize import _spline_component
+    rng = np.random.default_rng(3)
+    x = 1 + 0.3 * rng.standard_normal(120) * np.linspace(2, 0.5, 120)
+    x[:5] = np.nan
+    out = _spline_component(x, 40, 0.5)
+    assert np.isnan(out[:5]).all() and np.isfinite(out[5:]).all()
+    ok = np.ones(120, dtype=bool)
+    ok[5:10] = False
+    clipped = _spline_component(x, 40, 0.5, clip_negative=True, ok=ok)
+    assert (clipped[5:] >= 0).all()
+    ref = variance_stabilize_spline(x[5:], period=40, f=0.5, clip_negative=True,
+                                    ok=ok[5:])
+    assert np.allclose(clipped[5:], ref)
 
 
 def test_invalid_method(crn):

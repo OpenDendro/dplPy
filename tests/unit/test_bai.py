@@ -68,3 +68,24 @@ def test_missing_series_raises():
 
 def test_exported():
     assert hasattr(dpl, "bai_out") and hasattr(dpl, "bai_in")
+
+
+def test_bai_out_warns_when_diameter_too_small():
+    import pytest
+    import warnings
+    rwl = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=pd.Index([1, 2, 3], name="Year"))
+    with pytest.warns(UserWarning, match="negative"):
+        out = dpl.bai_out(rwl, diam={"A": 4.0})       # radius 2 < sum 3
+    assert out["A"].iloc[0] < 0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dpl.bai_out(rwl, diam={"A": 6.0})              # radius 3 == sum: fine
+        dpl.bai_out(rwl)                               # default never warns
+
+
+def test_bai_output_attrs():
+    rwl = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=pd.Index([1, 2, 3], name="Year"))
+    rwl.attrs.update({"dplpy_precision": 0.01, "kind": "rwl", "site": "x"})
+    for out in (dpl.bai_out(rwl), dpl.bai_in(rwl)):
+        assert out.attrs["kind"] == "bai" and out.attrs["site"] == "x"
+        assert "dplpy_precision" not in out.attrs

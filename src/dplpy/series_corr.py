@@ -27,18 +27,20 @@ __license__ = "GNU GPLv3"
 # Description: Crossdating focused on ONE series vs a leave-one-out master,
 #   mirroring dplR's corr.series.seg() (a moving correlation and per-segment
 #   correlations) together with ccf.series.rwl() (the per-segment lag / COFECHA
-#   table drawn as stem plots).
+#   table drawn as stem plots). Lag convention, as everywhere in dplPy and in
+#   COFECHA: a NEGATIVE lag means a MISSING ring in the series.
 #
 # >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
 # >>> dpl.series_corr(data, "CAM011")
 
 from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bounds,
-                    _corr_pval, get_bins, dense_year_grid)
+                    _corr_pval, _fast_corr, _lag_table, get_bins, dense_year_grid,
+                    _thin, _carry_attrs)
 
-from math import ceil
 import pandas as pd
-from ._validate import _require_dataframe, _normalize_corr, _plot_kwarg
+from ._validate import (_require_dataframe, _normalize_corr, _plot_kwarg, _alias_kwarg,
+                        _normalize_choice, _require_year_index)
 import numpy as np
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
@@ -50,51 +52,52 @@ _CCF_POS = (ACCENT_WARM, "#e8b0a6")       # (stem/edge, dot fill) -- positive r
 _CCF_NEG = (ACCENT, "#adc3db")            #                          negative r
 
 
-def _dplR_ccf(x, y, lag_max):
+def _dplR_ccf(x, y, lag):
     """R's ``ccf(x, y)``: standardised cross-covariance, fixed means, /n.
 
-    Returns the correlation at lags -lag_max..+lag_max, where the value at lag
-    k estimates cor(x[t+k], y[t]). Follows R's stats::ccf definition.
+    Returns the correlation at lags -lag..+lag, where the value at lag k
+    estimates cor(x[t+k], y[t]). Follows R's stats::ccf definition.
     """
-    x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
-    x = x - x.mean(); y = y - y.mean()
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    x = x - x.mean()
+    y = y - y.mean()
     n = len(x)
     denom = np.sqrt(np.mean(x ** 2) * np.mean(y ** 2))
     out = []
-    for k in range(-lag_max, lag_max + 1):
+    for k in range(-lag, lag + 1):
         c = (np.sum(x[k:] * y[:n - k]) if k >= 0 else np.sum(x[:n + k] * y[-k:])) / n
         out.append(c / denom)
     return np.array(out)
 
 
-def _ccf_bins(series_years, bin_floor, seg_length, floor_plus1=False):
-    """dplR ccf.series.rwl bin layout: min.bin from the series' own first year,
-    last bin ends at the series' last year (mirrors its min.bin/`to` formula)."""
-    seg_lag = seg_length // 2
-    smin = int(np.min(series_years)); smax = int(np.max(series_years))
-    if not bin_floor:
-        min_bin = smin
-    elif floor_plus1:
-        min_bin = ceil((smin - 1) / bin_floor) * bin_floor + 1
-    else:
-        min_bin = ceil(smin / bin_floor) * bin_floor
-    to = smax - seg_length - seg_lag + 1
-    if min_bin > to:
+def _ccf_bins(series_years, bin_floor, window_length):
+    """dplR ccf.series.rwl bin layout: bins floored from the SERIES' own first
+    year, the last ending no later than its last year. The same layout rule as
+    `xdate.get_bins()` applied to the series' span; returns ``(lo, hi)`` pairs."""
+    if len(series_years) == 0:
         return []
-    return [(s, s + seg_length - 1) for s in range(min_bin, to + seg_lag + 1, seg_lag)]
+    bins, _ = get_bins(int(np.min(series_years)), int(np.max(series_years)),
+                       bin_floor, window_length)
+    return [_bin_bounds(b) for b in bins]
 
 
 def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
-                corr="spearman", seg_length=50, bin_floor=100, p_val=0.05,
-                biweight=True, lag=5, plot=True, series_x=True,
-                which="both", **kwargs):
+                corr="spearman", window_length=50, bin_floor=100, p_val=0.05,
+                biweight=True, lag=10, plot=True, series_x=False,
+                which="both", ar_max=10, first_aic_min=True, **kwargs):
     """Crossdate one series against the master built from all the others.
 
     Produces (and, by default, plots) a moving correlation of the series against
     the leave-one-out master, the per-segment correlations, and a per-segment
     lag table (COFECHA-style) showing how the correlation changes when the
-    segment is shifted +/- ``lag`` years -- large off-zero peaks suggest a
-    dating error in that segment.
+    master is shifted +/- ``lag`` years past the dated segment -- an off-zero
+    peak suggests a dating error in that segment.
+
+    Lag convention (``lag_table`` and, by default, ``ccf``): the dated segment
+    stays fixed and the MASTER slides, so a **negative lag means a missing ring
+    in the series**, as in COFECHA, ``dpl.xdate`` and ``dpl.check``. The
+    ``lag_table`` is `xdate._lag_table()`, the same scan behind xdate's B flags.
 
     Parameters
     ----------
@@ -102,41 +105,53 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
         ring-width series (typically detrended RWI).
     series_name : str
         the series to examine.
-    prewhiten, corr, seg_length, bin_floor, p_val, biweight, lag
-        as in dpl.xdate() (seg_length is the segment length).
+    prewhiten, corr, window_length, bin_floor, p_val, biweight, lag, ar_max, first_aic_min
+        as in `dpl.xdate()` (``window_length`` is the segment length;
+        ``seg_length=`` is a deprecated alias).
     plot : bool, default True
         master switch for drawing any figure.
+    series_x : bool, default False
+        lag convention for the dplR-style ``ccf`` only (``lag_table`` always uses
+        the COFECHA convention). False (dplR's stock ``series.x=FALSE``) calls
+        ``ccf(x=master, y=series)`` so a *negative* lag marks a missing ring in the
+        series, consistent with ``lag_table``. True calls ``ccf(x=series,
+        y=master)``, flipping the sign so a *positive* lag marks a missing ring.
     which : {'both', 'moving', 'ccf'}, default 'both'
         when ``plot`` is True, which figure(s) to draw: both, only the
         moving-correlation plot (``corr.series.seg``), or only the per-segment
-        ccf panels (``ccf.series.rwl``).
-    series_x : bool, default True
-        lag convention for the dplR-style ``ccf``. True calls
-        ``ccf(x=series, y=master)`` so a *positive* lag marks a missing ring in
-        the series (Bunn's intuitive convention); False matches dplR's stock
-        ``series.x=FALSE`` (negative lag = missing ring).
+        ccf panels (``ccf.series.rwl``). Case-insensitive.
 
     Returns
     -------
     dict with keys ``moving_corr`` (Series), ``seg_corr`` (Series over bins),
-    ``overall`` ((rho, p_val)), ``lag_table`` (Spearman rank correlations at
-    shifted windows, lags x bins), ``ccf`` (dplR-style Pearson cross-correlation
-    per segment, lags x bins), ``ccf_bins`` and ``bins``.
+    ``overall`` (DataFrame, one row for the series, columns ``rho`` and
+    ``p_val`` -- the same shape as ``xdate()["overall"]``), ``lag_table``
+    (correlations at shifted master windows, lags x bins, using ``corr``),
+    ``ccf`` (dplR-style Pearson cross-correlation per segment, lags x bins),
+    ``ccf_bins``, ``bins`` and ``rwi`` (the transformed series used).
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#series_corr
+    .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#series_corr
     """
-    _require_dataframe(data)
+    window_length = _alias_kwarg(kwargs, "seg_length", "window_length",
+                                 window_length, "series_corr")
     plot = _plot_kwarg(plot, kwargs)
+    _require_dataframe(data)
     if not isinstance(series_name, str):
         raise TypeError("Expected string input as series name, got " + str(type(series_name)) + " instead.")
     if series_name not in data.columns:
         raise ValueError("Series named " + series_name + " not found in provided dataframe.")
+    data = _require_year_index(data, "data")
     method = _normalize_corr(corr)
+    which = _normalize_choice(which, ("both", "moving", "ccf"), "which")
+    window_length = int(window_length)
+    lag = int(lag)
 
-    ready = normalize_for_crossdating(data, prewhiten)
+    ready = normalize_for_crossdating(data, prewhiten, ar_max=ar_max,
+                                      first_aic_min=first_aic_min)
     ready, years, first_year, last_year = dense_year_grid(ready)
+    ready = _carry_attrs(data, ready, kind="rwi")
 
     names = list(ready.columns)
     idx = names.index(series_name)
@@ -147,82 +162,81 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     master = (_row_biweight if biweight else _row_mean)(M[:, keep])
     series = M[:, idx]
 
-    overall = _corr_pval(series, master, method)
+    rho, pv = _corr_pval(series, master, method)
+    overall = pd.DataFrame({"rho": [rho], "p_val": [pv]}, index=pd.Index([series_name]))
 
-    bins, _ = get_bins(first_year, last_year, bin_floor, seg_length)
+    bins, _ = get_bins(first_year, last_year, bin_floor, window_length)
     bin_bounds = [_bin_bounds(b) for b in bins]
 
-    # per-segment correlation and lag table
+    # per-segment correlation and the COFECHA-convention lag table (one
+    # implementation, shared with xdate: the master slides, the segment is fixed)
     seg_corr = pd.Series(index=bins, dtype=float)
     lag_vec = list(range(-lag, lag + 1))
-    lag_table = pd.DataFrame(index=["lag." + str(k) for k in lag_vec], columns=bins, dtype=float)
+    lag_index = ["lag." + str(k) for k in lag_vec]
+    lag_table = pd.DataFrame(index=lag_index, columns=bins, dtype=float)
     for (lo, hi), blabel in zip(bin_bounds, bins):
         mask0 = (years >= lo) & (years <= hi)
-        if mask0.sum() != seg_length or np.isnan(series[mask0]).any() or np.isnan(master[mask0]).any():
+        if mask0.sum() != window_length or np.isnan(series[mask0]).any() or np.isnan(master[mask0]).any():
             continue
-        seg_corr[blabel] = _corr_pval(series[mask0], master[mask0], method)[0]
-        for k in lag_vec:
-            m = (years >= lo + k) & (years <= hi + k)
-            if m.sum() != seg_length or np.isnan(series[m]).any() or np.isnan(master[mask0]).any():
-                continue
-            lag_table.loc["lag." + str(k), blabel] = _corr_pval(series[m], master[mask0], method)[0]
+        seg_corr[blabel] = _fast_corr(series[mask0], master[mask0], method)
+        corrs, _, _ = _lag_table(series, master, years, lo, hi, window_length, method, lag)
+        lag_table[blabel] = corrs
 
-    # moving correlation (window seg_length, step 1, stored at window centre)
-    seg_lag = seg_length // 2
+    # moving correlation (window window_length, step 1, stored at window centre)
+    seg_lag = window_length // 2
     mov_years, mov_corr = [], []
-    for t in range(0, len(years) - seg_length + 1):
-        s = series[t:t + seg_length]
-        m = master[t:t + seg_length]
+    for t in range(0, len(years) - window_length + 1):
+        s = series[t:t + window_length]
+        m = master[t:t + window_length]
         if np.isnan(s).any() or np.isnan(m).any():
             continue
         mov_years.append(years[t] + seg_lag)
-        mov_corr.append(_corr_pval(s, m, method)[0])
+        mov_corr.append(_fast_corr(s, m, method))
     moving_corr = pd.Series(data=mov_corr, index=mov_years, dtype=float)
 
     # dplR-style cross-correlation table (ccf.series.rwl): Pearson ccf per
-    # segment. ``series_x`` picks the lag convention -- True (default) calls
-    # ccf(x=series, y=master) so a *positive* lag marks a missing ring in the
-    # series (the intuitive convention Bunn adopts); False matches dplR's stock
-    # series.x=FALSE default (negative lag = missing ring).
+    # segment. ``series_x`` picks the lag convention -- False (default, dplR's
+    # stock series.x=FALSE and the COFECHA convention) calls ccf(x=master,
+    # y=series) so a *negative* lag marks a missing ring in the series; True calls
+    # ccf(x=series, y=master), where a *positive* lag marks a missing ring.
     valid = ~np.isnan(series) & ~np.isnan(master)
-    ccf_table = pd.DataFrame(index=["lag." + str(k) for k in lag_vec], dtype=float)
+    ccf_table = pd.DataFrame(index=lag_index, dtype=float)
     ccf_bin_labels = []
     if valid.any():
-        for lo, hi in _ccf_bins(years[valid], bin_floor, seg_length):
+        for lo, hi in _ccf_bins(years[valid], bin_floor, window_length):
             blabel = str(lo) + "-" + str(hi)
             ccf_bin_labels.append(blabel)
             m = (years >= lo) & (years <= hi)
-            if m.sum() != seg_length or np.isnan(series[m]).any() or np.isnan(master[m]).any():
+            if m.sum() != window_length or np.isnan(series[m]).any() or np.isnan(master[m]).any():
                 ccf_table[blabel] = np.nan
                 continue
             xx, yy = (series[m], master[m]) if series_x else (master[m], series[m])
             ccf_table[blabel] = _dplR_ccf(xx, yy, lag)
-    note = ("NB: with series_x=True, positive lags indicate missing rings in the series"
+    note = ("NB: with series_x=True, POSITIVE lags indicate missing rings in the series "
+            "(the opposite of the lag_table / COFECHA convention)"
             if series_x else
-            "NB: with series_x=False, negative lags indicate missing rings in the series")
+            "NB: negative lags indicate missing rings in the series (as in COFECHA)")
 
     if plot:
-        if which not in ("both", "moving", "ccf"):
-            raise ValueError("which must be 'both', 'moving' or 'ccf'")
         if which in ("both", "moving"):
-            _plot_moving(series_name, moving_corr, seg_corr, bin_bounds, seg_length, p_val)
+            _plot_moving(series_name, moving_corr, seg_corr, bin_bounds, window_length, p_val)
         if which in ("both", "ccf"):
             print(note)                       # the lag convention applies to the ccf plot
-            _plot_ccf(series_name, ccf_table, lag_vec, ccf_bin_labels, seg_length, p_val, note)
+            _plot_ccf(series_name, ccf_table, lag_vec, ccf_bin_labels, window_length, p_val, note)
         plt.show()
 
     return {"moving_corr": moving_corr, "seg_corr": seg_corr, "overall": overall,
             "lag_table": lag_table, "ccf": ccf_table, "ccf_bins": ccf_bin_labels,
-            "bins": bins}
+            "bins": bins, "rwi": ready}
 
 
-def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
+def _plot_moving(name, moving_corr, seg_corr, bin_bounds, window_length, p_val):
     """Section 5 -- moving correlation + per-segment bars (dplR corr.series.seg).
 
     Base-R look: black moving line, black per-segment bars, a dashed
     significance line, and offset bottom/top year axes at the bin boundaries.
     """
-    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)
+    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(window_length)
     # Restrict to the segments the series actually spans (dplR limits the plot
     # to the series' own range rather than the whole collection).
     active = [(lo, hi) for (lo, hi), b in zip(bin_bounds, seg_corr.index)
@@ -234,12 +248,9 @@ def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
     else:
         xlo, xhi = 0, 1
 
-    def _thin(vals, target=11):
-        return vals if len(vals) <= target else vals[:: int(np.ceil(len(vals) / target))]
-
     bot_ticks = _thin([lo for lo, hi in active[0::2]] +
-                      ([active[-1][1] + 1] if active else []))
-    top_ticks = _thin([lo for lo, hi in active[1::2]])
+                      ([active[-1][1] + 1] if active else []), target=11)
+    top_ticks = _thin([lo for lo, hi in active[1::2]], target=11)
 
     fig, ax = plt.subplots(figsize=(max((xhi - xlo) / 45, 9), 5))
     for lo, hi in active:
@@ -262,7 +273,7 @@ def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
     ax.set_xlabel("Year")
     ax.set_ylabel("Correlation")
     ax.set_title(name, fontsize=11)
-    fig.text(0.5, 0.005, "Segments: length=%d, lag=%d" % (seg_length, seg_length // 2),
+    fig.text(0.5, 0.005, "Segments: length=%d, lag=%d" % (window_length, window_length // 2),
              ha="center", fontsize=9, color="0.4")
     # keep the top spine (the secondary year axis lives there); trim the right
     style_axes(ax, xgrid=False, hide_spines=("right",))
@@ -270,7 +281,7 @@ def _plot_moving(name, moving_corr, seg_corr, bin_bounds, seg_length, p_val):
     finalize_font(fig)
 
 
-def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
+def _plot_ccf(name, ccf_table, lag_vec, bin_labels, window_length, p_val, note):
     """Section 6 -- per-segment cross-correlation stems (dplR ccf.series.rwl).
 
     One panel per segment; stems and dots coloured dark red (positive r) or
@@ -280,7 +291,7 @@ def _plot_ccf(name, ccf_table, lag_vec, bin_labels, seg_length, p_val, note):
     segs = [b for b in bin_labels if not ccf_table[b].isna().all()]
     if not segs:
         return
-    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(seg_length)
+    sig = scipy_norm_ppf(1 - p_val / 2) / np.sqrt(window_length)
     lo = min(-0.5, float(np.nanmin(ccf_table[segs].to_numpy())) * 1.1, -sig * 1.1)
     hi = max(1.0, float(np.nanmax(ccf_table[segs].to_numpy())) * 1.1, sig * 1.1)
 

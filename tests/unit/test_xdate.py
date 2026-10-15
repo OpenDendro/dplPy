@@ -6,7 +6,8 @@ import pytest
 
 
 def _read_quiet(path):
-    import io, contextlib
+    import io
+    import contextlib
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         buf = io.StringIO()
@@ -15,7 +16,8 @@ def _read_quiet(path):
 
 
 def _xdate_quiet(rwi, **kw):
-    import io, contextlib
+    import io
+    import contextlib
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         buf = io.StringIO()
@@ -100,12 +102,16 @@ def test_xdate_matches_dplR_flags_ca533():
 
 
 def test_xdate_segment_correlation_values_ca533():
-    # Regression on the spline-detrended pipeline (dplPy detrend + xdate). On the
-    # identical RWI dplR uses, xdate reproduces corr.rwl.seg to ~1e-15; here the
-    # tiny spline-detrend difference is absorbed by a loose tolerance.
+    # Regression on the spline-detrended pipeline (dplPy detrend + xdate). With
+    # dplR's prewhitening settings (ar_max=None -> floor(10*log10(n)) ceiling,
+    # global AIC minimum) xdate reproduces corr.rwl.seg on the identical RWI to
+    # ~1e-15; here the tiny spline-detrend difference is absorbed by a loose
+    # tolerance. The package default (ar_max=10, first local AIC minimum -- D1)
+    # is a different, documented prewhitening and gives slightly different values.
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
-    res = _xdate_quiet(rwi, corr="spearman", slide_period=50, bin_floor=100)
+    res = _xdate_quiet(rwi, corr="spearman", window_length=50, bin_floor=100,
+                       ar_max=None, first_aic_min=False)
     sc = res["seg_corr"]
     assert sc.loc["CAM011", "1750-1799"] == pytest.approx(0.6058, abs=1e-2)
     assert sc.loc["CAM191", "1850-1899"] == pytest.approx(0.7460, abs=1e-2)
@@ -114,12 +120,18 @@ def test_xdate_segment_correlation_values_ca533():
     vals = sc.to_numpy()
     vals = vals[~np.isnan(vals)]
     assert (vals >= -1).all() and (vals <= 1).all()
+    # the package default differs only modestly from dplR's settings
+    dflt = _xdate_quiet(rwi, corr="spearman", window_length=50, bin_floor=100)
+    assert dflt["overall"].loc["CAM011", "rho"] == pytest.approx(0.5225, abs=0.05)
+    assert dflt["seg_corr"].loc["CAM191", "1850-1899"] == pytest.approx(0.7460, abs=0.05)
 
 
-def test_xdate_ar_yw_prewhiten_matches_r():
-    # The Yule-Walker prewhitener reproduces R's ar(): AIC order selection,
-    # residuals + mean, series length kept (first `order` become NaN).
-    from dplpy.xdate import _ar_yw_prewhiten
+def test_xdate_prewhitening_is_package_standard():
+    # D1: normalize_for_crossdating routes through autoreg._prewhiten -- Yule-
+    # Walker, ar_max=10, first local AIC minimum, dplR-style NaN for the first
+    # `order` years, residuals re-centred on the series mean, positions kept.
+    from dplpy.xdate import normalize_for_crossdating
+    from dplpy.autoreg import _prewhiten
     rng = np.random.RandomState(0)
     n = 200
     e = rng.randn(n)
@@ -127,11 +139,21 @@ def test_xdate_ar_yw_prewhiten_matches_r():
     for t in range(2, n):
         x[t] = 0.6 * x[t - 1] - 0.3 * x[t - 2] + e[t]
     x = x - x.min() + 1.0
-    pw = _ar_yw_prewhiten(x)
+    df = pd.DataFrame({"S": x}, index=pd.Index(np.arange(1800, 1800 + n), name="Year"))
+    pw = normalize_for_crossdating(df)["S"].to_numpy()
     assert len(pw) == n                                # length preserved
-    assert np.isnan(pw[:2]).any()                      # start NA-padded by order
-    # prewhitened mean ~ original mean (residuals are re-centered on the mean)
-    assert np.nanmean(pw) == pytest.approx(np.mean(x), abs=0.05)
+    assert np.isnan(pw[0])                             # start NA-padded by order
+    assert np.nanmean(pw) == pytest.approx(1.0, abs=0.05)   # mean-normalized then re-centred
+    ref = _prewhiten(x / x.mean(), estimator="yw", ar_max=10, first_aic_min=True,
+                     backcast=False)
+    assert np.allclose(pw, ref, equal_nan=True)
+    # ar_max=None is dplR's floor(10*log10(n)) ceiling with the global minimum
+    pw_r = normalize_for_crossdating(df, ar_max=None, first_aic_min=False)["S"].to_numpy()
+    ref_r = _prewhiten(x / x.mean(), estimator="yw", ar_max=int(np.floor(10 * np.log10(n))),
+                       first_aic_min=False, backcast=False)
+    assert np.allclose(pw_r, ref_r, equal_nan=True)
+    # the returned frame is tagged as indices (G10)
+    assert normalize_for_crossdating(df).attrs.get("kind") == "rwi"
 
 
 def test_xdate_no_prewhiten_runs():
@@ -150,7 +172,8 @@ def test_xdate_plot_matches_dplR_semantics_ca533():
     import matplotlib.colors as mcolors
     from matplotlib.patches import Rectangle
     from dplpy.xdate import xdate_plot, _CRS_FLAG
-    import io, contextlib
+    import io
+    import contextlib
 
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
@@ -326,3 +349,153 @@ def test_xdate_bins_floor_from_data_first_year_not_prewhitened():
     assert res["seg_corr"]["1750-1799"].notna().sum() > 0     # early region evaluated
     # total evaluated segments recovers to dplR's ~134 (the 1800-floor bug gave 113)
     assert int(res["seg_corr"].notna().sum().sum()) > 120
+
+
+# --- v0.9.0 audit follow-ups ---------------------------------------------------
+
+def _missing_ring_frame(n_series=8, n=200, seed=0, drop_at=100, victim="S0"):
+    """A synthetic collection with a strong common signal where one series has a
+    ring removed at position ``drop_at`` (so its rings before the gap are dated
+    one year too late when the series is realigned to its last year). The
+    COFECHA convention says: best lag -1 = a missing ring."""
+    rng = np.random.default_rng(seed)
+    years = np.arange(1800, 1800 + n)
+    common = rng.normal(0, 1, n)
+    cols = {}
+    for k in range(n_series):
+        cols["S%d" % k] = np.clip(1.0 + 0.5 * common + rng.normal(0, 0.2, n), 0.05, None)
+    raw = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
+    v = raw[victim].to_numpy().copy()
+    damaged = np.concatenate([[np.nan], np.delete(v, drop_at)])   # keep the last year dated
+    raw[victim] = damaged
+    return raw
+
+
+def test_lag_sign_negative_means_missing_ring_xdate():
+    # A9/E10: a MISSING ring in a series makes its early segments correlate best
+    # with the master shifted one year EARLIER -> best lag -1 (COFECHA sign).
+    raw = _missing_ring_frame()
+    res = _xdate_quiet(raw, prewhiten=False, bin_floor=0, show_flags=False)
+    b = res["flags"]["S0"]["B"]
+    assert b, "the damaged series must carry B flags"
+    assert all(e["best_lag"] == -1 for e in b)
+    # the lag table is numeric (D9) and its peak sits at lag -1
+    for e in b:
+        lags = np.asarray(e["lags"], dtype=float)
+        assert lags.shape == (21,)                      # -10..+10
+        assert int(np.nanargmax(lags)) - 10 == -1
+        assert e["best_corr"] == pytest.approx(float(np.nanmax(lags)))
+    # the undamaged segments (after the gap) are not flagged
+    late = [e for e in b if int(e["segment"].split("-")[0]) >= 1900]
+    assert not late
+
+
+def test_xdate_unsorted_index_gives_sorted_results():
+    # A4: an unsorted (shuffled) year index is sorted first, with a warning, and
+    # the result is identical to the sorted frame's.
+    data = _read_quiet("tests/data/rwl/ca533.rwl")
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    shuffled = rwi.sample(frac=1.0, random_state=3)
+    ref = _xdate_quiet(rwi, show_flags=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        import io
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            got = dpl.xdate(shuffled, show_flags=False)
+    assert any("not sorted" in str(x.message) for x in w)
+    pd.testing.assert_frame_equal(ref["seg_corr"], got["seg_corr"])
+    pd.testing.assert_frame_equal(ref["overall"], got["overall"])
+    assert ref["n_problems"] == got["n_problems"]
+
+
+def test_xdate_ar_max_is_honoured():
+    # A10: ar_max changes the prewhitening on the default path (it used to be
+    # silently ignored). A ceiling of 1 leaves far more leading years than 10.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    r1 = _xdate_quiet(rwi, ar_max=1, show_flags=False)
+    r10 = _xdate_quiet(rwi, ar_max=10, show_flags=False)
+    assert r1["rwi"].notna().sum().sum() > r10["rwi"].notna().sum().sum()
+    assert not r1["overall"]["rho"].equals(r10["overall"]["rho"])
+
+
+def test_xdate_aliases_and_case_insensitive_options():
+    # D3/D11: slide_period= and stabilize_period= are deprecated aliases; preset
+    # and corr are case-insensitive; stray keywords still raise.
+    data = _read_quiet("tests/data/csv/ca533.csv").iloc[:, :8]
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    import io
+    import contextlib
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        with contextlib.redirect_stdout(io.StringIO()):
+            old = dpl.xdate(rwi, slide_period=40, show_flags=False)
+    assert any(isinstance(x.message, DeprecationWarning) for x in w)
+    new = _xdate_quiet(rwi, window_length=40, show_flags=False)
+    pd.testing.assert_frame_equal(old["seg_corr"], new["seg_corr"])
+    upper = _xdate_quiet(rwi, corr="SPEARMAN", window_length=40, show_flags=False)
+    pd.testing.assert_frame_equal(upper["seg_corr"], new["seg_corr"])
+    with pytest.raises(TypeError):
+        _xdate_quiet(rwi, bogus=1)
+    with pytest.raises(ValueError):
+        _xdate_quiet(rwi, preset="arstan")
+    cof = _xdate_quiet(data, preset="cofecha", show_flags=False)
+    assert cof["preset"] == "COFECHA"
+
+
+def test_xdate_returns_rwi_kind_and_summary_keys():
+    # G9/G10: the returned rwi is tagged kind="rwi" and the summary dict carries
+    # the documented keys.
+    data = _read_quiet("tests/data/csv/ca533.csv").iloc[:, :8]
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    res = _xdate_quiet(rwi, show_flags=False)
+    assert res["rwi"].attrs.get("kind") == "rwi"
+    for k in ("n_series", "first_year", "last_year", "span", "total_rings",
+              "dated_rings_checked", "intercorrelation", "mean_sensitivity",
+              "n_problems", "mean_series_length"):
+        assert k in res["summary"]
+
+
+def test_get_bins_warns_when_nothing_fits():
+    # B12: an impossible window (or bin_floor) warns instead of silently
+    # reporting "0 problems".
+    from dplpy.xdate import get_bins
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        bins, _ = get_bins(1700, 1990, 100, 300)
+    assert bins == []
+    assert any("no complete 300-year segment" in str(x.message) for x in w)
+    data = _read_quiet("tests/data/csv/ca533.csv").iloc[:, :6]
+    rwi = dpl.detrend(data, fit="Spline", plot=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        import io
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = dpl.xdate(rwi, window_length=2000, show_flags=False)
+    assert res["n_problems"] == 0 and res["bins"] == []
+    assert any("nothing can be tested" in str(x.message) for x in w)
+
+
+def test_cofecha_short_series_tested_as_single_segment():
+    # B13: a series shorter than one window is tested whole against a stiffer
+    # critical value, not silently dropped.
+    from dplpy.xdate import _cofecha_crit
+    rng = np.random.default_rng(1)
+    years = np.arange(1800, 1960)
+    common = rng.normal(0, 1, len(years))
+    cols = {"S%d" % k: np.clip(1.0 + 0.5 * common + rng.normal(0, 0.2, len(years)), 0.05, None)
+            for k in range(6)}
+    raw = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
+    short = pd.Series(np.nan, index=raw.index)
+    short.loc[1900:1930] = raw["S0"].loc[1900:1930].to_numpy() * 1.1   # 31 rings
+    raw["SHORT"] = short
+    res = _xdate_quiet(raw, preset="COFECHA", show_flags=False)
+    segs = res["segments"]["SHORT"]
+    assert len(segs) == 1
+    assert (segs[0]["lo"], segs[0]["hi"]) == (1900, 1930)
+    assert segs[0]["n"] == 31
+    assert segs[0]["crit"] == pytest.approx(_cofecha_crit(31))
+    assert segs[0]["crit"] > _cofecha_crit(50)              # stiffer than a full window
+    assert np.isfinite(segs[0]["r0"])

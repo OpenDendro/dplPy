@@ -39,30 +39,47 @@ import pandas as pd
 
 from .readers import readers
 from .detrend import detrend
-from .xdate import xdate, _cofecha_crit
+from .xdate import xdate, _cofecha_crit, _bin_bounds, _prewhiten_for_xdate
 from .sensitivity import sens1
-from .autoreg import autoreg
+from .stats import get_ar1
+from ._validate import _warn, _alias_kwarg, _reject_kwargs, _normalize_choice
+
+# Reader diagnostics the report re-reports in its own columns (salvage, joins,
+# renames, encoding). Only these are silenced while reading (audit G3).
+_READER_NOISE = (r".*(?:Salvaged|duplicate ID|case-variant|letter case|latin1|stop marker"
+                 r"|interior gap|beyond the last data column|not recognized; inferred"
+                 r"|could not be parsed|misaligned row|non-integer value|gap sentinel"
+                 r"|anomalous negative|missing line break|fixed-width parse"
+                 r"|formatting problems|identical duplicate)")
 
 
 def _lag1(x):
-    """Lag-1 autocorrelation of a 1-D array (NaNs dropped)."""
+    """Lag-1 autocorrelation of a 1-D array (NaNs dropped): `stats.get_ar1()`,
+    the one lag-1 autocorrelation in dplPy (R's ``acf(x, lag.max=1)``, as
+    dplR's rwl.report and COFECHA's PART 7 report it)."""
     a = np.asarray(x, dtype=float)
     a = a[~np.isnan(a)]
     if a.size < 3 or np.std(a) == 0:
         return np.nan
-    return float(np.corrcoef(a[:-1], a[1:])[0, 1])
+    return float(get_ar1(pd.Series(a)))
 
 
-def _ar_order(series, method="yw", first_aic_min=False, max_lag=10):
-    """Order of the AR model selected for a series (number of lag terms). Defaults
-    mirror xdate's dplR-faithful prewhitening (Yule-Walker); the COFECHA preset
-    passes method="burg", first_aic_min=True to match its Burg prewhitening."""
+def _ar_order(series, estimator="yw", first_aic_min=True, ar_max=10):
+    """Order of the AR model selected for a series (number of lag terms), from
+    the package-standard `autoreg._prewhiten()` (via `xdate._prewhiten_for_xdate()`)
+    with the same settings xdate used -- Yule-Walker / first-local-AIC-minimum /
+    ceiling 10 by default, Burg for the COFECHA preset. A failed fit is reported (warning) and shown as NaN,
+    never silently as order 0 (audit G4)."""
     try:
-        params = autoreg(series.dropna(), max_lag=max_lag, method=method,
-                         first_aic_min=first_aic_min)
+        _, params = _prewhiten_for_xdate(series.dropna().to_numpy(dtype=float),
+                                         estimator=estimator, ar_max=ar_max,
+                                         first_aic_min=first_aic_min, return_params=True)
         return max(0, len(params) - 1)          # minus the constant
-    except Exception:
-        return 0
+    except (ValueError, TypeError, np.linalg.LinAlgError, FloatingPointError) as e:
+        _warn("xdate_report: AR order could not be determined for series %r (%s); "
+              "shown as blank in PART 7." % (getattr(series, "name", "?"), e),
+              stacklevel=5)
+        return np.nan
 
 
 def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags,
@@ -90,18 +107,18 @@ def _series_row(name, seq, raw, rwi_col, seg_corr_row, overall_rho, flags,
     }
 
 
-def _process_one(source, fit, corr, slide_period, bin_floor, p_val,
-                 preset=None, spline_period=None, name=None):
+def _process_one(source, fit, corr, window_length, bin_floor, p_val,
+                 preset=None, spline_period=32, name=None):
     """Read + detrend + cross-date one collection; return an assembled report dict.
     ``source`` is a .rwl path (read here) or an already-loaded ring-width
     DataFrame (used directly); ``name`` labels the report for a DataFrame source."""
-    is_cofecha = preset is not None and str(preset).strip().lower() == "cofecha"
+    is_cofecha = preset == "COFECHA"
     if isinstance(source, pd.DataFrame):
         rw = source
         path = name or "dataframe"
     else:
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+            warnings.filterwarnings("ignore", message=_READER_NOISE, category=UserWarning)
             # join=False keeps same-ID disjoint blocks as SEPARATE series, matching
             # COFECHA's per-segment convention (so CM82S / CM86N count as two each).
             rw = readers(source, strict=False, join=False)
@@ -110,18 +127,22 @@ def _process_one(source, fit, corr, slide_period, bin_floor, p_val,
         raise ValueError("no usable series")
     meta = rw.attrs.get("dplpy_metadata", {}) or {}
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+        # the report tabulates these itself (non-positive fits -> mean fallback is
+        # the detrend "dirty dog"; gaps appear as untested segments)
+        warnings.filterwarnings("ignore", message=".*Fits from fit=", category=UserWarning)
+        warnings.filterwarnings("ignore", message=".*Mean of empty slice",
+                                category=RuntimeWarning)
         if is_cofecha:
             # COFECHA emulation: xdate's COFECHA preset takes the RAW frame and
             # detrends it itself (a 32-yr spline), with absent rings (zeros in the
             # raw frame) omitted. Do NOT pre-detrend here -- that would detrend twice.
-            res = xdate(rw, preset="COFECHA", absent=rw, slide_period=slide_period,
-                        stabilize_period=(spline_period or 32),
-                        show_flags=False, make_plot=False)
+            res = xdate(rw, preset="COFECHA", absent=rw, window_length=window_length,
+                        spline_period=(spline_period or 32),
+                        show_flags=False, plot=False)
         else:
             rwi = detrend(rw, fit=fit, plot=False)
-            res = xdate(rwi, corr=corr, slide_period=slide_period, bin_floor=bin_floor,
-                        p_val=p_val, show_flags=False, make_plot=False)
+            res = xdate(rwi, corr=corr, window_length=window_length, bin_floor=bin_floor,
+                        p_val=p_val, show_flags=False, plot=False)
 
     seg_corr, overall, flags = res["seg_corr"], res["overall"], res["flags"]
     bins = res["bins"]
@@ -131,8 +152,8 @@ def _process_one(source, fit, corr, slide_period, bin_floor, p_val,
     pw = res.get("rwi")
     # AR order reported in PART 7 mirrors the prewhitening actually used: Burg /
     # first-local-AIC-min for the COFECHA preset, Yule-Walker for the default.
-    ar_kw = ({"method": "burg", "first_aic_min": True, "max_lag": 10}
-             if is_cofecha else {"method": "yw", "max_lag": 10})
+    ar_kw = ({"estimator": "burg", "first_aic_min": True, "ar_max": 10}
+             if is_cofecha else {"estimator": "yw", "first_aic_min": True, "ar_max": 10})
     rows = []
     for seq, name in enumerate(seg_corr.index, start=1):
         fseries = pw[name] if (pw is not None and name in pw.columns) else pd.Series(dtype=float)
@@ -145,7 +166,7 @@ def _process_one(source, fit, corr, slide_period, bin_floor, p_val,
         "seg_corr": seg_corr, "flags": flags,
         "avg_seg_corr": res.get("avg_seg_corr"),
         "first_year": int(rw.index.min()), "last_year": int(rw.index.max()),
-        "n_series": rw.shape[1], "slide_period": slide_period,
+        "n_series": rw.shape[1], "window_length": window_length,
         "preset": "COFECHA" if is_cofecha else None,
     }
 
@@ -209,7 +230,7 @@ def _format_header(rep):
     s = _summary_stats(rep["rows"], weighted=weighted)
     L = []
 
-    def fld(label, val):
+    def _field(label, val):
         L.append("      %-23s: %s" % (label, val))
 
     engine = "dplPy"
@@ -227,35 +248,35 @@ def _format_header(rep):
     L.append("")
     L.append("")
 
-    fld("Measurement file name", os.path.basename(rep["path"]))
+    _field("Measurement file name", os.path.basename(rep["path"]))
     # Optional ITRDB header fields -- shown only when the .rwl carries them.
     if m.get("site_name"):
-        fld("Site name", m["site_name"])
+        _field("Site name", m["site_name"])
     if m.get("country_region"):
-        fld("Site location", m["country_region"])
+        _field("Site location", m["country_region"])
     sp = (str(m.get("species_code", "") or "").strip() + " "
           + str(m.get("species_name", "") or "").strip()).strip()
     if sp:
-        fld("Species information", sp)
+        _field("Species information", sp)
     if m.get("investigators"):
-        fld("Principal investigators", m["investigators"])
+        _field("Principal investigators", m["investigators"])
     if m.get("latitude") is not None:
-        fld("Latitude", "%.4f" % m["latitude"])
-        fld("Longitude", "%.4f" % m["longitude"])
+        _field("Latitude", "%.4f" % m["latitude"])
+        _field("Longitude", "%.4f" % m["longitude"])
     if m.get("elevation_m") is not None:
-        fld("Elevation", str(m["elevation_m"]) + "M")
-    fld("Beginning year", rep["first_year"])
-    fld("Ending year", rep["last_year"])
+        _field("Elevation", str(m["elevation_m"]) + "M")
+    _field("Beginning year", rep["first_year"])
+    _field("Ending year", rep["last_year"])
     L.append("")
-    fld("Series intercorrelation", _z(s["intercorr"], 3))
-    fld("Avg mean sensitivity", _z(s["sens"], 3))
-    fld("Avg standard deviation", _z(s["std"], 3))
-    fld("Avg autocorrelation", _z(s["ac"], 3))
-    fld("Number dated series", rep["n_series"])
-    fld("Segment length tested", rep["slide_period"])
+    _field("Series intercorrelation", _z(s["intercorr"], 3))
+    _field("Avg mean sensitivity", _z(s["sens"], 3))
+    _field("Avg standard deviation", _z(s["std"], 3))
+    _field("Avg autocorrelation", _z(s["ac"], 3))
+    _field("Number dated series", rep["n_series"])
+    _field("Segment length tested", _window_of(rep))
     L.append("")
-    fld("Number problem segments", s["n_flag"])
-    fld("Pct problem segments", "%.2f" % s["pct_flag"])
+    _field("Number problem segments", s["n_flag"])
+    _field("Pct problem segments", "%.2f" % s["pct_flag"])
     L.append("")
     return "\n".join(L)
 
@@ -263,17 +284,25 @@ def _format_header(rep):
 _P5_PREFIX = 25          # columns start here; keeps the 131-col rule comfortable
 
 
+def _window_of(rep):
+    """Segment length of an assembled report dict (``window_length``; the older
+    ``slide_period`` key is still read)."""
+    return rep["window_length"] if "window_length" in rep else rep["slide_period"]
+
+
 def _format_part5(rep, per_block=20):
     seg_corr, flags, bins = rep["seg_corr"], rep["flags"], rep["bins"]
-    starts = [int(b.split("-")[0]) for b in bins]
-    ends = [int(b.split("-")[1]) for b in bins]
-    sp = rep["slide_period"]
+    # _bin_bounds parses negative (BC) years, which a split on "-" cannot (audit B3)
+    bounds = [_bin_bounds(b) for b in bins]
+    starts = [lo for lo, _ in bounds]
+    ends = [hi for _, hi in bounds]
+    sp = _window_of(rep)
     avg = rep.get("avg_seg_corr")
 
     if rep.get("preset"):
         # COFECHA's critical r depends on the segment (window) length -- it is the
         # 99% one-tailed t value on (n-2) df converted to r. For the standard
-        # 50-year window this is .3281; a different slide_period gives a different
+        # 50-year window this is .3281; a different window_length gives a different
         # threshold, so derive it from sp rather than hardcoding.
         crit = _cofecha_crit(sp)
         crit_str = ("%.4f" % crit).lstrip("0")
@@ -400,9 +429,9 @@ def _format_report(rep):
 
 
 def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
-                 slide_period=50, bin_floor=100, p_val=0.05,
-                 output="both", verbose=True, preset=None, spline_period=None,
-                 name=None):
+                 window_length=50, bin_floor=100, p_val=0.05,
+                 output="both", verbose=True, preset=None, spline_period=32,
+                 name=None, **kwargs):
     """Generate a COFECHA-style crossdating QA report for one or more .rwl files.
 
     For each file: read (salvage mode), detrend, cross-date with ``dpl.xdate``,
@@ -425,9 +454,10 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     fit : str, default "Spline"
         detrending curve passed to ``dpl.detrend`` (ignored when
         ``preset="COFECHA"``, which always uses a spline).
-    corr, slide_period, bin_floor, p_val
+    corr, window_length, bin_floor, p_val
         passed through to ``dpl.xdate`` (``corr``, ``bin_floor`` and ``p_val`` are
-        ignored when ``preset="COFECHA"``; ``slide_period`` still applies).
+        ignored when ``preset="COFECHA"``; ``window_length`` still applies).
+        ``slide_period=`` is a deprecated alias of ``window_length``.
     output : {"both", "screen", "file"}, default "both"
         where the full report goes: ``"screen"`` prints it, ``"file"`` writes a
         ``<name>.txt`` in ``out_dir``, ``"both"`` does both. The report text is
@@ -435,10 +465,11 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     verbose : bool, default True
         print a one-line per-file progress note and a final tally.
     preset : str or None, default None
-        set to ``"COFECHA"`` to emulate the COFECHA program (see above).
-    spline_period : int or None, default None
-        spline stiffness (years) for the ``preset="COFECHA"`` detrend; defaults
-        to COFECHA's 32.
+        set to ``"COFECHA"`` (case-insensitive) to emulate the COFECHA program (see
+        above).
+    spline_period : int, default 32
+        spline stiffness (years) for the ``preset="COFECHA"`` detrend and variance
+        stabilization (COFECHA's 32).
     name : str or None, default None
         Report label for a DataFrame input -- the report title, ``.txt`` filename,
         and key in the returned dict. Ignored for file paths. Defaults to "report".
@@ -448,10 +479,16 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     dict
         ``{path: {"text": str, "report": dict}}`` for files read successfully, or
         ``{path: {"error": str}}`` for files that failed.
+
+    References
+    ----------
+    .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate_report
     """
-    output = str(output).strip().lower()
-    if output not in ("screen", "file", "both"):
-        raise ValueError("output must be 'screen', 'file', or 'both', got %r." % output)
+    window_length = _alias_kwarg(kwargs, "slide_period", "window_length",
+                                 window_length, "xdate_report")
+    _reject_kwargs(kwargs)
+    output = _normalize_choice(output, ("both", "screen", "file"), "output")
+    preset = _normalize_choice(preset, ("COFECHA",), "preset", none_ok=True)
     to_screen = output in ("screen", "both")
     to_file = output in ("file", "both")
 
@@ -479,7 +516,7 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
             base = os.path.splitext(os.path.basename(item))[0]
             key = item
         try:
-            rep = _process_one(item, fit, corr, slide_period, bin_floor, p_val,
+            rep = _process_one(item, fit, corr, int(window_length), bin_floor, p_val,
                                preset=preset, spline_period=spline_period, name=base)
             text = _format_report(rep)
             if to_file:

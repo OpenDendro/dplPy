@@ -24,19 +24,21 @@ __license__ = "GNU GPLv3"
 # Title: chron_ars.py
 # Project: OpenDendro dplPy
 # Description: ARSTAN-style chronologies (Cook 1985): the standard (std),
-#              residual (res), and re-reddened ARSTAN (ars) chronologies. This
-#              is a port of dplR's chron.ars(), which Andy Bunn and Kevin
+#              residual (res), and re-reddened ARSTAN (ars) chronologies. A
+#              port of dplR's chron.ars(), which Andy Bunn and Kevin
 #              Anchukaitis themselves ported from Ed Cook's original FORTRAN and
 #              validated against it. The dplR authors flagged the pooled-AR loop
 #              as a performance "time killer" needing vectorization; this port
 #              vectorizes it with numpy while reproducing dplR's output.
 #
 #              NOTES: the pooled ACF, AR-coefficient matrix, AIC, and selected
-#              order follow dplR's algorithm; the std/res/ars chronologies match
-#              dplR for the ar.yw method (both biweight=FALSE and, after the tbrm
-#              epsilon fix, biweight=TRUE). The arima.CSS-ML method differs from
-#              R's arima optimizer (statsmodels' state-space MLE vs R's), mainly
-#              in low-replication years.
+#              order follow dplR's algorithm; the std/res chronologies match
+#              dplR for the ar.yw method. The ars chronology follows ARSTAN
+#              (and the current dplR development version) by default -- see
+#              ars_method. The arima.CSS-ML method differs from R's arima
+#              optimizer (statsmodels' state-space MLE vs R's), mainly in
+#              low-replication years. All whitening and re-reddening routes
+#              through the canonical helpers in autoreg (audit D1 / A12).
 #
 # example usage from Python Console:
 # >>> import dplpy as dpl
@@ -49,19 +51,21 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
-from scipy.signal import lfilter
+from ._validate import (_require_dataframe, _alias_kwarg, _reject_kwargs,
+                        _normalize_choice, _drop_allnan_columns, _carry_attrs,
+                        _warn)
 
 from .tbrm import tbrm_rows
+from .autoreg import _prewhiten, _redden, _levinson, _first_aic_min
 
-_KNOWN_PREWHITEN_METHODS = ("ar.yw", "arima.CSS-ML")
+_KNOWN_PREWHITEN_METHODS = ("ar.yw", "burg", "arima.CSS-ML")
 _KNOWN_ARS_METHODS = ("arstan", "dplr")
 
 
-def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
+def chron_ars(rwi_data: pd.DataFrame, biweight=True, ar_max=10,
               first_aic_min=True, verbose=True, prewhiten_method="ar.yw",
               ars_method="arstan", backcast=True, stabilize=None,
-              stabilize_kwargs=None):
+              stabilize_kwargs=None, **kwargs):
     """Build ARSTAN standard, residual, and re-reddened chronologies.
 
     Produces the three ARSTAN chronologies of Cook (1985) from a set of detrended
@@ -69,8 +73,9 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
 
     - **std**: the standard chronology, the (robust) mean of the RWI series with no
       autoregressive modeling.
-    - **res**: the residual chronology, each series prewhitened by a pooled AR(p)
-      model, averaged, then prewhitened once more to order p (near-white).
+    - **res**: the residual chronology, each series prewhitened by an AR(p) model
+      of the pooled order, averaged, then prewhitened once more to order p
+      (near-white).
     - **ars**: the ARSTAN chronology, the pooled red-noise persistence reintroduced
       by re-reddening; ``ars_method`` sets how (see Notes).
 
@@ -81,36 +86,42 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     ----------
     rwi_data : pandas dataframe
         detrended ring-width indices (e.g. from ``dpl.detrend``), years as the
-        index and series as columns.
+        index and series as columns. Columns with no measured values are dropped
+        with a warning.
     biweight : boolean, default True
         aggregate series with Tukey's biweight robust mean if True, else the
         arithmetic mean.
-    max_lag : int, default 10
+    ar_max : int, default 10
         maximum AR lag considered when selecting the pooled AR order.
+        (``max_lag=`` is accepted as a deprecated alias.)
     first_aic_min : boolean, default True
-        select the order at the first local AIC minimum (dplR's rule) if True, else
-        the global AIC minimum.
+        select the order at the first local AIC minimum (ARSTAN's and dplR's rule)
+        if True, else the global AIC minimum. With True, a pooled AIC that never
+        turns back up within ``ar_max`` raises ValueError.
     verbose : boolean, default True
         print the pooled ACF, AR coefficients, AIC, and selected order.
     prewhiten_method : str, default "ar.yw"
-        ``"ar.yw"`` (Yule-Walker; numerically exact match to dplR) or
+        estimator for the per-series (and residual-chronology) AR(p) whitening,
+        case-insensitive: ``"ar.yw"`` (Yule-Walker; numerically exact match to
+        dplR), ``"burg"`` (Burg maximum entropy, ARSTAN's estimator) or
         ``"arima.CSS-ML"`` (matches dplR within tolerance).
     ars_method : str, default "arstan"
         how the re-reddened ARSTAN chronology is built (see Notes): ``"arstan"``
-        re-reddens the mean of the prewhitened series; ``"dplr"`` re-reddens each
-        series then averages (reproduces dplR). The two agree only when every
-        series spans the full period.
+        re-reddens the residual chronology, reproducing Ed Cook's ARSTAN and the
+        current dplR development version; ``"dplr"`` re-reddens each prewhitened
+        series then averages, reproducing released dplR <= 1.8.0.
     backcast : boolean, default True
-        backcast the initial values of each Yule-Walker prewhitening step so no
-        leading years are lost (ARSTAN behavior). False sets the first ``p``
-        residuals to NaN, reproducing dplR's ``chron.ars``. Applies to the
-        ``"ar.yw"`` path; ``"arima.CSS-ML"`` already returns full-length residuals.
+        backcast the initial values of each AR whitening and re-reddening step
+        (ARSTAN's ``bckcst``) so no leading years are lost. False sets the first
+        ``p`` residuals of every series to NaN, as dplR's ``chron.ars`` does, and
+        re-reddens from zero initials. Applies to the ``"ar.yw"`` and ``"burg"``
+        paths; ``"arima.CSS-ML"`` already returns full-length residuals.
     stabilize : {None, "rbar", "spline", "both"}, default None
         if set, also variance-stabilize each chronology and return the stabilized
         versions in extra ``*_vsc`` columns (see Notes). Method families are as in
-        :func:`stabilize_chron`.
+        `stabilize_chron()`.
     stabilize_kwargs : dict, optional
-        extra keyword arguments forwarded to :func:`stabilize_chron` when
+        extra keyword arguments forwarded to `stabilize_chron()` when
         ``stabilize`` is set. The chronology, column, source matrix, and sample
         depth are supplied automatically and may not be overridden here.
 
@@ -122,24 +133,36 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
 
     Notes
     -----
-    **ARSTAN chronology (``ars_method``).** Re-reddening and averaging do not
-    commute when sample depth changes through time, so the ``ars`` column can be
-    built two ways: ``"arstan"`` (default) re-reddens the mean of the prewhitened
-    series; ``"dplr"`` re-reddens each series and then averages. The ``std`` and
-    ``res`` columns, the pooled AR order, and the prewhitening are identical either
-    way; only ``ars`` changes. Use ``ars_method="dplr"`` to reproduce dplR exactly.
+    **ARSTAN chronology (``ars_method``).** ARSTAN whitens every series to the
+    pooled order p, averages them, whitens that mean once more (the residual
+    chronology, ``albino1``), and then puts the pooled persistence back into the
+    residual chronology (``commie1``): ``ars = redden(res, phi_pooled)``. That is
+    ``ars_method="arstan"`` (default), and also what the dplR development version
+    computes. Released dplR <= 1.8.0 instead re-reddened each prewhitened series
+    and averaged those; ``ars_method="dplr"`` reproduces it. Re-reddening and
+    averaging do not commute when sample depth changes through time, so the two
+    differ; the ``std`` and ``res`` columns, the pooled AR order, and the
+    prewhitening are identical either way.
 
     **Backcasting (``backcast``).** An AR(p) filter has no data for its first ``p``
     lagged terms. With ``backcast=True`` (default) those pre-sample values are
-    estimated by running the model in reverse, so the residual and ARSTAN
-    chronologies are full length (no leading NaN); the first ``p`` years are
-    model-based, so treat them as slightly less certain. With ``backcast=False``
-    the first ``p`` residuals are NaN, reproducing dplR's ``chron.ars``.
+    estimated by running the model in reverse from the start of each series
+    (ARSTAN's ``bckcst``), so the residual and ARSTAN chronologies are full length
+    (no leading NaN); the first ``p`` years of each series are model-based, so
+    treat them as slightly less certain. With ``backcast=False`` the first ``p``
+    residuals of every series are NaN, as in dplR's ``chron.ars``. Because series
+    start in different years, that changes the chronology ``res`` (and ``ars``)
+    in every year where some series is within its first ``p`` years -- not only
+    the first ``p`` years of the chronology. dplR's ``postAR`` took its
+    re-reddening initials from the end of the record; dplPy follows ARSTAN here
+    too, so ``ars`` differs from dplR in roughly the first 10 years of each
+    series' contribution.
 
     **Variance stabilization (``stabilize``).** ``std_vsc`` uses the rbar of the
-    standard RWI matrix; ``res_vsc`` and the stabilized ARSTAN column use the rbar
-    of the residual matrix. Each column restandardizes to its own full period (see
-    :func:`stabilize_chron`).
+    standard RWI matrix; ``res_vsc`` the rbar of the residual matrix; ``ars_vsc``
+    is the stabilized residual chronology re-reddened (``"arstan"``) or the
+    reddened chronology stabilized with the residual rbar (``"dplr"``). Each
+    column restandardizes to its own full period (see `stabilize_chron()`).
 
     Examples
     --------
@@ -152,68 +175,58 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
     .. [1] https://rdrr.io/cran/dplR/man/chron.ars.html
     .. [2] Cook, E.R. (1985) A time series analysis approach to tree-ring
            standardization. PhD dissertation, University of Arizona.
+    .. [3] https://opendendro.github.io/dplPy/reference/chronology/#chron_ars
     """
     _require_dataframe(rwi_data)
-    if prewhiten_method not in _KNOWN_PREWHITEN_METHODS:
-        raise ValueError("prewhiten_method must be one of " + str(_KNOWN_PREWHITEN_METHODS)
-                         + ", got '" + str(prewhiten_method) + "'.")
-    if ars_method not in _KNOWN_ARS_METHODS:
-        raise ValueError("ars_method must be one of " + str(_KNOWN_ARS_METHODS)
-                         + ", got '" + str(ars_method) + "'.")
+    ar_max = _alias_kwarg(kwargs, "max_lag", "ar_max", ar_max, "chron_ars")
+    _reject_kwargs(kwargs)
+    prewhiten_method = _normalize_choice(prewhiten_method, _KNOWN_PREWHITEN_METHODS,
+                                         "prewhiten_method")
+    ars_method = _normalize_choice(ars_method, _KNOWN_ARS_METHODS, "ars_method")
     from .stabilize import stabilize_chron, _prepare_stabilize_kwargs
-    skw = _prepare_stabilize_kwargs(stabilize, stabilize_kwargs)
+    stabilize, skw = _prepare_stabilize_kwargs(stabilize, stabilize_kwargs)
 
+    rwi_data = _drop_allnan_columns(rwi_data, "rwi_data")
     x = rwi_data.to_numpy(dtype=float)
     n_series = x.shape[1]
-    samp_depth = (~np.isnan(x)).sum(axis=1)
+    samp_depth = rwi_data.notna().sum(axis=1).to_numpy()
 
     # standard chronology
     std_crn = _aggregate(x, biweight)
 
     # pooled AR: ACF, AR coefs, AIC, selected order
-    out_ar = _pooled_ar(x, max_lag, first_aic_min)
+    out_ar = _pooled_ar(x, ar_max, first_aic_min)
     p = out_ar["order"]
-
-    if verbose:
-        _print_summary(out_ar, max_lag)
-
-    prewhiten = _prewhiten_ar_yw if prewhiten_method == "ar.yw" else _prewhiten_arima
-
-    # prewhiten each series individually to the pooled order (backcasting the
-    # initial values when backcast=True, so no leading years are lost -- ARSTAN's
-    # robar/albino do this per series).
-    rwi_clean = np.column_stack(
-        [prewhiten(x[:, s], p, backcast=backcast) for s in range(n_series)])
-
-    # residual chronology: mean of prewhitened series, prewhitened again to p
-    # (again backcasting the mean, as ARSTAN's albino1 does).
-    res_crn = prewhiten(_aggregate(rwi_clean, biweight), p, backcast=backcast)
-
-    # re-reddened (ARSTAN) chronology. postAR is called with the pooled AR
-    # coefficients. Two constructions are offered (see the docstring):
-    #   "arstan" (default): re-redden the already-built residual-style mean of
-    #      the prewhitened series -- ars = postAR(mean(prewhitened series)) --
-    #      i.e. average THEN re-redden. This is what Ed Cook's ARSTAN does
-    #      (commie1 applied to the residual chronology).
-    #   "dplr": re-redden each prewhitened series, THEN average --
-    #      ars = mean(postAR(prewhitened series_i)) -- matching dplR's chron.ars
-    #      and dplPy's original behavior. These do not commute under staggered
-    #      sample depth.
     if p > 0:
-        # out_ar["arcoefs"] holds dplR's negated coefs (ARcoefs); dplR calls
-        # postAR with -phi, i.e. the positive AR coefficients.
+        # out_ar["arcoefs"] holds dplR's negated coefs (ARcoefs); re-reddening
+        # takes the positive AR coefficients.
         phi = -out_ar["arcoefs"][p - 1, :p]
     else:
         phi = np.empty(0)
+
+    if verbose:
+        _print_summary(out_ar, ar_max)
+
+    # prewhiten each series individually to the pooled order (ARSTAN's robar /
+    # albino per series; backcast initials when backcast=True so no leading
+    # years are lost). A series with n <= p cannot be whitened and becomes NaN.
+    rwi_clean = np.column_stack(
+        [_whiten_series(x[:, s], p, prewhiten_method, backcast, rwi_data.columns[s])
+         for s in range(n_series)])
+
+    # residual chronology: mean of prewhitened series, prewhitened again to p
+    # (again backcasting the mean, as ARSTAN's albino1 does).
+    res_crn = _whiten_series(_aggregate(rwi_clean, biweight), p, prewhiten_method,
+                             backcast)
+
+    # re-reddened (ARSTAN) chronology, with the pooled AR coefficients
     if ars_method == "arstan":
-        # average then re-redden: re-redden the mean of the prewhitened series.
-        # NOTE: unlike res_crn, this mean is NOT prewhitened again before
-        # re-reddening -- prewhiten-then-postAR to the same order would undo
-        # each other. ARSTAN re-reddens the residual chronology directly.
-        ars_crn = _post_ar(_aggregate(rwi_clean, biweight), phi)
-    else:  # "dplr": re-redden each series then average
+        # ARSTAN commie1 (and dev dplR): put the persistence back into the
+        # residual chronology itself.
+        ars_crn = _post_ar(res_crn, phi, backcast)
+    else:  # "dplr": released dplR <= 1.8.0 re-reddens each series, then averages
         rwi_ar = np.column_stack(
-            [_post_ar(rwi_clean[:, s], phi) for s in range(n_series)])
+            [_post_ar(rwi_clean[:, s], phi, backcast) for s in range(n_series)])
         ars_crn = _aggregate(rwi_ar, biweight)
 
     out = pd.DataFrame(
@@ -223,43 +236,62 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, max_lag=10,
 
     if skw is not None:
         # residual (prewhitened) RWI matrix, for the residual/ARSTAN rbar
-        # (ARSTAN's per-chronology rbar convention).
+        # (ARSTAN's per-chronology rbar convention). Each matrix's running rbar
+        # is computed once and reused (audit F5).
         resid_matrix = pd.DataFrame(rwi_clean, index=rwi_data.index,
                                     columns=rwi_data.columns)
+        stab_std = _matrix_stabilizer(rwi_data, stabilize, skw, stabilize_chron)
+        stab_res = _matrix_stabilizer(resid_matrix, stabilize, skw, stabilize_chron)
 
-        # std_vsc: standard chronology, standard matrix rbar
-        out["std_vsc"] = stabilize_chron(
-            pd.Series(std_crn, index=rwi_data.index), stabilize,
-            rwi=rwi_data, **skw)["vsc"]
-        # res_vsc: residual chronology, residual matrix rbar
-        out["res_vsc"] = stabilize_chron(
-            pd.Series(res_crn, index=rwi_data.index), stabilize,
-            rwi=resid_matrix, **skw)["vsc"]
-
+        out["std_vsc"] = stab_std(std_crn, rwi_data.index)
+        out["res_vsc"] = stab_res(res_crn, rwi_data.index)
         if ars_method == "arstan":
-            # ARSTAN order: stabilize the residual-style mean of the prewhitened
-            # series (residual rbar), THEN re-redden -- the same average-then-
-            # redden pipeline as the unstabilized ars, matching ARSTAN.
-            resid_mean = _aggregate(rwi_clean, biweight)
-            resid_mean_vsc = stabilize_chron(
-                pd.Series(resid_mean, index=rwi_data.index), stabilize,
-                rwi=resid_matrix, **skw)["vsc"].to_numpy()
-            out["ars_vsc"] = _post_ar(resid_mean_vsc, phi)
+            # ARSTAN order: stabilize the residual chronology, THEN re-redden --
+            # the same pipeline as the unstabilized ars.
+            out["ars_vsc"] = _post_ar(out["res_vsc"].to_numpy(), phi, backcast)
         else:  # "dplr": ars is already reddened -- stabilize it post-hoc
-            out["ars_vsc"] = stabilize_chron(
-                pd.Series(ars_crn, index=rwi_data.index), stabilize,
-                rwi=resid_matrix, **skw)["vsc"]
+            out["ars_vsc"] = stab_res(ars_crn, rwi_data.index)
 
         # keep each stabilized column beside its base chronology
         out = out[["std", "std_vsc", "res", "res_vsc", "ars", "ars_vsc",
                    "samp_depth"]]
 
-    return out
+    return _carry_attrs(rwi_data, out, kind="crn")
+
+
+def _matrix_stabilizer(matrix, stabilize, skw, stabilize_chron):
+    """Return ``f(values, index) -> vsc array`` that stabilizes chronologies with
+    the rbar of ``matrix``, computing that (running) rbar once on the first call
+    and reusing it afterwards."""
+    cache = {}
+
+    def run(values, index):
+        series = pd.Series(np.asarray(values, dtype=float), index=index)
+        if stabilize == "spline":
+            return stabilize_chron(series, stabilize, **skw)["vsc"].to_numpy()
+        if not cache:
+            info = stabilize_chron(series, stabilize, rwi=matrix, return_info=True, **skw)
+            cache["rbar"] = np.asarray(info["rbar"], dtype=float)
+            cache["depth"] = np.asarray(info["samp_depth"], dtype=float)
+            return info["vsc"]["vsc"].to_numpy()
+        kw = dict(skw)
+        mode = _normalize_choice(kw.get("rbar_mode", "running"),
+                                 ("running", "constant"), "rbar_mode")
+        if mode == "running":
+            kw["running_rbar"] = cache["rbar"]
+        else:
+            kw["rbar"] = float(cache["rbar"][0])
+        return stabilize_chron(series, stabilize, samp_depth=cache["depth"],
+                               **kw)["vsc"].to_numpy()
+
+    return run
 
 
 def _aggregate(mat, biweight):
     """Per-year aggregation across series: biweight robust mean or arithmetic
-    mean, ignoring NaN. An all-NaN year yields NaN."""
+    mean, ignoring NaN. An all-NaN year yields NaN. The one row aggregator the
+    chronology functions share (audit E16)."""
+    mat = np.asarray(mat, dtype=float)
     if biweight:
         return tbrm_rows(mat)
     with warnings.catch_warnings():
@@ -272,8 +304,9 @@ def _pooled_ar(x, max_lag, first_aic_min):
 
     Vectorized port of dplR's pooledAR: accumulates a pooled product-sum across
     every ordered series pair and lag, converts to a pooled ACF, then to AR
-    coefficients (Durbin-Levinson), and selects the order by AIC. The per-pair
-    common-overlap compression + position lag follows dplR/FORTRAN.
+    coefficients (Levinson-Durbin, shared with autoreg), and selects the order by
+    AIC. The per-pair common-overlap compression + position lag follows
+    dplR/FORTRAN.
     """
     n_years, n_series = x.shape
 
@@ -300,8 +333,13 @@ def _pooled_ar(x, max_lag, first_aic_min):
 
     r0 = product_sum[0]
     acf = product_sum / r0
-    arcoefs_pos = _acf2ar(acf, max_lag)   # Durbin-Levinson, positive convention
-    arcoefs = -arcoefs_pos                  # dplR stores negated coefs (ARcoefs)
+    # Levinson-Durbin on the pooled ACF: row p-1 holds the AR(p) coefficients
+    # (positive convention); dplR stores the negated coefs (ARcoefs).
+    phis, _v = _levinson(acf)
+    arcoefs_pos = np.zeros((max_lag, max_lag))
+    for k in range(1, max_lag + 1):
+        arcoefs_pos[k - 1, :k] = phis[k]
+    arcoefs = -arcoefs_pos
 
     # prediction error variance per order, then AIC (matches dplR's vp_shortcut)
     vp = np.empty(max_lag + 1)
@@ -310,105 +348,39 @@ def _pooled_ar(x, max_lag, first_aic_min):
     aic = n_years * np.log(vp) + 2.0 * np.arange(1, max_lag + 2)
 
     if first_aic_min:
-        first_min = _get_first_min(aic)
-        if first_min is None:
-            raise ValueError(
-                "The pooled AIC did not reach a minimum within max_lag ("
-                + str(max_lag) + ") lags; the AR order cannot be determined. "
-                "Consider increasing max_lag. Highly persistent or non-stationary "
-                "series can prevent the AIC from reaching a minimum (see Cook 1985)."
-            )
-        order = first_min - 1
+        order = _first_aic_min(list(aic), what="The pooled AIC")
     else:
         order = int(np.argmin(aic))
 
     return {"acf": acf, "arcoefs": arcoefs, "aic": aic, "order": order}
 
 
-def _acf2ar(acf, max_lag):
-    """Durbin-Levinson recursion (equivalent to R's acf2AR): returns a
-    max_lag x max_lag matrix whose row p-1 holds the AR(p) coefficients."""
-    A = np.zeros((max_lag, max_lag))
-    phi = np.zeros(max_lag + 1)
-    phi_prev = np.zeros(max_lag + 1)
-    v = 1.0
-    for k in range(1, max_lag + 1):
-        if k == 1:
-            kappa = acf[1]
-        else:
-            kappa = (acf[k] - np.sum(phi_prev[1:k] * acf[k - 1:0:-1])) / v
-        phi[k] = kappa
-        for j in range(1, k):
-            phi[j] = phi_prev[j] - kappa * phi_prev[k - j]
-        v = v * (1 - kappa * kappa)
-        A[k - 1, :k] = phi[1:k + 1]
-        phi_prev[:k + 1] = phi[:k + 1]
-    return A
+def _whiten_series(series, p, method="ar.yw", backcast=True, name=None):
+    """Prewhiten one (NaN-aware) series with a fixed-order AR(p) model fitted to
+    that series: Yule-Walker (``"ar.yw"``, dplR's ar(aic=FALSE, order.max=p)) or
+    Burg (``"burg"``, ARSTAN) through `autoreg._prewhiten()`, or an
+    ARIMA(p,0,0) CSS-ML fit. Residuals + series mean at the original positions.
 
-
-def _get_first_min(y):
-    """First local minimum of the AIC (mirrors dplR's getFirstMin; 1-based
-    like R, so the caller subtracts 1 for the lag-0 offset). Returns None if
-    the AIC never turns back up (dplR's Inf)."""
-    if y[0] < y[1]:
-        return 1
-    increasing = np.flatnonzero(np.diff(y) > 0)
-    if increasing.size == 0:
-        return None
-    return int(increasing[0]) + 1
-
-
-def _prewhiten_ar_yw(series, p, backcast=False):
-    """Prewhiten one series with a fixed-order Yule-Walker AR(p) model.
-    Matches dplR's ar(..., method="yule-walker") residuals.
-
-    With ``backcast=False`` (dplR behavior) the first p residuals become NaN, as
-    in R's ar() residuals. With ``backcast=True`` (ARSTAN behavior) the p
-    pre-sample values are synthesized by running the AR model in reverse (ARSTAN's
-    ``bckcst``), so residuals are defined for every year. The two agree exactly
-    for years t >= p; they differ only in that backcasting fills the first p
-    years that would otherwise be NaN."""
-    from statsmodels.regression.linear_model import yule_walker
-
+    With ``backcast=False`` (dplR behaviour) the first p residuals are NaN, as
+    in R's ar() residuals. With ``backcast=True`` (ARSTAN) the p pre-sample
+    values are synthesized by running the AR model in reverse (``bckcst``), so
+    residuals are defined for every year; years t >= p are identical either way.
+    A series with p or fewer measured values cannot be fitted and is returned
+    all-NaN with a warning (audit B11)."""
+    series = np.asarray(series, dtype=float)
     if p == 0:
         return series.copy()
-    mask = np.isnan(series)
-    x2 = series[mask == False]  # non-NaN values, in order
-    n = len(x2)
-    m = x2.mean()
-    xd = x2 - m
-    # method="mle" uses the biased autocovariance, matching R's acf default
-    rho, _sigma = yule_walker(xd, order=p, method="mle", demean=False)
-
-    if backcast:
-        # ARSTAN bckcst + albino: prepend p backcast values, each a reverse-AR
-        # prediction from the p values that follow it (x_hat(t) = sum_j rho_j *
-        # x(t+j)), computed back-to-front. Then compute residuals for every
-        # position. ext holds [bc_0..bc_{p-1}, xd_0..xd_{n-1}].
-        ext = np.empty(p + n)
-        ext[p:] = xd
-        for ii in range(p - 1, -1, -1):
-            acc = 0.0
-            for j in range(1, p + 1):
-                acc += rho[j - 1] * ext[ii + j]
-            ext[ii] = acc
-        # resid[t] = ext[p+t] - sum_j rho_j ext[p+t-j], for t = 0..n-1
-        pred = np.zeros(n)
-        for j in range(1, p + 1):
-            pred += rho[j - 1] * ext[p - j:p - j + n]
-        resid = xd - pred
-    else:
-        # residuals: resid[t] = xd[t] - sum_j rho[j] xd[t-j]; first p are NaN.
-        # vectorized over years, looping only over the (small) lag order.
-        pred = np.zeros(n)
-        for j in range(1, p + 1):
-            pred[j:] += rho[j - 1] * xd[:n - j]
-        resid = np.full(n, np.nan)
-        resid[p:] = xd[p:] - pred[p:]
-
-    out = series.copy()
-    out[~mask] = resid + m
-    return out
+    n_obs = int(np.count_nonzero(~np.isnan(series)))
+    if n_obs <= p:
+        if name is not None:
+            _warn("chron_ars: series " + str(name) + " has " + str(n_obs)
+                  + " value(s), not more than the pooled AR order " + str(p)
+                  + "; it is left out of the residual chronology.", stacklevel=4)
+        return np.full(series.shape, np.nan)
+    if method == "arima.CSS-ML":
+        return _prewhiten_arima(series, p, backcast=backcast)
+    estimator = "burg" if method == "burg" else "yw"
+    return _prewhiten(series, estimator=estimator, order=p, backcast=backcast)
 
 
 def _prewhiten_arima(series, p, backcast=False):
@@ -423,7 +395,7 @@ def _prewhiten_arima(series, p, backcast=False):
     from statsmodels.tsa.arima.model import ARIMA
 
     mask = np.isnan(series)
-    x2 = series[mask == False]
+    x2 = series[~mask]
     m = x2.mean()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -433,51 +405,25 @@ def _prewhiten_arima(series, p, backcast=False):
     return out
 
 
-def _post_ar(series, phi):
-    """Re-redden a prewhitened series by reintroducing pooled AR persistence.
-
-    Port of dplR's postAR: the whitened series is reversed, run through the AR
-    filter (scipy.signal.lfilter, zero initial conditions), then a short
-    backcast improves the initial values, and the AR filter is applied once
-    more with those improved initials.
+def _post_ar(series, phi, backcast=True):
+    """Re-redden a prewhitened (NaN-aware) series by reintroducing the pooled AR
+    persistence: ``y[t] = e[t] + sum_j phi[j] y[t-j]`` on the non-NaN values,
+    through `autoreg._redden()` (ARSTAN's ``commie``). With ``backcast=True``
+    the p pre-sample values come from ARSTAN's ``bckcst`` run from the start of
+    the series; with ``backcast=False`` they are zero. (dplR's postAR took them
+    from the END of the reversed record -- audit A12 -- which dplPy no longer
+    reproduces; only roughly the first 10 years of a series differ.)
     """
-    mask = np.isnan(series)
-    x0 = series.copy()
+    series = np.asarray(series, dtype=float)
     phi = np.asarray(phi, dtype=float)
-    n_phi = phi.size
-    if n_phi == 0:
-        return x0
-
-    xv = series[mask == False].astype(float)
-    x_mean = xv.mean()
-    xv = xv - x_mean
-    nx = xv.size
-    x_rev = xv[::-1]
-
-    # steps 2-3: forward AR filter with zero initial conditions.
-    # y[t] = x[t] + sum_j phi[j] y[t-j]  == IIR filter b=[1], a=[1, -phi...]
-    a = np.concatenate([[1.0], -phi])
-    x_rev_init = lfilter([1.0], a, x_rev)
-
-    # step 5: backcast better initial values (short loop over the AR order)
-    for i in range(1, n_phi + 1):
-        cntr = n_phi - i
-        acc = 0.0
-        for j in range(1, n_phi + 1):
-            acc += phi[j - 1] * x_rev_init[cntr + j]
-        x_rev_init[cntr] = acc
-
-    # steps 6-7: reapply the AR filter with the improved initial values.
-    # (kept as an explicit recurrence because the initials are non-zero)
-    x_ar = np.concatenate([x_rev_init[:n_phi], xv])
-    for i in range(x_rev_init.size):
-        acc = 0.0
-        for j in range(1, n_phi + 1):
-            acc += phi[j - 1] * x_ar[i + n_phi - j]
-        x_ar[i + n_phi] += acc
-
-    x0[~mask] = x_ar[n_phi:] + x_mean
-    return x0
+    out = series.copy()
+    if phi.size == 0:
+        return out
+    mask = ~np.isnan(series)
+    if mask.sum() == 0:
+        return out
+    out[mask] = _redden(series[mask], phi, backcast=backcast)
+    return out
 
 
 def _print_summary(out_ar, max_lag):
@@ -485,5 +431,11 @@ def _print_summary(out_ar, max_lag):
     print("Pooled AR Summary")
     print("ACF")
     print(pd.Series(out_ar["acf"], index=labels).to_string())
+    print("AR Coefficients (dplR sign convention, row ar(p) = AR(p) fit)")
+    coefs = pd.DataFrame(out_ar["arcoefs"], index=labels[1:],
+                         columns=["lag" + str(k) for k in range(1, max_lag + 1)])
+    print(coefs.to_string(float_format=lambda v: "%.4f" % v))
+    print("AIC")
+    print(pd.Series(out_ar["aic"], index=labels).to_string())
     print("Selected Order")
     print(out_ar["order"])

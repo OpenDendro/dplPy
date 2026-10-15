@@ -33,7 +33,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe, _plot_kwarg
+from ._validate import _require_dataframe, _plot_kwarg, _normalize_choice, _carry_attrs
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT
 
@@ -46,7 +46,15 @@ def _rm_short(notNA, row_idx, flag):
 
     Returns (n_years, n_series, keep_row_mask over row_idx, keep_col_mask over
     all columns). With flag=True it stops at the first improvement, which keeps
-    the highest sample depth (used for type='series')."""
+    the highest sample depth (used for type='series').
+
+    A row is complete when every kept column is present in it. Rather than
+    re-testing ``sub[rows, kept].all(axis=1)`` after every drop (O(nrow x ncol)
+    per step, audit F4), a running per-row count of present cells over the kept
+    columns is maintained: dropping a column subtracts its presence vector, and a
+    row is complete exactly when ``row_cnt == ncol`` -- identical results, O(nrow)
+    per step.
+    """
     sub = notNA[row_idx, :]
     m, ncol_full = sub.shape
     which_good = np.where(sub.any(axis=0))[0]
@@ -60,6 +68,7 @@ def _rm_short(notNA, row_idx, flag):
     keep_col = np.zeros(ncol_full, dtype=bool)
     keep_col[which_good] = True
     keep_col_out = keep_col.copy()
+    row_cnt = sub[:, which_good].sum(axis=1)       # present cells over kept columns
     dontkeep_row = np.ones(m, dtype=bool)
     keep_row_out = np.zeros(m, dtype=bool)
     nrow = 0
@@ -70,15 +79,14 @@ def _rm_short(notNA, row_idx, flag):
 
     for i in range(0, max(0, ncol_orig - 2) + 1):
         if i > 0:
-            keep_col[span_order[i - 1]] = False
+            dropped = span_order[i - 1]
+            keep_col[dropped] = False
+            row_cnt -= sub[:, dropped]
             ncol -= 1
             if ncol * m < best:              # cannot beat the best area any more
                 break
         cand = np.where(dontkeep_row)[0]
-        if len(cand):
-            tmp = sub[np.ix_(cand, np.where(keep_col)[0])].all(axis=1)
-        else:
-            tmp = np.zeros(0, dtype=bool)
+        tmp = row_cnt[cand] == ncol
         dontkeep_row[cand] = ~tmp
         nrow += int(tmp.sum())
         area = ncol * nrow
@@ -118,7 +126,7 @@ def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
     rwl : pandas.DataFrame
         ring-width series (raw or detrended), years as the index, series as columns.
     type : {"series", "years", "both"}, default "both"
-        the selection strategy described above.
+        the selection strategy described above (case-insensitive).
     plot : bool, default False
         if True, draw a coverage diagram (each series as a grey span, with the
         retained common interval overlaid in black).
@@ -127,8 +135,8 @@ def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
     -------
     pandas.DataFrame
         the trimmed frame containing only the retained series and years (a complete
-        rectangle). The full frame is returned unchanged if no trimming is
-        possible/needed.
+        rectangle), carrying the input's attrs. The full frame is returned unchanged
+        if no trimming is possible/needed.
 
     Examples
     --------
@@ -144,9 +152,9 @@ def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
     """
     _require_dataframe(rwl)
     plot = _plot_kwarg(plot, kwargs)
-    if type not in _TYPES:
-        raise ValueError("type must be 'series', 'years' or 'both', got '" + str(type) + "'.")
+    type = _normalize_choice(type, _TYPES, "type")
 
+    src = rwl
     rwl = rwl.sort_index()
     notNA = ~rwl.isna().to_numpy()
     nrow_rwl, ncol_rwl = notNA.shape
@@ -195,8 +203,8 @@ def common_interval(rwl: pd.DataFrame, type="both", plot=False, **kwargs):
                      ncol_out, nrow_out)
 
     if nrow_out < nrow_rwl or ncol_out < ncol_rwl:
-        return rwl.iloc[keep_row_out, keep_col_out]
-    return rwl
+        rwl = rwl.iloc[keep_row_out, keep_col_out]
+    return _carry_attrs(src, rwl, kind=src.attrs.get("kind"), keep_measurement=True)
 
 
 def apply_common_interval(rwl, spec):
@@ -253,4 +261,5 @@ def _plot_common(rwl, notNA, keep_row_out, keep_col_out, type, ncol_out, nrow_ou
                hide_yticks=True)
     fig.tight_layout()
     finalize_font(fig)
-    plt.show()
+    from .detrend import _finish_figure
+    _finish_figure(fig)

@@ -1,4 +1,5 @@
 import dplpy as dpl
+from dplpy.site_metadata import SiteMetadata
 import pandas as pd
 import pytest
 import io
@@ -11,10 +12,10 @@ open_wrapper = io.TextIOWrapper(
 open_wrapper.mode = "w"
 
 def test_write_invalid_type_data():
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8], 
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8],
                                   "Year": [1, 2, 3, 4]})
-    
+
     with pytest.raises(TypeError) as errorMsg:
         dpl.writers(input_df['SeriesA'], "label", "ext")
     # the exact type repr varies by pandas version (pandas.core.series.Series
@@ -24,10 +25,10 @@ def test_write_invalid_type_data():
 
 
 def test_write_invalid_type_label():
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8], 
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8],
                                   "Year": [1, 2, 3, 4]})
-    
+
     with pytest.raises(TypeError) as errorMsg:
         dpl.writers(input_df, 1, "ext")
     expected_msg = "Expected label to be of type str, not <class 'int'>"
@@ -35,10 +36,10 @@ def test_write_invalid_type_label():
 
 
 def test_write_invalid_type_format():
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8], 
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8],
                                   "Year": [1, 2, 3, 4]})
-    
+
     with pytest.raises(TypeError) as errorMsg:
         dpl.writers(input_df, "label", 1)
     expected_msg = "Expected format to be of type str, not <class 'int'>"
@@ -46,29 +47,29 @@ def test_write_invalid_type_format():
 
 
 def test_write_csv(tmpdir):
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8]}, 
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8]},
                                 index=pd.Index(data=[1, 2, 3, 4], name="Year"))
-    
+
     file = tmpdir.join('output.csv')
 
     dpl.writers(input_df, file.strpath[:-4], "csv")
 
-    expected_csv_lines = ['"Year","SeriesA","SeriesB"\n', 
-                          '1,0.1,0.2\n', 
+    expected_csv_lines = ['"Year","SeriesA","SeriesB"\n',
+                          '1,0.1,0.2\n',
                           '2,0.3,0.4\n',
                           '3,0.5,0.6\n',
                           '4,0.7,0.8\n']
 
     assert expected_csv_lines == file.readlines()
 
-    
+
 
 def test_write_rwl(tmpdir):
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                  "SeriesB": [0.2, 0.4, 0.6, 0.8]}, 
+    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8]},
                                 index=pd.Index(data=[1, 2, 3, 4], name="Year"))
-    
+
     file = tmpdir.join('output.rwl')
 
     dpl.writers(input_df, file.strpath[:-4], "rwl")
@@ -227,7 +228,7 @@ def test_write_txt_list_of_series(tmpdir):
     b = pd.Series([1.0, 1.2], index=[1990, 1991], name="std")
     file = tmpdir.join("t.txt")
     dpl.writers([a, b], file.strpath[:-4], "txt")
-    assert file.readlines() == ["year\traw\tstd\n",           # unnamed index -> "year"
+    assert file.readlines() == ["Year\traw\tstd\n",           # unnamed index -> "Year" (D10)
                                 "1990\t0.1000\t1.0000\n",
                                 "1991\t0.2000\t1.2000\n"]
 
@@ -241,3 +242,212 @@ def test_write_txt_options(tmpdir):
     assert file.readlines() == ["year x\n", "1 0.50\n", "2 -9.99\n"]
     with pytest.raises(TypeError):
         dpl.writers([df], tmpdir.join("b").strpath, "txt")   # list must hold Series
+
+# ===========================================================================
+# v0.9.0 audit follow-ups (A5, A7, A18, B5, B6, C1, C2, C4, C5, D9, D11, F6)
+# ===========================================================================
+import contextlib
+import warnings
+import numpy as np
+
+
+def _rwl4():
+    return pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                              "SeriesB": [0.2, 0.4, 0.6, 0.8]},
+                        index=pd.Index(data=[1, 2, 3, 4], name="Year"))
+
+
+def test_writers_returns_path_and_prints_nothing(tmpdir, capsys):
+    # D9: every writer returns the path written and no longer prints progress.
+    out = dpl.writers(_rwl4(), tmpdir.join("q").strpath, "csv")
+    assert out == tmpdir.join("q").strpath + ".csv"
+    assert capsys.readouterr().out == ""
+    out2 = dpl.writers(_rwl4(), tmpdir.join("q").strpath, "RWL")      # D11: case-insensitive
+    assert out2.endswith("q.rwl")
+    with pytest.raises(ValueError, match="format must be one of"):
+        dpl.writers(_rwl4(), tmpdir.join("q").strpath, "ext")
+
+
+def test_write_rwl_uses_read_precision_by_default(tmp_path):
+    # C2: a file read at 0.01 mm is written back at 0.01 mm (same integers, same
+    # stop marker), so a round trip no longer changes the archive's precision.
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ca = dpl.readers("tests/data/rwl/ca533.rwl")
+    assert set(ca.attrs["dplpy_precision"].values()) == {0.01}
+    out = dpl.writers(ca, str(tmp_path / "ca533"), "rwl")
+    first = open(out).readline()
+    assert first.rstrip().endswith("999") or "   999" in open(out).read()
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = dpl.readers(out)
+    assert set(back.attrs["dplpy_precision"].values()) == {0.01}
+    pd.testing.assert_frame_equal(ca, back)
+    # explicit prec still wins
+    out2 = dpl.writers(ca, str(tmp_path / "ca533b"), "rwl", prec=0.001)
+    assert "-9999" in open(out2).read()
+    # mixed precision with no explicit prec is an error
+    mixed = _rwl4()
+    mixed.attrs["dplpy_precision"] = {"SeriesA": 0.01, "SeriesB": 0.001}
+    with pytest.raises(ValueError, match="mixed"):
+        dpl.writers(mixed, str(tmp_path / "mixed"), "rwl")
+    dpl.writers(mixed, str(tmp_path / "mixed"), "rwl", prec=0.01)      # explicit: fine
+
+
+def test_write_rwl_noncontiguous_index_raises(tmpdir):
+    # B5: a frame with a missing year row (e.g. after dropna) is refused clearly.
+    df = pd.DataFrame({"S1": [0.1, 0.2, 0.3]}, index=pd.Index([1990, 1991, 1993], name="Year"))
+    with pytest.raises(ValueError, match="contiguous"):
+        dpl.writers(df, tmpdir.join("gap").strpath, "rwl")
+
+
+def test_write_rwl_and_csv_duplicate_columns_raise(tmpdir):
+    # B6
+    df = pd.DataFrame([[0.1, 0.2], [0.3, 0.4]], columns=["S1", "S1"],
+                      index=pd.Index([1990, 1991], name="Year"))
+    with pytest.raises(ValueError, match="duplicate"):
+        dpl.writers(df, tmpdir.join("d").strpath, "rwl")
+    with pytest.raises(ValueError, match="duplicate"):
+        dpl.writers(df, tmpdir.join("d").strpath, "csv")
+
+
+def test_write_rwl_truncates_long_ids_uniquely(tmp_path):
+    # C1: IDs longer than 8 characters are truncated with a warning (dplR), kept
+    # unique, and the file reads back.
+    df = pd.DataFrame({"ABCDEFGHIJ": [0.1, 0.2], "ABCDEFGHIK": [0.3, 0.4], "OK": [0.5, 0.6]},
+                      index=pd.Index([1990, 1991], name="Year"))
+    with pytest.warns(UserWarning, match="truncated"):
+        out = dpl.writers(df, str(tmp_path / "long"), "rwl")
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = dpl.readers(out)
+    assert list(back.columns) == ["ABCDEFGH", "ABCDEFG2", "OK"]
+    # BC years leave only 7 characters for the id
+    bc = pd.DataFrame({"ABCDEFGH": [0.1, 0.2]}, index=pd.Index([-10, -9], name="Year"))
+    with pytest.warns(UserWarning, match="7 characters"):
+        out2 = dpl.writers(bc, str(tmp_path / "bc"), "rwl")
+    assert open(out2).readline().startswith("ABCDEFG  -10")
+
+
+def test_write_rwl_warns_on_negative_and_stop_code_values(tmpdir):
+    # C5: negatives are written but cannot survive a Tucson round trip -> warn.
+    df = pd.DataFrame({"S1": [0.1, -0.2, 0.3]}, index=pd.Index([1990, 1991, 1992], name="Year"))
+    with pytest.warns(UserWarning, match="negative"):
+        dpl.writers(df, tmpdir.join("neg").strpath, "rwl")
+    # C4: a real 9.99 mm at prec=0.01 is the stop code -> warn, suggest 0.001.
+    df2 = pd.DataFrame({"S1": [0.1, 9.99, 0.3]}, index=pd.Index([1990, 1991, 1992], name="Year"))
+    with pytest.warns(UserWarning, match="prec=0.001"):
+        dpl.writers(df2, tmpdir.join("stop").strpath, "rwl", prec=0.01)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dpl.writers(df2, tmpdir.join("fine").strpath, "rwl", prec=0.001)   # no warning
+
+
+def test_write_rwl_decade_boundary_and_long_series_roundtrip(tmp_path):
+    # F6 (array path) must reproduce the original layout exactly, including a
+    # series whose last year ends a decade (stop marker on the next decade line).
+    years = pd.Index(range(1875, 2000), name="Year")
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"S%02d" % k: rng.uniform(0.05, 3.0, len(years)).round(3)
+                       for k in range(5)}, index=years)
+    df.iloc[10:13, 2] = np.nan                       # an interior gap
+    df.iloc[:7, 3] = np.nan                          # a late start
+    out = dpl.writers(df, str(tmp_path / "rt"), "rwl")
+    lines = open(out).read().splitlines()
+    assert lines[0].startswith("S00     1875")
+    assert any(ln.startswith("S00     2000 -9999") for ln in lines)   # stop on the next line
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = dpl.readers(out)
+    pd.testing.assert_frame_equal(back, df, check_names=False)
+
+
+def _bc_crn():
+    return pd.DataFrame({"std": [1.0, 0.85, 1.2, 0.9, 1.05, 1.1, 0.95, 1.0, 1.02, 0.98,
+                                 1.11, 0.99, 1.0, 1.3, 0.7],
+                         "samp_depth": [2, 2, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7]},
+                        index=pd.Index(range(-1265, -1250), name="Year"))
+
+
+def test_write_crn_bc_years_roundtrip(tmp_path):
+    # A5/A6: a BC chronology is written in dplR's layout (5-char id, sign in col
+    # 6) and reads back with the right years and values.
+    crn = _bc_crn()
+    hdr = _hdr()
+    with pytest.warns(UserWarning, match="truncated"):              # 'TST01' fits; 'TST01X' would not
+        hdr["site_id"] = "TST01X"
+        out = dpl.writers(crn, str(tmp_path / "bc"), "crn", header=hdr)
+    lines = open(out).read().splitlines()
+    assert lines[3].startswith("TST01-1265")
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = dpl.read_crn(out)
+    assert list(back.index) == list(range(-1265, -1251 + 1))
+    np.testing.assert_allclose(back["std"].to_numpy(), crn["std"].round(3).to_numpy())
+    np.testing.assert_array_equal(back["samp_depth"].to_numpy(), crn["samp_depth"].to_numpy())
+    # a year below -9999 cannot be written
+    deep = crn.copy()
+    deep.index = pd.Index(range(-10005, -9990), name="Year")
+    with pytest.raises(ValueError, match="5 characters"):
+        dpl.writers(deep, str(tmp_path / "deep"), "crn", header=_hdr())
+
+
+def test_write_crn_field_width_validation(tmpdir):
+    # A7: an index >= 10 or a depth outside 0-999 raises naming the year; a NaN
+    # depth is written as 0.
+    crn = _crn()
+    crn.loc[2000, "samp_depth"] = 1200
+    with pytest.raises(ValueError, match="2000"):
+        dpl.writers(crn, tmpdir.join("d").strpath, "crn", header=_hdr())
+    crn = _crn()
+    crn.loc[2001, "std"] = 12.5
+    with pytest.raises(ValueError, match="2001"):
+        dpl.writers(crn, tmpdir.join("d").strpath, "crn", header=_hdr())
+    crn = _crn().astype(float)
+    crn.loc[2002, "samp_depth"] = np.nan
+    f = tmpdir.join("nan")
+    dpl.writers(crn, f.strpath, "crn", header=_hdr())
+    data = f.new(ext="crn").read().splitlines()[4]    # the 2000s decade row
+    assert data.startswith("TST01 2000") and "1050  0" in data   # std 1.05 at 2002, depth 0
+
+
+def test_write_crn_packs_decimal_coordinates(tmpdir):
+    # A18: SiteMetadata carries decimal degrees / metres; the writer packs them
+    # into the ITRDB fields (DDMM / DDDMM, '%dM') instead of writing '37.5167'.
+    sm = SiteMetadata(site_id="CA533", site_name="Campito", species_code="PILO",
+                      country_region="California", species_name="Pinus longaeva",
+                      elevation_m=3470, latitude=37.5167, longitude=-118.2,
+                      investigators="Lamarche")
+    f = tmpdir.join("sm")
+    dpl.writers(_crn(), f.strpath, "crn", header=sm)
+    rec2 = f.new(ext="crn").read().splitlines()[1]
+    assert "3470M" in rec2
+    assert "3731-11812" in rec2
+    assert "37.5" not in rec2
+    # already-packed strings pass through unchanged; a decimal string is packed
+    hdr = _hdr()
+    hdr.update(latitude="1917", longitude="09856", elevation="200")
+    g = tmpdir.join("str")
+    dpl.writers(_crn(), g.strpath, "crn", header=hdr)
+    rec2 = g.new(ext="crn").read().splitlines()[1]
+    assert "1917 09856" in rec2 and " 200M" in rec2
+    # a pair that cannot fit the 10-character field raises
+    from dplpy.site_metadata import pack_crn_coordinates
+    assert pack_crn_coordinates(-35.5, 148.2) == "-353014812"      # southern + eastern fits
+    with pytest.raises(ValueError, match="10-character"):
+        pack_crn_coordinates(-35.5, -148.2)
+
+
+def test_write_crn_roundtrips_coordinates_through_reader(tmp_path):
+    # A18 end to end: metadata read from a real header -> SiteMetadata -> .crn
+    # header -> back through the Tucson header parser gives the same coordinates.
+    from dplpy.readers import _extract_header_metadata
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        rwl = dpl.readers("tests/data/rwl/ca667.rwl")
+    sm = SiteMetadata.from_rwl(rwl)
+    out = dpl.writers(_crn(), str(tmp_path / "ca667"), "crn", header=sm)
+    md = _extract_header_metadata(open(out).read().splitlines()[:3])
+    assert md["latitude"] == pytest.approx(sm.latitude, abs=1e-3)
+    assert md["longitude"] == pytest.approx(sm.longitude, abs=1e-3)
+    assert md["elevation_m"] == sm.elevation_m

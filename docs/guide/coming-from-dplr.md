@@ -23,7 +23,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | `read.rwl`, `read.tucson`, `read.compact` | `readers` | Auto-detects format; `readers_url` for URLs |
 | `read.crn` | `read_crn` | Single, stacked, and combined multi-site files |
 | `read.ids` | `read_ids` | Site–tree–core parsing |
-| `write.rwl` / `write.tucson` | `writers(..., format="rwl")` | |
+| `write.rwl` / `write.tucson` | `writers(..., format="rwl")` | Returns the path written |
 | `write.crn` | `writers(..., format="crn")` | |
 | `combine.rwl` | `combine_rwl` | |
 
@@ -42,8 +42,8 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 
 | dplR | dplPy | Notes |
 |---|---|---|
-| `detrend`, `detrend.series` | `detrend` | `fit=` selects Spline / ModNegExp / ModHugershoff / Mean / AgeDepSpline |
-| `rcs` | `rcs` | Curve via `fit=`, arithmetic via `method=`, stiffness via `period=`; `preset="crust"` for the CRUST curve. **Pith offset differs — see below.** |
+| `detrend`, `detrend.series` | `detrend` | `fit=` selects Spline / ModNegExp / ModHugershoff / Mean / AgeDepSpline; `spline_period=` is dplR's `nyrs`; `plot=False` by default, like `make.plot=FALSE` for a data frame |
+| `rcs` | `rcs` | Curve via `fit=`, arithmetic via `method=`, stiffness via `spline_period=`; `preset="crust"` for the CRUST curve. **Pith offset differs — see below.** |
 | `ssf` | `ssf` | Signal-free; `preset="crust"` variant |
 | `ads` (age-dependent spline) | `ads` | Also `detrend(fit="AgeDepSpline")` |
 | `powt` | `powt` | Power transformation |
@@ -54,18 +54,19 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 |---|---|---|
 | `chron` | `chron` | `prewhiten=True` adds the residual chronology |
 | `chron.ars` | `chron_ars` | ARSTAN-style |
-| `chron.stabilized` | `chron_stabilized` | Variance stabilization |
-| `ar` / AR modelling | `autoreg`, `ar_func` | Yule-Walker by default, matching R's `ar()` |
+| `chron.stabilized` | `chron_stabilized` | Variance stabilization; `winLength` is `window_length` |
+| `ar` / AR modelling | `autoreg`, `ar_func` | Yule-Walker by default (`method="yw"`), as in R's `ar()`, with `ar_max=10`. **Order selection differs**: dplPy takes the *first local* AIC minimum (`first_aic_min=True`, the ARSTAN/COFECHA rule); R's `ar()` takes the global minimum. Pass `first_aic_min=False` to match R. |
 
 ### Crossdating
 
 | dplR | dplPy | Notes |
 |---|---|---|
-| `corr.rwl.seg` | `xdate` | dplR-faithful default; returns a dict |
+| `corr.rwl.seg` | `xdate` | dplR-faithful default; returns a dict. `seg.length` is `window_length`, `lag.max` is `lag` |
 | `corr.series.seg` | `series_corr` | Single-series diagnostics |
 | `ccf.series.rwl` | `series_corr` | Cross-correlation view of one series |
-| `interseries.cor` | `interseries_corr` | Overall interseries correlation |
+| `interseries.cor` | `interseries_corr` | Overall interseries correlation; returns `{"mean", "table"}` |
 | `xdate.floater` | `xdate_floater` | Extended with Wilson (2026) t-statistics |
+| *(COFECHA UFLOAT)* | `xdate_undated` | Relative dating of a set of undated series against one another |
 | `xdate.report` | `xdate_report` | COFECHA-style batch report (`xdate.report` arrived in dplR 1.8.0) |
 | *(COFECHA itself has no dplR equivalent)* | `xdate(preset="COFECHA")` | Full COFECHA emulation mode |
 

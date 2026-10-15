@@ -72,9 +72,9 @@ def test_correct_csv_format(mock_read_csv: Mock):
     results = dpl.readers("correct_file.csv")
     mock_read_csv.assert_called_once_with("correct_file.csv", skiprows=0, encoding=None)
 
-    expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7], 
-                                     "SeriesB": [0.2, 0.4, 0.6, 0.8]}, 
-                                     index=pd.Index(data=[1, 2, 3, 4], 
+    expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
+                                     "SeriesB": [0.2, 0.4, 0.6, 0.8]},
+                                     index=pd.Index(data=[1, 2, 3, 4],
                                                     name="Year")
                                     )
     pd.testing.assert_frame_equal(results, expected_df)
@@ -92,7 +92,7 @@ def test_correct_rwl_format(mock_open: Mock):
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
-                                     index=pd.Index(data=[1, 2, 3, 4], 
+                                     index=pd.Index(data=[1, 2, 3, 4],
                                                     name="Year"))
     print(results)
     pd.testing.assert_frame_equal(results, expected_df)
@@ -110,7 +110,7 @@ def test_correct_rwl_skip_lines(mock_open: Mock):
     mock_open.assert_called_once_with("valid_rwl_correct_format.rwl", None)
 
     expected_df = pd.DataFrame(data={"SeriesB": [0.2, 0.4, 0.6, 0.8]},
-                                     index=pd.Index(data=[1, 2, 3, 4], 
+                                     index=pd.Index(data=[1, 2, 3, 4],
                                                     name="Year"))
     pd.testing.assert_frame_equal(results, expected_df)
 
@@ -127,7 +127,7 @@ def test_correct_rwl_with_headers(mock_open: Mock):
 
     expected_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7],
                                      "SeriesB": [0.2, 0.4, 0.6, 0.8]},
-                                     index=pd.Index(data=[1, 2, 3, 4], 
+                                     index=pd.Index(data=[1, 2, 3, 4],
                                                     name="Year"))
     pd.testing.assert_frame_equal(results, expected_df)
 
@@ -149,7 +149,9 @@ def test_rwl_with_blank_lines(mock_open: Mock):
     mock_open.assert_called_once_with("valid_rwl_with_blanks.rwl", None)
     pd.testing.assert_frame_equal(results, expected_df)
     assert not [x for x in w if "Empty line" in str(x.message)]   # no blank-line alarm
-    assert results.attrs["dplpy_blank_lines"] == [2]              # recorded silently
+    # recorded silently as a small summary (count + first examples), never the
+    # full list -- a double-spaced ITRDB file would otherwise bloat df.attrs (F1)
+    assert results.attrs["dplpy_blank_lines"] == {"n": 1, "first": [2]}
 
 
 # ===========================================================================
@@ -1301,17 +1303,18 @@ def test_beyond_column_flags_truncated_value(tmp_path, capsys):
     row = _rwl_row("LIN9A", 1830, [353, 835, 434, 390, 443, 267, 463, 372, 425]) + "   3035"
     p.write_text(row + "\n" +
                  _rwl_row("LIN9A", 1840, [88, 102, 145, 35, 65, 57, 110, 123, 328, -9999]) + "\n")
-    d = _read_quiet(str(p), header=False)
+    with pytest.warns(UserWarning, match="beyond the last data column") as w:
+        d = dpl.readers(str(p), header=False)        # heads-up is a warning (G2)
     b = d.attrs["dplpy_beyond_column"]
-    assert len(b) == 1
+    assert len(b) == 1 and d.attrs["dplpy_beyond_column_n"] == 1
     assert b[0]["series"] == "LIN9A"
     assert b[0]["year"] == 1839                      # the 10th (last) value's year
     assert b[0]["in_column"] == "303"                # what was actually read
     assert b[0]["unparsed"] == "5"                   # the dropped digit
     assert b[0]["kind"] == "truncated_value"
+    assert any("LIN9A 1839" in str(x.message) for x in w)
     out = capsys.readouterr().out
-    assert "beyond the last data column" in out      # announced with the success msg
-    assert "LIN9A 1839" in out
+    assert "beyond the last data column" not in out  # not printed
 
 
 def test_beyond_column_ignores_site_id(tmp_path):
@@ -1349,17 +1352,19 @@ def test_short_interior_gap_reported(tmp_path, capsys):
     p.write_text(
         _rwl_row("LIN01A", 1930, [1297, 1696, 1587, 1173, 1472, 1272, 1575, 1158, 1206, ""]) + "\n" +
         _rwl_row("LIN01A", 1940, [1366, 1322, 1332, 867, 886, -9999]) + "\n")
-    d = _read_quiet(str(p), header=False)
+    with pytest.warns(UserWarning, match="short interior gap") as w:
+        d = dpl.readers(str(p), header=False)        # heads-up is a warning (G2)
     gaps = d.attrs["dplpy_interior_gaps"]
     assert len(gaps) == 1
     assert gaps[0]["series"] == "LIN01A"
     assert gaps[0]["short_gap_years"] == [1939]
+    assert gaps[0]["n_short_gap_years"] == 1 and gaps[0]["n_gap_years"] == 1
     assert gaps[0]["max_run"] == 1
     import numpy as np
     assert np.isnan(d.loc[1939, "LIN01A"])           # the hole is a NaN
+    assert any("LIN01A: 1939" in str(x.message) for x in w)
     out = capsys.readouterr().out
-    assert "short interior gap" in out
-    assert "LIN01A: 1939" in out
+    assert "short interior gap" not in out           # not printed
 
 
 def test_long_interior_gap_recorded_but_not_announced(tmp_path, capsys):
@@ -1370,11 +1375,14 @@ def test_long_interior_gap_recorded_but_not_announced(tmp_path, capsys):
     p.write_text(
         _rwl_row("LNG01A", 1900, [100, "", "", "", "", "", "", "", "", 200]) + "\n" +
         _rwl_row("OTH01A", 1900, [50, 60, 70, -9999]) + "\n")
-    d = _read_quiet(str(p), header=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        d = dpl.readers(str(p), header=False)
     gaps = {g["series"]: g for g in d.attrs["dplpy_interior_gaps"]}
     assert "LNG01A" in gaps                            # recorded
     assert gaps["LNG01A"]["max_run"] == 8
     assert gaps["LNG01A"]["short_gap_years"] == []     # nothing short -> not announced
+    assert not any("short interior gap" in str(x.message) for x in w)
     out = capsys.readouterr().out
     assert "short interior gap" not in out
 
@@ -1410,7 +1418,7 @@ def test_non_utf8_file_reads_with_latin1_fallback(tmp_path):
 def test_precision_recorded_in_provenance():
     # The measurement precision each series was read at (0.01 or 0.001 mm) is now
     # recorded in df.attrs, with a flag when a file mixes the two.
-    import io, contextlib
+    import contextlib
     def _quiet(fn, *a, **k):
         with contextlib.redirect_stdout(io.StringIO()):
             return fn(*a, **k)
@@ -1419,3 +1427,280 @@ def test_precision_recorded_in_provenance():
     assert set(df.columns) <= set(prec)               # one entry per series
     assert set(prec.values()) == {0.01}               # ca533 is 0.01 mm throughout
     assert df.attrs["dplpy_mixed_precision"] is False
+
+
+# ===========================================================================
+# v0.9.0 audit follow-ups (A17, A19, B4, B7, B14, C3, C7, C8, D11, F1, G2, G8, G9)
+# ===========================================================================
+
+def test_metadata_routes_by_record_number_nm580():
+    # A17/C8: nm580's record 1 carries an accession note with a '#'
+    # ('UAFACC#=04-223'), which used to be dropped as a comment so every field
+    # shifted (site name became record 2's text, investigator became the region).
+    md = dpl.metadata(RWL + "nm580.rwl")
+    assert md["n_header_lines"] == 3
+    assert md["site_name"] == "El Malpais update"
+    assert md["species_code"] == "PSME"
+    assert md["country_region"] == "New Mexico"
+    assert md["species_name"] == "Douglas-fir"
+    assert md["elevation_m"] == 2375
+    assert md["investigators"].startswith("H. Grissino-Mayer")
+    assert md["first_year"] == -136 and md["last_year"] == 2004
+
+
+def test_metadata_latlong_both_halves_must_decode_wa082():
+    # A17: wa082's record 2 is 'Pacific silver fir 1560  4757-12328 1698 1983': the
+    # bare elevation 1560 used to be taken as the latitude ('1560' = 15 deg 60 min,
+    # invalid -> None) and the real latitude 4757 as the longitude.
+    md = dpl.metadata(RWL + "wa082.rwl")
+    assert md["latitude"] == pytest.approx(47.95, abs=1e-3)
+    assert md["longitude"] == pytest.approx(-123.4667, abs=1e-3)   # 123 deg 28 min W
+    assert md["elevation_m"] == 1560                                # no 'M' suffix
+    assert md["species_name"] == "Pacific silver fir"              # elevation stripped
+
+
+def test_metadata_record_numbers_out_of_order(tmp_path):
+    # A17: lines are routed by the record number they carry, not by position.
+    p = tmp_path / "ooo.rwl"
+    p.write_text(
+        "ABC    3 Jane Investigator\n"
+        "ABC    1 Some Site                                            PSME\n"
+        "ABC    2 Arizona      Douglas Fir       2000M  3530-11140    __    1500 1990\n"
+        "ABC01   1500   100   200 -9999\n")
+    md = dpl.metadata(str(p))
+    assert md["site_name"] == "Some Site" and md["species_code"] == "PSME"
+    assert md["investigators"] == "Jane Investigator"
+    assert md["country_region"] == "Arizona"
+    assert md["elevation_m"] == 2000
+
+
+def test_header_line_with_hash_is_not_a_comment(tmp_path):
+    # C8: a '#' inside a header line ('SITE #3') is header text, not a comment,
+    # so the header keeps its 3 lines and the metadata stays aligned.
+    p = tmp_path / "hash.rwl"
+    p.write_text(
+        "HSH    1 Lake Site #3                                         PSME\n"
+        "HSH    2 Arizona      Douglas Fir       2000M  3530-11140    __    1500 1990\n"
+        "HSH    3 J. Smith\n"
+        "HSH01   1500   100   200 -9999\n")
+    d = _read_quiet(str(p))
+    assert d.attrs["dplpy_header_lines_skipped"] == 3
+    assert d.attrs["dplpy_metadata"]["site_name"] == "Lake Site #3"
+    assert d.attrs["dplpy_metadata"]["investigators"] == "J. Smith"
+    assert dpl.metadata(str(p))["site_name"] == "Lake Site #3"     # same rule in metadata()
+
+
+def test_skip_lines_counts_physical_lines(tmp_path):
+    # A19: skip_lines is applied to the raw file BEFORE blank/comment stripping, so
+    # a count taken from the physical file does not silently drop a data row.
+    p = tmp_path / "skip.rwl"
+    p.write_text(
+        "junk line one\n"
+        "\n"                                      # blank: counts as a physical line
+        "# a comment line\n"                      # counts too
+        + _rwl_row("SER1", 1900, [100, 110, 120, 999]) + "\n"
+        + _rwl_row("SER2", 1900, [200, 210, 999]) + "\n")
+    d = _read_quiet(str(p), skip_lines=3, header=False)
+    assert list(d.columns) == ["SER1", "SER2"]             # no data row lost
+    assert d.attrs["dplpy_skipped_lines"]["n"] == 3
+    assert d.attrs["dplpy_skipped_lines"]["first"][0] == "junk line one"
+    # metadata() counts the same way
+    md = dpl.metadata(str(p), skip_lines=3, header=False)
+    assert md["n_header_lines"] == 0
+
+
+def test_csv_year_column_case_insensitive_and_unnamed(tmp_path):
+    # B4: 'year' (any case) or an unnamed first column (pandas' default to_csv
+    # index) is the year column; a missing one is a clear ValueError.
+    df = pd.DataFrame({"year": [1990, 1991], "A": [0.1, 0.2]})
+    p = tmp_path / "lower.csv"
+    df.to_csv(p, index=False)
+    got = _read_quiet(str(p))
+    assert got.index.name == "Year" and list(got.index) == [1990, 1991]
+    # unnamed index column
+    q = tmp_path / "unnamed.csv"
+    pd.DataFrame({"A": [0.1, 0.2]}, index=[1990, 1991]).to_csv(q)
+    got2 = _read_quiet(str(q))
+    assert list(got2.index) == [1990, 1991] and list(got2.columns) == ["A"]
+    assert got2.attrs["kind"] == "rwl"
+    # no year column at all
+    r = tmp_path / "noyear.csv"
+    pd.DataFrame({"A": [0.1], "B": [0.2]}).to_csv(r, index=False)
+    with pytest.raises(ValueError, match="year column"):
+        dpl.readers(str(r))
+    # a non-numeric year cell names the row
+    t = tmp_path / "badyear.csv"
+    t.write_text("Year,A\n1990,0.1\nabc,0.2\n")
+    with pytest.raises(ValueError, match="row 2"):
+        dpl.readers(str(t))
+
+
+def test_readers_and_metadata_accept_pathlib(tmp_path):
+    # B7
+    from pathlib import Path
+    d = _read_quiet(Path(RWL) / "th001.rwl")
+    assert "DOIK06" in d.columns
+    assert dpl.metadata(Path(RWL) / "th001.rwl")["species_code"] == "TEGR"
+
+
+def test_format_argument_is_case_insensitive(tmp_path):
+    # D11
+    import shutil
+    p = tmp_path / "ca533_nosuffix"
+    shutil.copy(RWL + "ca533.rwl", str(p))
+    got = _read_quiet(str(p), format="RWL")
+    assert got.shape[1] == 34
+    with pytest.raises(ValueError, match="format must be one of"):
+        dpl.readers(str(p), format="bogus")
+
+
+def test_whitespace_delimited_file_falls_back_in_strict_mode(tmp_path):
+    # B14: a long-ID / single-space-delimited file (which dplR reads) breaks the
+    # fixed grid entirely; both modes now re-parse it with whitespace columns.
+    p = tmp_path / "ws.rwl"
+    p.write_text("LONGSERIESID1 1900 100 110 120 130 999\n"
+                 "LONGSERIESID2 1900 200 210 999\n")
+    with pytest.warns(UserWarning, match="whitespace") as w:
+        d = dpl.readers(str(p), header=False, strict=True)
+    assert list(d.columns) == ["LONGSERIESID1", "LONGSERIESID2"]
+    assert d.loc[1903, "LONGSERIESID1"] == pytest.approx(1.30)
+    assert not any("no stop markers" in str(x.message) for x in w)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        d2 = dpl.readers(str(p), header=False, strict=False)
+    pd.testing.assert_frame_equal(d, d2)
+
+
+def test_unparseable_file_has_no_stop_marker_warning(tmp_path):
+    # B14: when no row parses at all, the misleading "no stop markers found"
+    # warning is suppressed; strict raises the generic error (naming the right
+    # helpers), salvage returns None.
+    p = tmp_path / "prose.rwl"
+    p.write_text("this is prose\nnot ring widths at all\n")
+    with pytest.raises(ValueError) as e:
+        dpl.readers(str(p), header=False)
+    assert "dpl.headers" not in str(e.value)                 # G8: no phantom function
+    assert "dpl.metadata" in str(e.value)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        assert dpl.readers(str(p), header=False, strict=False) is None
+    assert not any("no stop markers" in str(x.message) for x in w)
+
+
+def test_gap_sentinel_reported_as_sentinel_not_dropped(tmp_path):
+    # C3: the writer's -99 gap sentinel reads back as a gap, not as an
+    # "anomalous negative", and is kept out of dplpy_dropped.
+    p = tmp_path / "gap.rwl"
+    p.write_text(_rwl_row("S1", 1990, [100, 300, -99, 520, -9999]) + "\n"
+                 + _rwl_row("S2", 1990, [100, -7, 520, -9999]) + "\n")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        d = dpl.readers(str(p), header=False)
+    msgs = [str(x.message) for x in w]
+    assert any("gap sentinel" in m and "-99" in m for m in msgs)
+    assert any("anomalous negative" in m and "S2@1991" in m for m in msgs)
+    assert np.isnan(d.loc[1992, "S1"]) and np.isnan(d.loc[1991, "S2"])
+    assert d.attrs["dplpy_dropped"] == 1                     # only the real anomaly
+
+
+def test_url_read_uses_encoding_model_and_timeout():
+    # C7: URL bytes go through the same decode policy as a local file (latin1
+    # fallback recorded, not U+FFFD), and urlopen is given a timeout.
+    import urllib.request
+    from unittest.mock import patch, MagicMock
+    raw = ("ABC01   invest. M\xfcller\n"
+           "ABC01   1990   100   110   120   130   140   999\n").encode("latin1")
+    seen = {}
+
+    def fake_urlopen(url, *a, **k):
+        seen.update(k)
+        m = MagicMock()
+        m.read.return_value = raw
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        return m
+
+    with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
+        with pytest.warns(UserWarning, match="not valid UTF-8"):
+            d = dpl.readers("https://example.org/abc.rwl")
+    assert seen.get("timeout") is not None
+    assert d.attrs["dplpy_encoding"] == "latin1"
+    assert d.attrs["dplpy_encoding_assumed"] is True
+    assert d.attrs["dplpy_metadata"]["header_raw"][0].endswith("M\xfcller")
+
+
+def test_double_spaced_file_keeps_attrs_small_and_summary_fast(tmp_path):
+    # F1: a double-spaced ITRDB file (every line followed by a blank) must not
+    # store thousands of blank-line numbers on df.attrs, which pandas deep-copies
+    # on every column access and made dpl.summary() 30x slower.
+    import time
+    src = open(RWL + "ca533.rwl").read().splitlines()
+    p = tmp_path / "double.rwl"
+    p.write_text("\n\n".join(src) + "\n\n")
+    d = _read_quiet(str(p))
+    bl = d.attrs["dplpy_blank_lines"]
+    assert bl["n"] == len(src) and len(bl["first"]) <= 20
+    for g in d.attrs["dplpy_interior_gaps"]:
+        assert len(g["gap_years"]) <= 20
+    t0 = time.perf_counter()
+    s = dpl.summary(d)
+    for c in d.columns:
+        d[c]
+    assert time.perf_counter() - t0 < 2.0
+    assert s.shape[1] == d.shape[1]
+
+
+def test_verbose_false_silences_summary_and_headsups_are_warnings(tmp_path, capsys):
+    # G2: verbose=False prints nothing; advisories are warnings either way.
+    p = tmp_path / "v.rwl"
+    p.write_text(_rwl_row("AA01a", 1900, [100, 110, 999]) + "\n"
+                 + _rwl_row("AA01A", 1950, [100, 110, 999]) + "\n")
+    with pytest.warns(UserWarning, match="letter case"):
+        d = dpl.readers(str(p), header=False, verbose=False)
+    assert capsys.readouterr().out == ""
+    assert d.attrs["dplpy_case_variant_ids"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        dpl.readers(str(p), header=False)                    # default verbose=True
+    assert "successfully extracted" in capsys.readouterr().out
+
+
+def test_header_true_forces_three_lines_when_none_detected(tmp_path):
+    # G9: header=True asserts a header; when none is auto-detected the standard
+    # 3-line ITRDB header is skipped (dplR's header=TRUE) with a warning, so a
+    # header whose lines happen to look like data is still skipped.
+    rows = [_rwl_row("H%d" % i, 1900 + 10 * i, [100, 110, 120, 999]) for i in range(3)]
+    rows += [_rwl_row("SER1", 1800, [100, 110, 999])]
+    p = tmp_path / "forced.rwl"
+    p.write_text("\n".join(rows) + "\n")
+    with pytest.warns(UserWarning, match="header=True"):
+        d = dpl.readers(str(p), header=True)
+    assert list(d.columns) == ["SER1"]
+    assert d.attrs["dplpy_header_lines_skipped"] == 3
+    d2 = _read_quiet(str(p))                                 # None: auto -> no header
+    assert "H0" in d2.columns
+    with pytest.raises(ValueError):
+        dpl.readers(str(p), header="yes")
+
+
+def test_readers_url_is_deprecated_and_forwards_kwargs(capsys):
+    # G8: readers_url emits a DeprecationWarning and forwards every keyword
+    # (join/encoding/format/verbose) to readers().
+    import urllib.request
+    from unittest.mock import patch, MagicMock
+    raw = open(RWL + "ca533.rwl", "rb").read()
+
+    def fake_urlopen(url, *a, **k):
+        m = MagicMock()
+        m.read.return_value = raw
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        return m
+
+    with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
+        with pytest.warns(DeprecationWarning, match="readers_url"):
+            d = dpl.readers_url("https://example.org/ca533", format="rwl",
+                                encoding="latin1", join=True, verbose=False)
+    assert d.shape[1] == 34
+    assert d.attrs["dplpy_encoding"] == "latin1"
+    assert capsys.readouterr().out == ""                         # verbose forwarded

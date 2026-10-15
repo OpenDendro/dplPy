@@ -37,21 +37,19 @@ __license__ = "GNU GPLv3"
 # example usage from Python Console:
 # >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
-# >>> dpl.interseries_corr(data)
-# >>> dpl.interseries_corr(data, prewhiten=False, corr="Pearson")
+# >>> dpl.interseries_corr(data)["mean"]
+# >>> dpl.interseries_corr(data, prewhiten=False, corr="pearson")["table"]
 
-from .xdate import normalize_for_crossdating, _row_mean
+from .xdate import normalize_for_crossdating, _row_mean, _corr_pval
 from .tbrm import tbrm_rows
-
-import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe, _normalize_corr
-import scipy.stats
+from ._validate import _require_dataframe, _normalize_corr, _require_year_index, _warn
 
 
-def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Spearman"):
+def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True,
+                     corr="spearman", ar_max=10, first_aic_min=True):
     """Mean interseries correlation (COFECHA's headline statistic).
 
     For each series, correlate it against a master chronology built from every other
@@ -60,7 +58,9 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
     between individual series.
 
     Expects raw ring widths, not indices: each series is normalized by its own mean
-    and, by default, prewhitened before the correlations are computed.
+    and, by default, prewhitened before the correlations are computed (the same
+    transform as ``dpl.xdate``, so the per-series values equal
+    ``xdate()["overall"]["rho"]``).
 
     Parameters
     ----------
@@ -68,34 +68,46 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
         raw ring widths (as from ``dpl.readers``), years as the index, series as
         columns.
     prewhiten : boolean, default True
-        prewhiten each series with an autoregressive model before correlating.
+        prewhiten each series with an autoregressive model before correlating
+        (``autoreg._prewhiten``, Yule-Walker, first local AIC minimum up to ``ar_max``).
     biweight : boolean, default True
         build each leave-one-out master with a Tukey biweight robust mean rather than
         the arithmetic mean.
-    corr : {"Spearman", "Pearson"}, default "Spearman"
-        correlation type.
+    corr : {"spearman", "pearson", "kendall"}, default "spearman"
+        correlation type (case-insensitive).
+    ar_max : int or None, default 10
+        AR-order ceiling for prewhitening; ``None`` uses dplR's ``floor(10*log10(n))``.
+    first_aic_min : bool, default True
+        AR order at the first local AIC minimum (ARSTAN rule) rather than the global
+        minimum; ``ar_max=None, first_aic_min=False`` is dplR's ``interseries.cor``.
 
     Returns
     -------
-    mean_corr : float
-        collection-wide mean interseries correlation (3 decimals).
-    result : pandas.DataFrame
-        per-series interseries correlation and one-sided p-value.
+    dict
+        ``mean`` -- the collection-wide mean interseries correlation (3 decimals,
+        NaN-skipping); ``table`` -- a DataFrame indexed by series (in the input's
+        column order) with columns ``rho`` (3 decimals) and ``p_val`` (one-sided);
+        ``n_series`` -- the number of series with a correlation; ``too_short`` --
+        the names of series that overlapped their master by fewer than 3 years and
+        were given NaN.
 
     Examples
     --------
     >>> import dplpy as dpl
-    >>> mean_corr, per_series = dpl.interseries_corr(dpl.readers("series.rwl"))
+    >>> res = dpl.interseries_corr(dpl.readers("series.rwl"))
+    >>> res["mean"], res["table"]
 
     References
     ----------
     .. [1] https://rdrr.io/cran/dplR/man/interseries.cor.html
+    .. [2] https://opendendro.github.io/dplPy/reference/crossdating/#interseries_corr
     """
     _require_dataframe(data)
+    data = _require_year_index(data, "data")
+    method = _normalize_corr(corr)
 
-    method = _normalize_corr(corr, allowed=("spearman", "pearson"))
-
-    ready_series = normalize_for_crossdating(data, prewhiten)
+    ready_series = normalize_for_crossdating(data, prewhiten, ar_max=ar_max,
+                                             first_aic_min=first_aic_min)
 
     # Work on a dense (years x series) matrix so each series' leave-one-out master
     # is a single vectorized robust mean rather than a full chron() rebuild
@@ -105,19 +117,19 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
     M = ready_series.to_numpy(dtype=float)
     aggregate = tbrm_rows if biweight else _row_mean
 
-    series_names = []
-    interseries_corrs = []
-    p_values = []
-    too_short = []
-
-    for series_name in sorted(names):
+    rhos, p_values, too_short = [], [], []
+    for series_name in data.columns:
+        if series_name not in names:                        # all-NaN column, dropped upstream
+            rhos.append(np.nan)
+            p_values.append(np.nan)
+            too_short.append("%s (0 yrs overlap)" % series_name)
+            continue
         i = names.index(series_name)
         keep = np.ones(M.shape[1], dtype=bool)
         keep[i] = False                                     # leave this series out
         master = aggregate(M[:, keep])                      # master of all the others
         series = M[:, i]
-        ok = ~np.isnan(series) & ~np.isnan(master)          # overlap (both present)
-        n_overlap = int(ok.sum())
+        n_overlap = int((~np.isnan(series) & ~np.isnan(master)).sum())
 
         # Too few overlapping years to correlate: an empty series, or one sharing
         # fewer than 3 years with its master (which can happen after prewhitening
@@ -125,38 +137,27 @@ def interseries_corr(data: pd.DataFrame, prewhiten=True, biweight=True, corr="Sp
         # either raise (pearsonr, n<2) or return a spurious +/-1 (spearman, n=2), so
         # record NaN and name the series instead -- matching series_corr and dplR.
         if n_overlap < 3:
-            series_names.append(series_name)
-            interseries_corrs.append(np.nan)
+            rhos.append(np.nan)
             p_values.append(np.nan)
             too_short.append("%s (%d yr%s overlap)"
                              % (series_name, n_overlap, "" if n_overlap == 1 else "s"))
             continue
 
-        # alternative="greater": matches dplR's cor.test(..., alternative="greater")
-        # -- a one-sided test, since a series is expected to correlate
-        # positively with a chronology built largely from its own signal.
-        if method == "spearman":
-            test_result = scipy.stats.spearmanr(series[ok], master[ok], alternative="greater")
-        else:
-            test_result = scipy.stats.pearsonr(series[ok], master[ok], alternative="greater")
-
-        series_names.append(series_name)
-        interseries_corrs.append(round(test_result.statistic, 3))
-        p_values.append(test_result.pvalue)
+        # one-sided (alternative="greater"), matching dplR's cor.test(...): a
+        # series is expected to correlate positively with a chronology built
+        # largely from its own signal.
+        rho, pv = _corr_pval(series, master, method)
+        rhos.append(round(rho, 3) if np.isfinite(rho) else np.nan)
+        p_values.append(pv)
 
     if too_short:
-        warnings.warn(
-            "interseries_corr: %d series had fewer than 3 years overlapping the "
-            "master and were given an NaN correlation: %s"
-            % (len(too_short), ", ".join(too_short)))
+        _warn("interseries_corr: %d series had fewer than 3 years overlapping the "
+              "master and were given an NaN correlation: %s"
+              % (len(too_short), ", ".join(too_short)))
 
-    result_df = pd.DataFrame(
-        data={"interseries_corr": interseries_corrs, "p_val": p_values},
-        index=pd.Index(series_names, name="series"),
-    )
-
-    # The number users most often want is the collection-wide mean interseries
-    # correlation (COFECHA's headline statistic), so return it first, with the
-    # per-series table second. Both correlations are reported to 3 decimals.
-    mean_corr = round(float(result_df["interseries_corr"].mean()), 3)
-    return mean_corr, result_df
+    table = pd.DataFrame(data={"rho": rhos, "p_val": p_values},
+                         index=pd.Index(list(data.columns), name="series"))
+    mean_corr = round(float(table["rho"].mean()), 3) if table["rho"].notna().any() else np.nan
+    return {"mean": mean_corr, "table": table,
+            "n_series": int(table["rho"].notna().sum()),
+            "too_short": [t.split(" (")[0] for t in too_short]}

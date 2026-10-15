@@ -15,7 +15,7 @@ def mock_ar_sel_order_method(inp_ser, max_lag, ic='aic'):
     mock_model.fit = Mock(return_value=mock_fit)
     mock_results.model = mock_model
     return mock_results
-    
+
 
 import importlib
 _m_autoreg = importlib.import_module("dplpy.autoreg")
@@ -35,16 +35,18 @@ def test_ar_func_on_series(mock_ar_sel_order: Mock):
 
     data = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    actual_ser_output = dpl.ar_func(data['SeriesA'])
+    # OLS-fidelity test (statsmodels path is mocked), so ask for method="ols"
+    # explicitly: the package default is now Yule-Walker.
+    actual_ser_output = dpl.ar_func(data['SeriesA'], method="ols")
 
-    expected_ser_output = pd.Series(name="SeriesA", 
+    expected_ser_output = pd.Series(name="SeriesA",
                                     data=[0.55, 0.65, 0.75, 0.85, 0.95, 1.05, 1.15],
                                     index=pd.Index(name="Year", data=[2, 3, 4, 5, 6, 7, 8]))
     pd.testing.assert_series_equal(expected_ser_output, actual_ser_output)
     mock_ar_sel_order.assert_called_once()
-    
+
 
 @patch.object(_m_autoreg, 'ar_select_order')
 def test_ar_func_on_df(mock_ar_sel_order: Mock):
@@ -52,9 +54,9 @@ def test_ar_func_on_df(mock_ar_sel_order: Mock):
 
     data = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    actual_ser_output = dpl.ar_func(data)
+    actual_ser_output = dpl.ar_func(data, method="ols")
 
     expected_ser_output = pd.DataFrame(data={"SeriesA":[np.nan, 0.55, 0.65, 0.75, 0.85, 0.95, 1.05, 1.15],
                                              "SeriesB":[np.nan, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]},
@@ -78,10 +80,10 @@ def test_autoreg_valid_input(mock_ar_sel_order: Mock):
     mock_ar_sel_order.side_effect = mock_ar_sel_order_method
     data = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    actual_res = dpl.autoreg(data['SeriesA'])
-    expected_res = pd.Series(data=[0.5, 0.5], 
+    actual_res = dpl.autoreg(data['SeriesA'], method="ols")
+    expected_res = pd.Series(data=[0.5, 0.5],
                              index=pd.Index(data=['const', 'SeriesA.L1']))
     pd.testing.assert_series_equal(expected_res, actual_res)
     mock_ar_sel_order.assert_called_once()
@@ -102,7 +104,7 @@ def test_autoreg_yw_matches_statsmodels_yule_walker():
         x[t] = 0.6 * x[t - 1] - 0.2 * x[t - 2] + e[t]
     s = pd.Series(x + 5.0)
 
-    params = dpl.autoreg(s, max_lag=10, aic=False, method="yw")   # fixed AR(10)
+    params = dpl.autoreg(s, ar_max=10, aic=False, method="yw")   # fixed AR(10)
     phi = np.asarray(params[1:], dtype=float)
     assert len(phi) == 10
     xd = (s - s.mean()).to_numpy()
@@ -117,8 +119,8 @@ def test_autoreg_yw_differs_from_ols_and_bad_method_raises():
     rng = np.random.default_rng(1)
     x = np.cumsum(rng.standard_normal(300)) * 0.0 + rng.standard_normal(300)  # AR-ish noise
     s = pd.Series(x)
-    yw = np.asarray(dpl.autoreg(s, max_lag=5, aic=False, method="yw")[1:], dtype=float)
-    ols = np.asarray(dpl.autoreg(s, max_lag=5, aic=False, method="ols")[1:], dtype=float)
+    yw = np.asarray(dpl.autoreg(s, ar_max=5, aic=False, method="yw")[1:], dtype=float)
+    ols = np.asarray(dpl.autoreg(s, ar_max=5, aic=False, method="ols")[1:], dtype=float)
     # same length, but the two estimators are not identical
     assert len(yw) == len(ols) == 5
     assert np.max(np.abs(yw - ols)) > 1e-6
@@ -134,8 +136,11 @@ def test_first_aic_min_rule():
     assert _first_aic_min([10.0, 6.0, 4.0, 5.0, 4.5, 3.0]) == 2
     # AIC already rising from order 0 -> order 0
     assert _first_aic_min([1.0, 2.0, 3.0]) == 0
-    # monotone decreasing (never turns up) -> fall back to the highest order
-    assert _first_aic_min([5.0, 4.0, 3.0, 2.0]) == 3
+    # monotone decreasing (never turns up): no local minimum exists, so the one
+    # package-wide rule (dplR chron.ars behaviour) is to raise, not to fall back
+    # silently to the highest order (audit E8 / G5)
+    with pytest.raises(ValueError, match="did not reach a minimum"):
+        _first_aic_min([5.0, 4.0, 3.0, 2.0])
 
 
 def test_autoreg_first_aic_min_never_exceeds_global():
@@ -148,8 +153,8 @@ def test_autoreg_first_aic_min_never_exceeds_global():
     for t in range(3, 600):
         x[t] = 0.5 * x[t - 1] + 0.2 * x[t - 3] + e[t]
     s = pd.Series(x)
-    p_global = len(dpl.autoreg(s, max_lag=15, aic=True, method="yw")) - 1
-    p_first = len(dpl.autoreg(s, max_lag=15, aic=True, method="yw",
+    p_global = len(dpl.autoreg(s, ar_max=15, aic=True, method="yw")) - 1
+    p_first = len(dpl.autoreg(s, ar_max=15, aic=True, method="yw",
                               first_aic_min=True)) - 1
     assert p_first <= p_global
 
@@ -164,10 +169,10 @@ def test_autoreg_burg_recovers_ar1():
     for t in range(1, 800):
         x[t] = 0.6 * x[t - 1] + e[t]
     s = pd.Series(x)
-    params = dpl.autoreg(s, max_lag=10, method="burg")
+    params = dpl.autoreg(s, ar_max=10, method="burg")
     assert len(params) == 2                       # intercept + one AR coefficient
     assert abs(params[1] - 0.6) < 0.05
-    res = dpl.ar_func(s, max_lag=10, method="burg").to_numpy()
+    res = dpl.ar_func(s, ar_max=10, method="burg").to_numpy()
     res = res[~np.isnan(res)]
     r = res - res.mean()
     lag1 = float(np.dot(r[:-1], r[1:]) / np.dot(r, r))
@@ -183,8 +188,8 @@ def test_autoreg_burg_first_aic_min_caps_order():
     for t in range(2, 700):
         x[t] = 0.5 * x[t - 1] - 0.3 * x[t - 2] + e[t]
     s = pd.Series(x)
-    p_global = len(dpl.autoreg(s, max_lag=10, method="burg")) - 1
-    p_first = len(dpl.autoreg(s, max_lag=10, method="burg", first_aic_min=True)) - 1
+    p_global = len(dpl.autoreg(s, ar_max=10, method="burg")) - 1
+    p_first = len(dpl.autoreg(s, ar_max=10, method="burg", first_aic_min=True)) - 1
     assert p_first <= p_global
 
 
@@ -192,3 +197,131 @@ def test_autoreg_bad_method_rejected():
     s = pd.Series([1.0, 2, 3, 4, 5, 6, 7, 8])
     with pytest.raises(ValueError):
         dpl.autoreg(s, method="bogus")
+
+
+# --- package defaults: Yule-Walker, ar_max=10, first local AIC minimum --------
+def test_autoreg_defaults_are_yw_ar_max_10_first_min():
+    import inspect
+    for fn in (dpl.autoreg, dpl.ar_func):
+        sig = inspect.signature(fn)
+        assert sig.parameters["method"].default == "yw"
+        assert sig.parameters["ar_max"].default == 10
+        assert sig.parameters["first_aic_min"].default is True
+    rng = np.random.default_rng(11)
+    e = rng.standard_normal(500)
+    x = np.zeros(500)
+    for t in range(1, 500):
+        x[t] = 0.5 * x[t - 1] + e[t]
+    s = pd.Series(x)
+    default = np.asarray(dpl.autoreg(s), dtype=float)
+    explicit = np.asarray(dpl.autoreg(s, method="yw", ar_max=10, first_aic_min=True), dtype=float)
+    assert np.array_equal(default, explicit)
+    # ar_max= still works as a deprecated alias of ar_max=
+    with pytest.warns(DeprecationWarning):
+        alias = np.asarray(dpl.autoreg(s, max_lag=10), dtype=float)
+    assert np.array_equal(alias, default)
+    assert dpl.autoreg(s, method="YW").shape == default.shape       # case-insensitive
+
+
+def test_ar_func_drops_all_nan_column_with_warning_and_tags_attrs():
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame({"A": 1 + 0.1 * rng.standard_normal(60),
+                       "B": 1 + 0.1 * rng.standard_normal(60),
+                       "C": np.nan}, index=pd.Index(range(1900, 1960), name="Year"))
+    df.attrs["dplpy_precision"] = 0.01
+    df.attrs["site"] = "x"
+    with pytest.warns(UserWarning, match="all NaN"):
+        out = dpl.ar_func(df)
+    assert list(out.columns) == ["A", "B"]
+    assert out.attrs["kind"] == "rwi" and out.attrs["site"] == "x"
+    assert "dplpy_precision" not in out.attrs
+
+
+# --- canonical prewhitening helpers (audit D1 / A12) ------------------------
+def _ar2_series(n=300, seed=5):
+    rng = np.random.default_rng(seed)
+    e = rng.standard_normal(n)
+    x = np.zeros(n)
+    for t in range(2, n):
+        x[t] = 0.6 * x[t - 1] - 0.2 * x[t - 2] + e[t]
+    return x + 3.0
+
+
+def test_prewhiten_backcast_identity_for_t_ge_p():
+    # with backcast, the first p residuals are filled from backcast initials and
+    # every year t >= p is identical to the non-backcast residual (NaN front).
+    from dplpy.autoreg import _prewhiten
+    x = _ar2_series()
+    p = 3
+    bc, params = _prewhiten(x, order=p, backcast=True, return_params=True)
+    nb = _prewhiten(x, order=p, backcast=False)
+    assert len(params) == p + 1
+    assert np.allclose(bc[p:], nb[p:])
+    assert np.isfinite(bc[:p]).all() and np.isnan(nb[:p]).all()
+
+
+def test_prewhiten_is_nan_aware_and_keeps_positions():
+    from dplpy.autoreg import _prewhiten
+    x = _ar2_series()
+    x[:20] = np.nan
+    x[100:103] = np.nan
+    out = _prewhiten(x)
+    assert np.array_equal(np.isnan(out), np.isnan(x))
+    # same as whitening the compact (non-NaN) values
+    compact = _prewhiten(x[~np.isnan(x)])
+    assert np.allclose(out[~np.isnan(x)], compact)
+
+
+def test_whiten_then_redden_round_trips():
+    # _redden (ARSTAN commie) inverts _whiten (ARSTAN albino) for the same phi,
+    # up to the start-up initials (each backcasts its own input) and the small
+    # offset from the residual mean not being exactly zero.
+    from dplpy.autoreg import _whiten, _redden
+    x = _ar2_series()
+    phi = np.array([0.55, -0.15])
+    e = _whiten(x, phi, backcast=True)
+    back = _redden(e, phi, backcast=True)
+    assert np.allclose(back, x, atol=5e-3)
+    assert np.corrcoef(back, x)[0, 1] > 0.99999
+    # the same phi can be whitened out again: e is (near) white
+    r = e - e.mean()
+    assert abs(np.dot(r[:-1], r[1:]) / np.dot(r, r)) < 0.1
+
+
+def test_backcast_initials_come_from_the_start_of_the_series():
+    # ARSTAN bckcst: x[i] = sum_j phi[j] x[i+1+j], filled backward from the start
+    from dplpy.autoreg import _backcast
+    xd = np.array([1.0, 2.0, -1.0, 0.5, 0.25])
+    phi = np.array([0.5, 0.25])
+    out = _backcast(xd, phi)
+    assert out.shape == (7,)
+    assert np.allclose(out[2:], xd)
+    assert out[1] == pytest.approx(0.5 * xd[0] + 0.25 * xd[1])
+    assert out[0] == pytest.approx(0.5 * out[1] + 0.25 * xd[0])
+
+
+def test_levinson_matches_yw_params():
+    # the shared Levinson recursion reproduces the fixed-order YW fit
+    from dplpy.autoreg import _levinson, _yw_params_aic
+    x = _ar2_series()
+    xd = x - x.mean()
+    n = len(xd)
+    r = np.array([np.dot(xd[:n - k], xd[k:]) / n for k in range(6)])
+    phis, vs = _levinson(r)
+    params = _yw_params_aic(x, 5, aic=False)
+    assert np.allclose(phis[5], params[1:])
+    assert len(vs) == 6 and all(v > 0 for v in vs)
+
+
+def test_prewhiten_fixed_order_on_short_series_and_tiny_series():
+    from dplpy.autoreg import _prewhiten
+    # n = 6 > p = 5: the fixed order is honoured (dplR ar(aic=FALSE))
+    x = np.array([1.0, 1.4, 0.9, 1.2, 1.1, 0.8])
+    out, params = _prewhiten(x, order=5, return_params=True)
+    assert len(params) == 6 and np.isfinite(out).all()
+    # fewer than 3 values: returned unchanged (B11)
+    assert np.allclose(_prewhiten(np.array([1.0, 2.0])), [1.0, 2.0])
+    assert np.allclose(dpl.ar_func(pd.Series([1.0, 2.0])), [1.0, 2.0])
+    # autoreg on n <= 2: order 0 (mean only) on every estimator, no statsmodels error
+    for m in ("yw", "burg", "ols"):
+        assert np.allclose(dpl.autoreg(pd.Series([1.0, 2.0]), method=m), [1.5])

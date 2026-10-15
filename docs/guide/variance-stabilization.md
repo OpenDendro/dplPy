@@ -102,8 +102,9 @@ known). Key arguments:
   `"spline"` / `"both"` families (`None` = the 67 % spline, ARSTAN's default).
 - `column` — which column to stabilize when passing a DataFrame (default
   `"std"`).
-- `return_info` — also return a dict of diagnostics (the `r̄` used, `N_eff`, and
-  sample depth).
+- `return_info` — return a dict instead of the bare chronology: the stabilized
+  chronology under `"chron"` plus diagnostics (the `r̄` used, `N_eff`, and sample
+  depth).
 
 Passing only the chronology (no matrix) is enough for the spline family:
 
@@ -155,8 +156,8 @@ matrix as `rwi=`.
 
 ARSTAN stabilizes the residual chronology and *then* re-reddens it, so
 `chron_ars(stabilize=...)` does the same: with `ars_method="arstan"` (the
-default), the residual-style mean of the prewhitened series is stabilized
-**before** the pooled AR persistence is reintroduced. This keeps `ars_vsc`
+default), the residual chronology is stabilized **before** the pooled AR
+persistence is reintroduced (`ars_vsc = postAR(res_vsc)`). This keeps `ars_vsc`
 consistent with the unstabilized `ars` and faithful to ARSTAN. (With
 `ars_method="dplr"`, the ARSTAN chronology is already built by re-reddening each
 series and averaging, so `ars_vsc` is stabilized post-hoc on the reddened
@@ -171,7 +172,7 @@ its *own* standard mean-value chronology internally, applying the running-rbar /
 `N_eff` correction as it goes:
 
 ```python
-crn = dpl.chron_stabilized(rwi, win_length=50, min_seg_ratio=1/3)
+crn = dpl.chron_stabilized(rwi, window_length=50, min_seg_ratio=1/3)
 ```
 
 It is the right choice when you want exact dplR parity for the standard
@@ -187,6 +188,17 @@ Both families restandardize the stabilized chronology to the input chronology's
 convention keeps the stabilized chronology on the same overall scale as the input
 while removing the time-varying variance; see
 [Fidelity & departures](../background/fidelity.md) for the rationale.
+
+`chron_stabilized` follows dplR instead: it scales the departures by
+`sqrt(N_eff * rbar)` and adds the grand mean back, which places the chronology on
+the variance an infinitely replicated chronology would have (Osborn, Briffa &
+Jones 1997). The two conventions flatten the same variance trend and differ only
+by a uniform level and scale (on ca533 the running-rbar outputs are related by a
+slope of 1.11 and an offset of -0.12, with a residual below 0.002 that comes from
+centring the matrix before rather than after the biweight mean). Spline mode is
+identical between the two. The difference is invisible to correlation-based uses
+and visible wherever absolute index values are read off, such as pointer-year
+thresholds or a plot that overlays a dplR-stabilized chronology.
 
 ## Choosing a method
 

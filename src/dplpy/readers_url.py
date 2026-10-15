@@ -1,11 +1,16 @@
 from .readers import readers
+from ._validate import _warn
 
 
-def readers_url(url, header=None, skip_lines=0, strict=True):
+def readers_url(url, **kwargs):
     """Read a Tucson (.rwl) file directly from a URL.
 
-    Deprecated: ``readers()`` now accepts an http(s) URL directly, so
+    Deprecated: ``readers()`` accepts an http(s) URL directly, so
     ``dpl.readers(url)`` does the same thing. This thin wrapper is kept for
-    backward compatibility and simply forwards to ``readers``.
+    backward compatibility: it emits a ``DeprecationWarning`` and forwards every
+    keyword (``header``, ``skip_lines``, ``strict``, ``join``, ``encoding``,
+    ``format``, ``verbose``) to ``readers``.
     """
-    return readers(url, skip_lines=skip_lines, header=header, strict=strict)
+    _warn("readers_url() is deprecated and will be removed in a future release; "
+          "dpl.readers(url) reads a URL directly.", DeprecationWarning)
+    return readers(url, **kwargs)

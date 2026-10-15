@@ -36,110 +36,98 @@ __license__ = "GNU GPLv3"
 #              so mrcs() shares rcs()'s full fit/method/period/preset vocabulary
 #              and mrcs(n_curves=1) is identical to rcs().
 
-import warnings
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ._validate import _require_dataframe, _plot_kwarg
-from .detrend import _normalize_method
-from .rcs import rcs
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
+                        _normalize_choice, _carry_attrs)
+from ._plot_style import style_axes, finalize_font
+from .detrend import _normalize_method, _finish_figure
+from .rcs import rcs, _resolve_po, _align, _reset_means
 
 _MIN_TREES_PER_CURVE = 40   # CRUST rule of thumb for a reliable RCS curve
+_SORTS = ("growth", "age", "diameter", "none")
 
 
-def _po_map(rwl, po):
-    """Pith-offset lookup (true offset; 0 = pith present), as in rcs()."""
-    cols = list(rwl.columns)
-    if po is None:
-        return {c: 0 for c in cols}
-    s = po["series"] if "series" in po.columns else po.iloc[:, 0]
-    pv = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
-    return dict(zip(np.asarray(s), np.asarray(pv)))
-
-
-def _sort_key(rwl, po_map, sort):
+def _sort_key(rwl, po_arr, sort):
     """Per-series sort key for curve allocation (ascending).
 
     "growth"   : CRUST growth rate -- the tree's total measured radius (plus the
                  regional-curve-estimated radius of any missing pith rings)
                  divided by the UNSMOOTHED single regional curve's cumulative
                  radius at the tree's full cambial age. >1 = faster than average.
-    "age"      : cambial age = pith offset + number of measured rings.
+    "age"      : cambial age = pith offset + number of rings (span, gaps included).
     "diameter" : total measured radius (sum of ring widths + estimated pith).
     "none"     : input order.
     """
-    cols = list(rwl.columns)
     M = rwl.to_numpy(dtype=float)
-    counts = np.sum(~np.isnan(M), axis=0)
-    offs = np.array([int(po_map[c]) for c in cols])
+    ncol = M.shape[1]
+    offs = np.asarray(po_arr, dtype=int)
 
     if sort == "none":
-        return np.arange(len(cols), dtype=float)
-    if sort == "age":
-        return (offs + counts).astype(float)
+        return np.arange(ncol, dtype=float)
 
-    # build the unsmoothed single regional curve (arithmetic mean by cambial age)
-    # and its cumulative radius -- shared by "growth" and the pith estimate.
-    nrow = int(counts.max()) + int(offs.max())
-    rwca = np.full((nrow, len(cols)), np.nan)
-    for i in range(len(cols)):
-        vals = M[:, i][~np.isnan(M[:, i])]
-        rwca[offs[i]:offs[i] + len(vals), i] = vals
-    with np.errstate(invalid="ignore"):
-        ca_mean = np.nanmean(rwca, axis=1)
+    # the unsmoothed single regional curve (arithmetic mean by cambial age) and
+    # its cumulative radius -- shared by "growth" and the pith estimate.
+    rwca = _align(M, offs)
     ca_n = np.sum(~np.isnan(rwca), axis=1)
-    ca_mean = np.where(ca_n > 0, np.nan_to_num(ca_mean), 0.0)
+    with np.errstate(invalid="ignore"):
+        ca_mean = np.where(ca_n > 0, np.nan_to_num(np.nanmean(rwca, axis=1)), 0.0)
     cum = np.cumsum(ca_mean)                       # expected radius by cambial age
 
-    radius = np.empty(len(cols))
-    age_rad = np.empty(len(cols))
-    for i in range(len(cols)):
-        vals = M[:, i][~np.isnan(M[:, i])]
+    ages = np.array([int(np.where(~np.isnan(rwca[:, i]))[0].max()) + 1
+                     if np.any(~np.isnan(rwca[:, i])) else offs[i]
+                     for i in range(ncol)])        # full cambial age of each tree
+    if sort == "age":
+        return ages.astype(float)
+
+    radius = np.empty(ncol)
+    age_rad = np.empty(ncol)
+    for i in range(ncol):
         pith = cum[offs[i] - 1] if offs[i] > 0 else 0.0   # est. missing-pith radius
-        radius[i] = vals.sum() + pith
-        age_idx = min(offs[i] + len(vals) - 1, len(cum) - 1)
-        age_rad[i] = max(cum[age_idx], 1e-9)
+        radius[i] = np.nansum(M[:, i]) + pith
+        age_rad[i] = max(cum[min(ages[i] - 1, len(cum) - 1)], 1e-9)
     if sort == "diameter":
         return radius
     # "growth": radius relative to the single-curve expectation at that age
     return radius / age_rad
 
 
-def _allocate(rwl, po_map, n_curves, sort, label="mrcs"):
+def _allocate(rwl, po_arr, n_curves, sort, label="mrcs"):
     """Rank trees by `sort` and split into `n_curves` near-equal classes.
     Returns (alloc, groups): ``alloc[col] = curve index``, and ``groups`` the
     list of column-index arrays. Shared by mrcs() and sfmrcs()."""
     cols = list(rwl.columns)
-    key = _sort_key(rwl, po_map, sort)
+    key = _sort_key(rwl, po_arr, sort)
     order = np.argsort(key, kind="stable")
     groups = [g for g in np.array_split(order, n_curves) if len(g) > 0]
     if len(groups) < n_curves:
-        warnings.warn("%s: only %d non-empty curve(s) for n_curves=%d "
-                      "(too few series)." % (label, len(groups), n_curves))
+        _warn("%s: only %d non-empty curve(s) for n_curves=%d (too few series)."
+              % (label, len(groups), n_curves), stacklevel=4)
     alloc = np.zeros(len(cols), dtype=int)
     for gi, g in enumerate(groups):
         alloc[g] = gi
         if len(g) < _MIN_TREES_PER_CURVE:
-            warnings.warn("%s: curve %d has %d trees (< %d); multiple RCS is "
-                          "unreliable with sparsely-replicated curves."
-                          % (label, gi, len(g), _MIN_TREES_PER_CURVE))
+            _warn("%s: curve %d has %d trees (< %d); multiple RCS is unreliable "
+                  "with sparsely-replicated curves."
+                  % (label, gi, len(g), _MIN_TREES_PER_CURVE), stacklevel=4)
     return alloc, groups
 
 
 def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
-          fit="AgeDepSpline", method="ratio", period=0.1, nyrs0=50, f=0.5,
-          pos_slope=False, biweight=True, min_n=None, preset=None,
-          reset_means=True, rescale_difference=False, rc_out=False,
-          plot=True, **kwargs):
+         fit="AgeDepSpline", method="ratio", spline_period=0.1, nyrs0=50, f=0.5,
+         pos_slope=False, biweight=True, min_n=None, preset=None,
+         reset_means=True, rescale_difference=False, rc_out=False,
+         plot=True, **kwargs):
     """Multiple-curve Regional Curve Standardisation.
 
     Sort trees by relative growth rate, split them into ``n_curves`` equal-count
     classes, build a regional curve for each class, and standardise each tree by its
     own class curve. This removes the modern-sample-bias slope that a single
     regional curve injects when the sample's growth-rate (or age) mix changes over
-    time. Each class curve is built by :func:`rcs`, so ``mrcs`` shares its
-    ``fit``/``method``/``period``/``nyrs0``/``f``/``pos_slope``/``preset``
+    time. Each class curve is built by `rcs()`, so ``mrcs`` shares its
+    ``fit``/``method``/``spline_period``/``nyrs0``/``f``/``pos_slope``/``preset``
     vocabulary, and ``mrcs(rwl, n_curves=1)`` is identical to ``rcs(rwl)``. Port of
     CRUST's multiple RCS.
 
@@ -147,19 +135,20 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
     ----------
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
-    po : pandas.DataFrame or None, default None
-        pith offsets (columns ``series`` and ``pith_offset``; a true offset,
-        0 = pith present), as in :func:`rcs`. None assumes 0 for every series.
+    po : pandas.DataFrame, dict, Series or None, default None
+        pith offsets (``series`` and ``pith_offset``; a true offset, 0 = pith
+        present), as in `rcs()`. None assumes 0 for every series.
     n_curves : int, default 2
-        number of regional curves. ``1`` reduces exactly to :func:`rcs`.
+        number of regional curves. ``1`` reduces exactly to `rcs()`.
     sort : {"growth", "age", "diameter", "none"}, default "growth"
         how trees are ranked before the equal-count split: "growth" by relative
         growth rate, "age" by cambial age, "diameter" by total radius, "none" keeps
-        input order.
-    fit, method, period, nyrs0, f, pos_slope, biweight, min_n, preset,
+        input order. Case-insensitive.
+    fit, method, spline_period, nyrs0, f, pos_slope, biweight, min_n, preset,
     rescale_difference :
-        passed through to :func:`rcs` to build each class curve; see :func:`rcs`.
-        Defaults match :func:`rcs`.
+        passed through to `rcs()` to build each class curve; see `rcs()`.
+        Defaults match `rcs()`. The former name ``period=`` is accepted with a
+        DeprecationWarning.
     reset_means : bool, default True
         if True (ratios only), rescale each tree's indices to the mean it would have
         had under one-curve RCS, recovering the low-frequency variance multiple RCS
@@ -184,18 +173,17 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
+    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "mrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)
-    if sort not in ("growth", "age", "diameter", "none"):
-        raise ValueError("sort must be 'growth', 'age', 'diameter', or 'none', "
-                         "got '" + str(sort) + "'.")
+    sort = _normalize_choice(sort, _SORTS, "sort")
     n_curves = int(n_curves)
     if n_curves < 1:
         raise ValueError("n_curves must be >= 1, got %d." % n_curves)
 
     cols = list(rwl.columns)
-    common = dict(fit=fit, method=method, period=period, nyrs0=nyrs0, f=f,
-                  pos_slope=pos_slope, biweight=biweight, min_n=min_n,
+    common = dict(fit=fit, method=method, spline_period=spline_period, nyrs0=nyrs0,
+                  f=f, pos_slope=pos_slope, biweight=biweight, min_n=min_n,
                   preset=preset, rescale_difference=rescale_difference)
 
     # n_curves == 1 is exactly single-curve RCS
@@ -206,23 +194,20 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
             return {"rwi": rwi, "rc": [res["rc"]], "alloc": {c: 0 for c in cols}}
         return rwi
 
-    po_map = _po_map(rwl, po)
+    po_arr = _resolve_po(rwl, po, label="mrcs")
+    po_tab = pd.DataFrame({"series": cols, "pith_offset": po_arr})
 
     # 1. rank trees and split into n_curves near-equal classes (shared helper)
-    alloc, groups = _allocate(rwl, po_map, n_curves, sort, label="mrcs")
+    alloc_arr, groups = _allocate(rwl, po_arr, n_curves, sort, label="mrcs")
 
     # 2. standardise each class by its own regional curve (via single-curve rcs)
-    rwi = rwl.copy().astype(float)
-    rwi.iloc[:, :] = np.nan
+    idx = np.full(rwl.shape, np.nan)
     rc_list = []
     alloc = {}
     for gi, g in enumerate(groups):
         gcols = [cols[i] for i in g]
-        sub = rwl[gcols]
-        sub_po = pd.DataFrame({"series": gcols,
-                               "pith_offset": [int(po_map[c]) for c in gcols]})
-        res = rcs(sub, po=sub_po, plot=False, rc_out=True, **common)
-        rwi[gcols] = res["rwi"]
+        res = rcs(rwl[gcols], po=po_tab.iloc[g], plot=False, rc_out=True, **common)
+        idx[:, g] = res["rwi"].to_numpy(dtype=float)
         rc_list.append(res["rc"])
         for c in gcols:
             alloc[c] = gi
@@ -230,15 +215,14 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
     # 3. mean-reset: put each tree back on its one-curve mean (ratios only)
     if reset_means:
         if method != "ratio":
-            warnings.warn("mrcs: reset_means is only applied with method='ratio'; "
-                          "skipped for method='difference'.")
+            _warn("mrcs: reset_means is only applied with method='ratio'; "
+                  "skipped for method='difference'.")
         else:
-            single = rcs(rwl, po=po, plot=False, **common)
-            for c in cols:
-                m = rwi[c].to_numpy(); s = single[c].to_numpy()
-                mm = np.nanmean(m); ms = np.nanmean(s)
-                if np.isfinite(mm) and np.isfinite(ms) and mm != 0:
-                    rwi[c] = rwi[c] * (ms / mm)
+            single = rcs(rwl, po=po_tab, plot=False, **common)
+            idx = _reset_means(idx, single.to_numpy(dtype=float))
+
+    rwi = pd.DataFrame(idx, index=rwl.index, columns=cols)
+    _carry_attrs(rwl, rwi, kind="rwi")
 
     if plot:
         _plot_mrcs(rc_list)
@@ -250,8 +234,6 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
 
 def _plot_mrcs(rc_list):
     """Overlay the per-class regional curves vs cambial age."""
-    import matplotlib.pyplot as plt
-    from ._plot_style import style_axes, finalize_font, ACCENT, NEUTRAL
     fig, ax = plt.subplots(figsize=(9, 5))
     n = len(rc_list)
     cmap = plt.get_cmap("viridis")
@@ -266,5 +248,5 @@ def _plot_mrcs(rc_list):
     style_axes(ax, xgrid=True, ygrid=True)
     fig.tight_layout()
     finalize_font(fig)
-    plt.show()
+    _finish_figure(fig)
     return ax

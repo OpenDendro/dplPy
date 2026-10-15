@@ -10,7 +10,112 @@ and commit log.
 
 ## [Unreleased]
 
+This release is the result of a pre-release audit of the whole library (about
+95 items) before the v0.9.0 beta. Many of the entries below change numbers you
+may have seen from earlier versions; where they do, the old behaviour was wrong,
+undocumented, or inconsistent between functions, and the entry says what moved.
+Renamed parameters all keep their old names as deprecated aliases for now.
+
 ### Changed
+- **The ARSTAN chronology (`chron_ars`, `ars_method="arstan"`) now follows ARSTAN
+  exactly.** The `ars` column re-reddens the residual chronology itself (the mean
+  of the prewhitened series, prewhitened once more at the pooled order) with the
+  pooled AR coefficients, which is what Ed Cook's Fortran does (`albino1` then
+  `commie1`) and what the development version of dplR's `chron.ars` has done
+  since October 2026. Previously dplPy re-reddened the mean of the prewhitened
+  series without the second whitening. `ars_method="dplr"` still reproduces
+  released dplR up to 1.8.0 (re-redden each series, then average). On ca533 `ars`
+  changes by up to 0.077 after the start-up years and its lag-1 autocorrelation
+  moves from 0.48 to 0.51. Prewhitening and re-reddening initials now follow
+  ARSTAN's `bckcst` (backcast from the start of each series) rather than dplR's
+  `postAR`; only the first few years of each series' contribution differ.
+- **One prewhitening procedure across the package.** `chron(prewhiten=True)`,
+  `chron_ars`, `rwi_stats(prewhiten=True)`, `xdate`, `series_corr`,
+  `interseries_corr`, `xdate_floater`, `xdate_undated`, `ar_func` and `autoreg`
+  all fit the AR model the same way: Yule-Walker, maximum order 10, and the
+  **first local AIC minimum** (ARSTAN's rule). Before, `prewhiten=True` resolved
+  to five different procedures (OLS with `max_lag=5`, global AIC minimum, and so
+  on) depending on which function you called. `ar_func`/`autoreg` default to
+  `method="yw"`, `ar_max=10`, `first_aic_min=True`. Pass `first_aic_min=False`
+  for R's `ar()`/dplR global-minimum rule, and `ar_max=None, first_aic_min=False`
+  for dplR's exact crossdating numbers. Burg is available everywhere as the
+  ARSTAN/COFECHA estimator (`chron_ars(prewhiten_method="burg")`, the `xdate`
+  COFECHA preset). When the AIC never turns up within the ceiling, `autoreg` and
+  `chron_ars` raise a clear error instead of silently taking the maximum order
+  (the crossdating functions fall back to the minimum within the ceiling).
+- **Crossdating lags follow COFECHA everywhere: a negative lag means a missing
+  ring in the series.** `xdate` and `check` already did this; `series_corr` did
+  the opposite (its lag table slid the series and its `ccf` defaulted to
+  `series_x=True`). `series_corr` now defaults to `series_x=False` and shares
+  `xdate`'s lag scan, so `xdate`, `check`, `series_corr["lag_table"]` and
+  `series_corr["ccf"]` all report the same sign. `series_corr`'s default lag
+  search is now 10 years (was 5), like the rest of the package.
+- **Parameter names are unified** (old names remain as deprecated aliases that
+  warn): window length is `window_length` everywhere (`xdate`/`xdate_report`
+  `slide_period`, `series_corr` `seg_length`, `chron_stabilized`/`stabilize_chron`
+  `win_length`; `rwi_stats_running` now defaults to 50); the AR order cap is
+  `ar_max` (`chron`/`chron_ars`/`ar_func`/`autoreg` `max_lag`); the crossdating
+  lag search is `lag` (`check` `lag_max`); the spline wavelength is
+  `spline_period` (`detrend`/`rcs`/`mrcs` `period`, `ssf` `nyrs`, `xdate`
+  `stabilize_period`, `check`/`chron_stabilized` `spline_nyrs`), with 32 years
+  for crossdating high-pass filtering and the 67 % spline for stabilizing
+  chronologies; `normalize_for_crossdating(method=)` is `estimator=`; `ssf` uses
+  `fit=`/`method=`/`tol=` like `detrend` (`method=<curve>`, `difference=`,
+  `mad_threshold=` deprecated); `sfrcs`/`sfmrcs` take a single `biweight=`
+  (`biweight_curve`/`biweight_crn` deprecated). Option strings (`fit`, `method`,
+  `preset`, `corr`, `format`, ...) are case-insensitive, and `corr` defaults to
+  the spelling `"spearman"`.
+- **Defaults aligned across functions.** `pos_slope=False` everywhere (now also
+  `ads`); `first_aic_min=True` everywhere (`chron` was False);
+  `chron_stabilized`'s spline default is the 67 % spline (was 50 %), matching
+  `stabilize_chron`; `detrend(plot=False)` is the default, and `plot=True` or
+  `plot="sequential"` (one figure at a time) draws; `chron(ci=True)` uses `R=100`
+  replicates (dplR's default; was 1000).
+- **Return shapes unified.** `writers()` returns the written path and prints
+  nothing; `report()` returns the per-series statistics table it prints;
+  `interseries_corr` returns a dict `{"mean", "table", "n_series", "too_short"}`
+  with the per-series table (column `rho`, rows in input order) instead of a
+  tuple; `series_corr["overall"]` is a DataFrame with `rho`/`p_val` like `xdate`
+  and `series_corr` also returns the detrended `rwi`; `xdate` flag lags are
+  numeric; `stabilize_chron(return_info=True)` returns a dict with the
+  chronology under `"vsc"`; `chron_stabilized`'s column is `running_rbar`; an
+  unnamed year index is written as `Year`. Every returned frame carries
+  `attrs["kind"]` (`rwl`, `rwi`, `crn`, `bai`, `rwl_powt`) and keeps the reader's
+  provenance attrs where the frame is still measurements.
+- **`rwi_stats_running(ids=...)` is labelled honestly** as ARSTAN-style running
+  effective replication (cores present in the window) rather than a port of
+  dplR's `rwi.stats.running`, which back-calculates `c.eff` from the number of
+  valid within-tree correlations. A core whose within-tree correlations all fail
+  `min_corr_overlap` in a window is no longer counted toward `c_eff` (dplR drops
+  it too). Running EPS can differ from dplR by a few hundredths in sparsely
+  replicated windows, enough to move the year a chronology crosses EPS 0.85.
+- **`sfrcs`/`sfmrcs(method="difference")`** now return raw residuals like `rcs`
+  (the signal-free iteration runs additively) unless `rescale_difference=True`,
+  which is the previous always-on behaviour; `sfrcs`/`sfmrcs` accept the full
+  `rcs` curve vocabulary (`fit`, `spline_period`, `nyrs0`, `pos_slope`, `min_n`,
+  `preset`, ...) so `sfrcs(max_iterations=1)` equals `rcs` for every fit; their
+  `return_info["rc"]` is the curve that actually produced `rwi`.
+- **`edit_rwl` on a DataFrame** follows dplR's `rwl` method and never drops a
+  measured ring (the frame gains or loses a year as needed; `fix_length` applies
+  to Series input only and warns when it would drop a measurement); NaN or
+  fractional years and negative widths raise clear errors.
+- **Readers:** `readers(verbose=...)` and `read_crn(verbose=...)` silence the
+  one-line success summary; all reader advisories (truncated values, short
+  interior gaps, case-variant IDs, assumed encoding) are now `warnings`, not
+  printed text; `skip_lines` counts physical lines; `header=True` forces the
+  3-line ITRDB header when none is detected; `df.attrs["dplpy_blank_lines"]`,
+  `dplpy_interior_gaps` and `dplpy_beyond_column` are capped summaries (totals
+  kept) so a double-spaced file no longer slows every downstream call.
+  `writers(prec=None)` (new default) writes at the precision the data were read
+  at (`dplpy_precision`); `readers_url` emits a DeprecationWarning and forwards
+  all keywords.
+- `dpl.help("name")` (and `python -m dplpy help name`) prints a function's live
+  signature and docstring; `dpl.help()` generates its overview from the installed
+  package so it cannot go stale. `help` and `readme` are no longer in `__all__`
+  (so `from dplpy import *` does not shadow the builtin `help`).
+- `python -m dplpy --version` reports `dplpy.__version__` before distribution
+  metadata; `plot()` closes its figure after `plt.show()` under a non-interactive
+  backend.
 - **Supported Python is now 3.11-3.15.** Added 3.14 and 3.15 to the tested
   matrix and dropped 3.10 (end-of-life). `requires-python` is now `>=3.11`, and
   the package advertises 3.11-3.15 via trove classifiers.
@@ -20,10 +125,104 @@ and commit log.
   updated for pandas 3.0's copy-on-write (a `to_numpy` array is now read-only) and
   its changed `type()` repr.
 
+### Fixed
+- **Interior gaps (unmeasured rings) are handled as gaps everywhere.** `rcs` and
+  `mrcs` crashed on a series with an interior NaN, and `sfrcs`/`sfmrcs` shifted
+  every year after the gap by the gap length; a gap now advances cambial age as
+  the calendar does (CRUST/dplR behaviour), the gap years return NaN and later
+  years are unchanged. Position-based detrending fits (`ModNegExp`, `NegExp`,
+  `ModHugershoff`, `Hugershoff`, `GeneralExp`, the linear fits, `AgeDepSpline`)
+  use the true ring position across a gap instead of compressing the age axis,
+  so the old "gap compresses the age axis" warning is gone. Regional curves with
+  zero-coverage cambial ages are fit on the true age axis. `xdate_floater` and
+  `xdate_undated` keep the master on the dense year grid and correlate on
+  pairwise-complete pairs (an all-NaN reference year no longer misdates a
+  floater); `chron_stabilized` falls back to the sample depth where a window
+  has no qualifying pair (dplR's rule) instead of returning NaN.
+- **Unsorted or non-contiguous year indexes** were silently wrong in nine
+  functions (`xdate`, `check`, `series_corr`, `interseries_corr`, `fill_internal`,
+  `edit_rwl`, `xdate_floater`, `xdate_undated`, `normalize_for_crossdating`); the
+  index is now validated (sorted with a warning, duplicates raise). `write_rwl`
+  raises clearly on a non-contiguous index or duplicate column names.
+- `chron()` keeps zero-depth years (std NaN, `samp_depth` 0, as dplR) so
+  `chron_stabilized` no longer crashes on a chronology with a gap, and
+  `chron(stabilize=..., ci=True)` no longer raises KeyError. `chron_ars` no
+  longer emits statsmodels FutureWarnings or an IndexError on series shorter than
+  the AR order (they become a NaN column with a warning), and
+  `chron_ars(verbose=True)` prints the pooled ACF, coefficients, AIC and order it
+  claimed to. `stabilize_chron(method="rbar")` raises when the window exceeds the
+  chronology instead of silently degrading. `sens2` returns NaN for a zero-sum
+  series instead of dividing by zero.
+- All-NaN columns are dropped with a warning instead of crashing `detrend`,
+  `powt`, `ssf`, `stats`, `chron_ars` and `ar_func`; short series fall back to
+  the mean with a warning instead of raising from scipy or the banded solver;
+  `ads` requires at least four points; `rcs(min_n=)` larger than any depth raises
+  a clear error; `ssf(recode_zeros=True)` no longer modifies the caller's frame
+  (a package-wide non-mutation test now covers every public transform); `bai_out`
+  warns when `diam` would give negative basal area; `fill_internal(fill="Spline")`
+  clips filled values at zero and warns which series were clipped.
+- `xdate(ar_max=)` was ignored; `xdate_report` crashed on BC years and called the
+  deprecated `make_plot=`; `check` and `xdate_report` suppressed every warning
+  while running (now only the reader's provenance notes); an AR fit failure in
+  `xdate_report` silently reported order 0 (now a warning and a blank); the
+  COFECHA preset dropped series shorter than one window (now tested as a single
+  segment with the matching critical value); `get_bins` warns when no bin fits
+  so "0 problems" is never silent; `check`'s header-span check gave a false
+  positive on BC headers; `check` reports the exact count of lines carrying
+  characters beyond the last data column.
+- `.crn` files with BC years round-trip: `write_crn` writes dplR's layout and
+  `read_crn` detects it from the sign in column 6; `read_crn` warns when the
+  first data decade disagrees with the header's year range. `write_crn`
+  validates field widths (index below 10, depth 0 to 999), writes NaN depth as
+  0, and packs decimal-degree coordinates and metric elevation from
+  `SiteMetadata` back into the ITRDB DDMM/DDDMM and `%dM` fields. Tucson header
+  metadata is routed by record number, latitude/longitude is found when a bare
+  elevation precedes it (wa082), and a `#` inside a header line no longer drops
+  it (nm580). CSV reading accepts a `year` column in any case or an unnamed index
+  column, with clear errors otherwise. Whitespace-delimited and long-ID Tucson
+  files are read in strict mode too via the whitespace fallback; series IDs over
+  8 characters (7 with BC years) are truncated with a warning and kept unique;
+  `write_rwl` warns about negative values (the format cannot carry them) and
+  about values that collide with the stop code. The writer's gap sentinel
+  (`-999`, `-99`, `-9`) is reported on read as a gap sentinel and no longer
+  counted among dropped values. URL reads use the same encoding policy as local
+  files and a 30 s timeout. TRiDaS disjoint series land on a contiguous year
+  index and unrounded millimetres no longer claim `dplpy_precision=1.0`; a
+  single-series LiPD raw-width table is recovered by `from_lipd`.
+- `dpl.readme()` opened a dead URL; every docstring reference to the old
+  `opendendro.org/dplpy-man` host (and the literal Sphinx `:func:` roles) now
+  points at https://opendendro.github.io/dplPy/. `CITATION.cff` carries the
+  v0.8.0 version DOI. `cli.help()` advertised a `writers(input=, output=)`
+  signature that does not exist.
+
+### Deprecated
+- The old parameter names listed under *Changed* (`slide_period`, `seg_length`,
+  `win_length`, `max_lag`, `lag_max`, `period`, `nyrs`, `spline_nyrs`,
+  `stabilize_period`, `biweight_curve`, `biweight_crn`, `mad_threshold`,
+  `difference`, `ssf(method=<curve>)`, `normalize_for_crossdating(method=)`)
+  still work and emit a `DeprecationWarning`; they will be removed in v1.0.0.
+- `readers_url` (use `readers(url)`).
+
 ### Removed
+- `detrend.pick_first`, `curvefit.linear(bounds=)`, `chron.get_chron_info`,
+  `chron.get_whitened_chron_info`, `chron_ars._get_first_min`, `rbar.get_running_rbar`,
+  `rbar.mean_series_intercorrelation` and other internal duplicates folded into a
+  single implementation (`autoreg._prewhiten`/`_levinson`/`_first_aic_min`,
+  `rcs._align`/`_unalign`/`_resolve_po`/`_regional_curve`, `xdate._lag_table`/
+  `get_bins`/`_bin_bounds`, `rbar.running_rbar_vector`/`pairwise_corr_matrix`,
+  `stabilize._spline_component`, `smoothingspline.get_period`/`_caps`).
+- The dead `src/dplpy/MANIFEST.in` (sdist contents unchanged).
 - Python 3.10 support (reached end-of-life). Use Python 3.11 or newer.
 
 ### Performance
+- `chron()` is vectorized (ca533: 84 ms to 7 ms); running rbar
+  (`rbar.running_rbar_vector`) uses cumulative sums and `chron_ars(stabilize=)`
+  computes it once per matrix (ca533: 3.8 s to 0.6 s; `chron_stabilized` 2.1 s to
+  0.15 s); `xdate_floater(segmented=True)` is about 18x faster and
+  `xdate_undated` about 1.7x; `common_interval(type="years")` keeps a running
+  present-count (300 series: 28 s to under 1 s); `write_rwl` does one lookup per
+  series instead of per cell; reader provenance attrs stay small so column access
+  no longer deep-copies large lists.
 - **Faster biweight master and horizontal detrend.** `tbrm_rows` (the biweight
   row-mean behind the crossdating master, `chron`, and `chron_ars`) now takes
   each row's median with a single sort instead of `np.nanmedian`, which on a
@@ -35,6 +234,20 @@ and commit log.
   13 s and `xdate` from about 43 s to 16 s.
 
 ### Added
+- `chron(backcast=...)`; `chron_ars(prewhiten_method="burg")`;
+  `rwi_stats`/`rwi_stats_running(ar_max, ar_method, first_aic_min)`;
+  `xdate`/`series_corr`/`interseries_corr(ar_max, first_aic_min)`;
+  `sfrcs`/`sfmrcs(rescale_difference=...)`; `detrend(plot="sequential")`;
+  `rcs`-family `po` accepts a dict or Series and tolerates missing offsets (0
+  with a warning); `curvefit` fitters accept a true age axis `t=`;
+  `SiteMetadata.pack_crn_coordinates()`/`pack_crn_elevation()`;
+  `df.attrs["dplpy_skipped_lines"]`; `[project.urls]` on PyPI.
+- Test infrastructure: `tests/conftest.py` shared fixtures (`ca533_rwl`,
+  `ca533_rwi`, `co021_rwl`, `DATA`), `tests/unit/test_cli.py`,
+  `tests/unit/test_no_mutation.py` (a sweep asserting no public transform
+  modifies its input), `tests/data/README.md` documenting the provenance of
+  every test dataset, interior-NaN tests for every detrending and RCS function,
+  and `pytest` now runs from a plain checkout (`pythonpath = ["src"]`).
 - **TRiDaS (Tree Ring Data Standard) read and write.** `dpl.read_tridas`
   parses a TRiDaS XML file into a typed `TridasProject` (ring-width tables,
   derived chronologies, undated/floating series, and the full
@@ -96,6 +309,26 @@ and commit log.
   a port of CRUST's signal-free multiple-RCS. `reset_means=True` (default)
   restores each tree's one-curve mean; `sfmrcs(n_curves=1)` is identical to
   `sfrcs`.
+
+### Documentation
+- The docs index states that the site tracks the development branch and names
+  the released version. `xdate_undated` is documented (API reference,
+  floating-series guide, README, dplR map). The internal-gaps and detrending
+  guides describe the true-age-axis behaviour; the chronology, variance
+  stabilization and fidelity pages describe the ARSTAN chronology construction
+  and the AR order-selection difference from R's `ar()`. Guides, README and
+  notebooks use the new parameter names and return shapes. Rewritten
+  `dev-instructions.md` (src layout, setup, tests, lint, docs build, optional
+  `mike` versioned docs) and `release-instructions.md` (CHANGELOG step, version
+  DOI step, PyPI trusted publishing); new `tests/integs/README.md`.
+- Packaging and CI: SPDX `license = "GPL-3.0-or-later"` with `license-files`
+  and `setuptools>=77` (the wheel metadata no longer embeds the GPL text); the
+  release workflow uses trusted publishing, `actions/checkout@v4` and
+  `softprops/action-gh-release@v2` with the tag and notes derived from the
+  release branch and CHANGELOG; CI installs the `[lipd]` extra on Python 3.13
+  and runs `ruff check`; the pandas `<3` cap is removed from the 3.11/3.12
+  requirement files to match `pyproject.toml`; `environment.yml` installs the
+  package in editable mode with `pytest-cov` and `ruff`.
 
 ## [0.8.0] - 2026-10-12
 
@@ -347,5 +580,6 @@ and commit log.
 - Added narrative guides and reference pages (mkdocs + mkdocstrings), and updated
   the README, citation/DOI metadata, and background references.
 
-[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OpenDendro/dplPy/compare/v0.6.0...v0.7.0

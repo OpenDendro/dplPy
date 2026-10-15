@@ -99,7 +99,7 @@ def glk(data, overlap=50, prob=True):
     .. [1] Schweingruber, F.H. (1988) Tree Rings. Kluwer.
     .. [2] Visser, R.M. (2021) On the similarity of tree-ring patterns:
            Journal of Archaeological Science 125.
-    .. [3] https:/opendendro.org/dplpy-man/#glk
+    .. [3] https://opendendro.github.io/dplPy/reference/statistics/#glk
     """
     names, signs = _prep(data, overlap, prob)
     n = len(names)
@@ -124,7 +124,7 @@ def glk(data, overlap=50, prob=True):
 def sgc(data, overlap=50, prob=True):
     """Synchronous and semi-synchronous growth changes between all pairs.
 
-    A decomposition of :func:`glk`: ``sgc`` is the proportion of shared intervals
+    A decomposition of `glk()`: ``sgc`` is the proportion of shared intervals
     in which two series move in the *same* direction, and ``ssgc`` the proportion
     in which exactly one is flat. A port of dplR's ``sgc``.
 
@@ -159,7 +159,7 @@ def sgc(data, overlap=50, prob=True):
     ----------
     .. [1] Visser, R.M. (2021) On the similarity of tree-ring patterns:
            Journal of Archaeological Science 125.
-    .. [2] https:/opendendro.org/dplpy-man/#sgc
+    .. [2] https://opendendro.github.io/dplPy/reference/statistics/#sgc
     """
     names, signs = _prep(data, overlap, prob)
     n = len(names)

@@ -11,7 +11,7 @@ def mock_readers_output(file_name):
     if file_name == "valid_file":
         return pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
 
@@ -24,7 +24,7 @@ _m_readers = importlib.import_module("dplpy.readers")
 @patch.object(_m_readers, 'readers')
 def test_stats_with_inp_string(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
-    
+
     expected_df = pd.DataFrame(data={"series": ["SeriesA", "SeriesB"],
                                      "first": [1, 1],
                                      "last": [8, 8],
@@ -47,7 +47,7 @@ def test_stats_with_inp_string(mock_readers: Mock):
 @patch.object(_m_readers, 'readers')
 def test_stats_with_inp_df(mock_readers: Mock):
     mock_readers.side_effect = mock_readers_output
-    
+
     expected_df = pd.DataFrame(data={"series": ["SeriesA", "SeriesB"],
                                      "first": [1, 1],
                                      "last": [8, 8],
@@ -61,10 +61,10 @@ def test_stats_with_inp_df(mock_readers: Mock):
                                      "ar1": [0.625, 0.625]
                                      },
                                 index=[1, 2])
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
     results = dpl.stats(input_df)
@@ -109,3 +109,20 @@ def test_get_ar1_is_lag1_autocorrelation():
     # matches statsmodels' acf(adjusted=False) at lag 1
     from statsmodels.tsa.stattools import acf
     assert get_ar1(x) == pytest.approx(acf(y, nlags=1, adjusted=False, fft=False)[1])
+
+
+def test_stats_drops_all_nan_series_with_warning_and_year_is_span():
+    # B1: an all-NaN column (e.g. after a year slice) is dropped with a warning
+    # instead of raising TypeError; G9: 'year' is the span first..last, not the
+    # ring count (a series with an interior gap keeps its full span)
+    import numpy as np
+    df = pd.DataFrame({"A": [0.1, 0.3, np.nan, 0.7, 0.9, 1.1, 1.3, 1.5],
+                       "B": [np.nan] * 8},
+                      index=pd.Index(range(1, 9), name="Year"))
+    with pytest.warns(UserWarning, match="all NaN"):
+        res = dpl.stats(df)
+    assert list(res["series"]) == ["A"]
+    assert res["year"].iloc[0] == 8                     # span, with the gap inside
+    assert df["A"].notna().sum() == 7                   # ring count differs
+    with pytest.raises(ValueError):
+        dpl.stats(pd.DataFrame({"B": [np.nan] * 8}, index=pd.Index(range(1, 9), name="Year")))

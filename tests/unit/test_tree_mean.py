@@ -113,3 +113,11 @@ def test_feeds_chron_on_ca533():
         crn = dpl.chron(trees, biweight=False, prewhiten=False, plot=False)
     assert list(crn.columns) == ["std", "samp_depth"]
     assert int(crn["samp_depth"].max()) <= trees.shape[1]
+
+
+def test_tree_mean_carries_attrs_as_rwl():
+    rwl = _rwl()
+    rwl.attrs.update({"dplpy_precision": 0.1, "kind": "rwl", "site": "x"})
+    out = dpl.tree_mean(rwl, _ids(), na_rm=True)
+    assert out.attrs["kind"] == "rwl"
+    assert out.attrs["dplpy_precision"] == 0.1 and out.attrs["site"] == "x"

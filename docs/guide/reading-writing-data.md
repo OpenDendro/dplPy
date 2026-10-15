@@ -116,8 +116,12 @@ both = dpl.combine_rwl(site_a, site_b)
 output `format` — `"rwl"` (Tucson), `"crn"`, or `"csv"`:
 
 ```python
-dpl.writers(rwl, label="ca533_clean", format="rwl", prec=0.001)
+path = dpl.writers(rwl, label="ca533_clean", format="rwl", prec=0.001)
+print(path)        # 'ca533_clean.rwl'
 ```
+
+`writers` returns the path of the file it wrote (and no longer prints a
+confirmation), so it composes quietly in scripts.
 
 For `.rwl` output, `prec` sets the measurement precision (`0.001` writes values
 ×1000 with a `-9999` end marker; `0.01` writes ×100 with a `999` marker), and

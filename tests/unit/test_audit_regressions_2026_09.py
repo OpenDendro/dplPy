@@ -39,12 +39,12 @@ def test_chron_stabilized_default_min_seg_ratio_is_one_third():
 
 
 # --- A3 #10: PART 5 critical value is derived from the window, not hardcoded --
-def _minimal_rep(slide_period, preset="COFECHA"):
+def _minimal_rep(window_length, preset="COFECHA"):
     return {
         "seg_corr": pd.DataFrame(),
         "flags": {},
         "bins": [],
-        "slide_period": slide_period,
+        "window_length": window_length,
         "avg_seg_corr": None,
         "preset": preset,
     }

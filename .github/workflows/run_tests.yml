@@ -9,6 +9,11 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"] # Goal is to run tests for different python versions
+        include:
+          # The LiPD extra (pylipd) is installed on one matrix entry so the
+          # to_lipd/from_lipd/lipd_metadata tests run rather than skip.
+          - python-version: "3.13"
+            extras: "[lipd]"
 
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +33,13 @@ jobs:
           pip install -r ${{ matrix.python-version }}-requirements.txt
           pip install pytest pytest-cov
           pip install ruff
-          pip install -e .
+          pip install -e ".${{ matrix.extras }}"
+      # Lint findings are reported as annotations but do not fail the build yet
+      # (continue-on-error). Rules live in [tool.ruff] in pyproject.toml. Drop
+      # continue-on-error once the existing findings are cleared.
       - name: Lint with Ruff
         run: |
-          ruff --output-format=github .
+          ruff check --output-format=github .
         continue-on-error: true
       - name: Run unit tests
         run: |

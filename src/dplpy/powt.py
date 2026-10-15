@@ -38,6 +38,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from ._validate import _normalize_choice, _drop_allnan_columns, _carry_attrs
+
 
 def _skew(x):
     """Population (g1) skewness of the non-NaN values, matching ARSTAN's moment
@@ -181,7 +183,8 @@ def _powt_diagnostic_plot(stats):
         axs[1, col].set_ylim(lo, hi)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     finalize_font(fig)
-    plt.show()
+    from .detrend import _finish_figure
+    _finish_figure(fig)
     return fig
 
 
@@ -206,9 +209,11 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
     ----------
     rwl : pandas.DataFrame or pandas.Series
         ring-width series (raw, non-negative), years as the index. A Series is
-        allowed only with method='cook'.
+        allowed only with method='cook'. Series with no measured values are dropped
+        with a warning.
     method : {"cook", "universal"}, default "cook"
         per-series ('cook') or single mixed-model power ('universal').
+        Case-insensitive.
     rescale : bool, default False
         if True, rescale each transformed series back to its original mean and
         standard deviation.
@@ -225,9 +230,11 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
 
     Returns
     -------
-    transformed data of the same type as ``rwl``. With ``return_power`` and/or
-    ``return_stats`` the return becomes a tuple: ``(data, power)``,
-    ``(data, stats)``, or ``(data, power, stats)`` (power first, stats last).
+    transformed data of the same type as ``rwl`` (tagged ``attrs["kind"] =
+    "rwl_powt"`` and carrying the input's provenance attrs). With
+    ``return_power`` and/or ``return_stats`` the return becomes a tuple:
+    ``(data, power)``, ``(data, stats)``, or ``(data, power, stats)`` (power
+    first, stats last).
 
     Notes
     -----
@@ -252,17 +259,24 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
     if not (isinstance(rwl, pd.DataFrame) or is_series):
         raise TypeError("Expected a pandas DataFrame or Series, got "
                         + str(rwl.__class__) + " instead.")
-    if method not in ("cook", "universal"):
-        raise ValueError("method must be 'cook' or 'universal', got '" + str(method) + "'.")
+    method = _normalize_choice(method, ("cook", "universal"), "method")
+    if not is_series:
+        rwl = _drop_allnan_columns(rwl, "rwl")
     vals = rwl.to_numpy(dtype=float)
+    if vals.size == 0 or np.all(np.isnan(vals)):
+        raise ValueError("'rwl' has no measured values.")
     if np.nanmin(vals) < 0:
         raise ValueError("'rwl' values cannot be negative.")
     if is_series and method != "cook":
         raise ValueError("If rwl is a Series, method must be 'cook'.")
 
     if method == "cook":
-        return _powt_cook(rwl, is_series, rescale, return_power, plot, return_stats)
-    return _powt_universal(rwl, rescale, return_power, plot, return_stats)
+        out = _powt_cook(rwl, is_series, rescale, return_power, plot, return_stats)
+    else:
+        out = _powt_universal(rwl, rescale, return_power, plot, return_stats)
+    result = out[0] if isinstance(out, tuple) else out
+    _carry_attrs(rwl, result, kind="rwl_powt")
+    return out
 
 
 def _finish(result, power, stats, return_power, return_stats, plot):

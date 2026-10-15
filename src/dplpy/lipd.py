@@ -318,7 +318,6 @@ def to_lipd(chron, filename, rwl=None, metadata=None, dsname=None,
     if rwl is not None and not isinstance(rwl, pd.DataFrame):
         raise TypeError("rwl must be a pandas DataFrame of ring widths or None.")
     chron_cols = _resolve_chronologies(chron, column, chronologies)
-    primary_col = chron_cols[0][0]
 
     # -- site metadata (auto from rwl if not given) ------------------------- #
     if metadata is not None:
@@ -522,7 +521,7 @@ def from_lipd(filename):
             chronologies[key] = frame
             if headline is None or trsgi_vars[0].isPrimary():
                 headline = frame
-        elif len(rw_vars) >= 2 and rwl is None:            # a raw-width table
+        elif len(rw_vars) >= 1 and rwl is None:            # a raw-width table (1+ series)
             data = {}
             for v in sorted(rw_vars, key=lambda v: v.getColumnNumber() or 0):
                 m = re.search(r"series\s+(\S+)", v.getDescription() or "")

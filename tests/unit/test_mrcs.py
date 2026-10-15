@@ -123,3 +123,45 @@ def test_mrcs_bad_args():
         _mrcs(rwl, po=po, sort="bogus", plot=False)
     with pytest.raises(TypeError):
         _mrcs("not a frame", plot=False)
+
+
+# --- v0.9.0 audit follow-ups ------------------------------------------------
+
+def test_mrcs_interior_gap_runs_and_keeps_years():
+    # A1: an interior NaN used to crash mrcs ("setting an array element with a
+    # sequence"); now it stays NaN and later years keep their own values.
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    g = rwl.copy()
+    g.loc[[1630, 1631, 1632], "CAM011"] = np.nan
+    full = _mrcs(rwl, n_curves=2, plot=False)["CAM011"]
+    gap = _mrcs(g, n_curves=2, plot=False)["CAM011"]
+    assert gap.loc[[1630, 1631, 1632]].isna().all()
+    post = full.index > 1632
+    same = np.nanmax(np.abs(full[post].to_numpy() - gap[post].to_numpy()))
+    shifted = np.nanmax(np.abs(full[post].to_numpy()[3:] - gap[post].to_numpy()[:-3]))
+    assert same < 5e-3 and shifted > 0.5
+
+
+def test_mrcs_period_alias_sort_case_and_attrs():
+    rwl, po = _gp()
+    rwl.attrs.update({"dplpy_precision": 0.01, "kind": "rwl"})
+    with pytest.warns(DeprecationWarning, match="period="):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            a = dpl.mrcs(rwl, po=po, n_curves=2, fit="Spline", period=0.1, plot=False)
+    b = _mrcs(rwl, po=po, n_curves=2, fit="Spline", spline_period=0.1, plot=False)
+    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
+    c = _mrcs(rwl, po=po, n_curves=2, sort="GROWTH", plot=False)      # D11
+    d = _mrcs(rwl, po=po, n_curves=2, sort="growth", plot=False)
+    assert np.allclose(c.to_numpy(), d.to_numpy(), equal_nan=True)
+    assert c.attrs["kind"] == "rwi" and "dplpy_precision" not in c.attrs
+
+
+def test_mrcs_po_as_dict_missing_series_warns():
+    rwl, _ = _gp()
+    with pytest.warns(UserWarning, match="no pith offset"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            warnings.filterwarnings("always", message=".*no pith offset.*")
+            rwi = dpl.mrcs(rwl, po={rwl.columns[0]: 3}, n_curves=2, plot=False)
+    assert rwi.shape == rwl.shape

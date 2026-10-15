@@ -68,3 +68,12 @@ def test_sss_rises_with_sample_depth():
     df.iloc[:40, [1, 2]] = np.nan
     s = dpl.sss(df, corr="Pearson")
     assert s.iloc[0] < s.iloc[-1]
+
+
+def test_sss_corr_default_lowercase_and_case_insensitive():
+    import inspect
+    assert inspect.signature(dpl.sss).parameters["corr"].default == "spearman"
+    df = _synthetic()
+    a = dpl.sss(df, corr="pearson")
+    b = dpl.sss(df, corr="PEARSON")
+    pd.testing.assert_series_equal(a, b)

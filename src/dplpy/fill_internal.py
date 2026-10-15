@@ -35,7 +35,8 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import (_require_dataframe, _require_year_index, _normalize_choice,
+                        _carry_attrs, _warn)
 
 _SIMPLE_METHODS = ("Mean", "Spline", "Linear")
 
@@ -119,11 +120,14 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
     data : pandas dataframe
         ring widths (or indices), years as the index and series as columns.
     fill : {"Mean", "Spline", "Linear", "ARSTAN"} or a number, default "Mean"
-        how to fill each interior gap:
+        how to fill each interior gap (case-insensitive):
 
         - "Mean"   : the series' mean (flat fill).
         - "Linear" : straight-line interpolation between the flanking values.
-        - "Spline" : cubic-spline interpolation through the present values.
+        - "Spline" : cubic-spline interpolation through the present values. A
+          spline can overshoot below zero next to a small ring; such values are
+          clipped to 0 (a ring width cannot be negative) and the series named in
+          a warning, so the fill can be reviewed.
         - a number : that constant value.
         - "ARSTAN" : impute each missing ring from the common (mean) chronology
           signal, moment-matched to the series and modulated by its growth curve
@@ -138,7 +142,8 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
     Returns
     -------
     out : pandas dataframe, same shape/index/columns as `data`, with interior
-        gaps filled.
+        gaps filled. The input's ``attrs`` (metadata, precision, provenance) are
+        kept: the result is still raw widths.
 
     Notes
     -----
@@ -146,17 +151,19 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
     hole -- so use them when you need an NaN-free series for a downstream step, not
     as if the filled values were measured. "ARSTAN" instead borrows the shared
     year-to-year signal from all series.
+
+    References
+    ----------
+    .. [1] https://opendendro.github.io/dplPy/reference/utilities/#fill_internal
     """
     _require_dataframe(data)
+    data = _require_year_index(data, "data")
 
     # Resolve the fill mode: a number (constant), "ARSTAN", or a simple method.
     if isinstance(fill, str):
-        if fill == "ARSTAN":
+        mode = _normalize_choice(fill, _SIMPLE_METHODS + ("ARSTAN",), "fill")
+        if mode == "ARSTAN":
             return _fill_arstan(data, **kwargs)
-        if fill not in _SIMPLE_METHODS:
-            raise ValueError('fill must be one of "Mean", "Spline", "Linear", '
-                             '"ARSTAN", or a number; got ' + repr(fill))
-        mode = fill
         const = None
     elif isinstance(fill, (int, float, np.integer, np.floating)) and not isinstance(fill, bool):
         mode = "Constant"
@@ -166,25 +173,36 @@ def fill_internal(data: pd.DataFrame, fill="Mean", **kwargs):
                          '"ARSTAN", or a number; got ' + repr(fill))
 
     out = data.copy()
+    clipped = []
     for col in out.columns:
-        out[col] = _fill_series_simple(out[col].to_numpy(dtype=float), mode, const)
-    return out
+        filled, n_clip = _fill_series_simple(out[col].to_numpy(dtype=float), mode, const)
+        out[col] = filled
+        if n_clip:
+            clipped.append("%s (%d)" % (col, n_clip))
+    if clipped:
+        _warn("fill_internal: the spline fill went below zero and was clipped to 0 "
+              "in %d series (count of clipped values in brackets): %s. Review these "
+              "fills -- a small ring next to the gap makes the spline overshoot."
+              % (len(clipped), ", ".join(clipped)))
+    return _carry_attrs(data, out, kind="rwl", keep_measurement=True)
 
 
 def _fill_series_simple(x, mode, const):
     """Fill interior NaN of one series (a 1-D float array) by `mode`. Positions
     are unit-spaced indices within the interior span, matching dplR's use of
-    which(!is.na) as the interpolation abscissa."""
+    which(!is.na) as the interpolation abscissa. Returns ``(filled, n_clipped)``
+    where ``n_clipped`` counts spline fills clipped at 0 (audit A20)."""
     x = x.copy()
+    n_clip = 0
     ok = np.flatnonzero(~np.isnan(x))
     if ok.size <= 1:
-        return x
+        return x, n_clip
     first, last = ok[0], ok[-1]
     span = np.arange(first, last + 1)
     seg = x[span]
     na = np.isnan(seg)
     if not na.any():                       # no interior gaps
-        return x
+        return x, n_clip
 
     good = np.flatnonzero(~na)             # positions within the span
     bad = np.flatnonzero(na)
@@ -195,10 +213,14 @@ def _fill_series_simple(x, mode, const):
     elif mode == "Linear":
         seg[bad] = np.interp(bad, good, seg[good])
     elif mode == "Spline":
-        # R's spline() default method "fmm" (matches dplR fill.internal.NA).
-        seg[bad] = _fmm_spline(good, seg[good], bad)
+        # R's spline() default method "fmm" (matches dplR fill.internal.NA). dplR
+        # returns the raw spline, which can dip below zero beside a very small
+        # ring; a ring width cannot be negative, so clip at 0 and report it.
+        vals = _fmm_spline(good, seg[good], bad)
+        n_clip = int(np.sum(vals < 0))
+        seg[bad] = np.maximum(vals, 0.0)
     x[span] = seg
-    return x
+    return x, n_clip
 
 
 def _runs_of_nan(col, first, last):
@@ -322,7 +344,7 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
         m_index = seg / np.where(trend <= 0, np.nan, trend)
         if stabilize:
             C[mspan] = _spline_stabilize(m_index, depth[mspan],
-                                         spline_nyrs=stabilize_nyrs)
+                                         spline_period=stabilize_nyrs)
         else:
             C[mspan] = m_index
 
@@ -360,4 +382,5 @@ def _fill_arstan(data, growth_nyrs=20, long_gap=20, flank=10, biweight=True,
                     r = 0.0
                 out[t, s] = r * g[t]                        # back to width units
 
-    return pd.DataFrame(out, index=df.index, columns=df.columns)
+    res = pd.DataFrame(out, index=df.index, columns=df.columns)
+    return _carry_attrs(data, res, kind="rwl", keep_measurement=True)

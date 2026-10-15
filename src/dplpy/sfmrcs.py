@@ -35,26 +35,26 @@ __license__ = "GNU GPLv3"
 #              mean to recover low-frequency variance. sfmrcs(n_curves=1) is
 #              identical to sfrcs().
 
-import warnings
-
 import numpy as np
 import pandas as pd
 
-from ._validate import _require_dataframe, _plot_kwarg
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
+                        _normalize_choice)
 from .detrend import _normalize_method
-from .rcs import _sfrcs_run, _build_rwca, _crust_regional_curve, _row_biweight
-from .mrcs import _allocate, _po_map, _plot_mrcs
-from .sfrcs import sfrcs
+from .rcs import _sfrcs_run, _resolve_po, _as_rwi_frame
+from .mrcs import _allocate, _plot_mrcs, _SORTS
+from .sfrcs import sfrcs, _sf_options, _curve_settings
 
 
 def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
-           method="ratio", biweight_curve=False, biweight_crn=False,
-           ss=10, rise=None, max_iterations=40, tol=1e-3,
-           reset_means=True, plot=True, return_info=False, verbose=True,
-           **kwargs):
+           fit="AgeDepSpline", method="ratio", spline_period=0.1, nyrs0=50,
+           f=0.5, pos_slope=False, biweight=False, min_n=None, preset="crust",
+           ss=10, rise=None, max_iterations=40, tol=1e-3, reset_means=True,
+           rescale_difference=False, plot=True, return_info=False,
+           verbose=True, **kwargs):
     """Signal-Free multiple-curve Regional Curve Standardisation.
 
-    Combine :func:`sfrcs` (signal-free iteration) with :func:`mrcs` (multiple
+    Combine `sfrcs()` (signal-free iteration) with `mrcs()` (multiple
     curves): sort trees by growth rate into ``n_curves`` equal-count classes, then
     iteratively rebuild each class's regional curve from measurements that have had
     the current chronology divided out, while forming the tree indices from the
@@ -67,19 +67,27 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
     ----------
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
-    po : pandas.DataFrame or None, default None
-        pith offsets (true offset, 0 = pith present), as in :func:`rcs`.
+    po : pandas.DataFrame, dict, Series or None, default None
+        pith offsets (true offset, 0 = pith present), as in `rcs()`.
     n_curves : int, default 2
-        number of regional curves. ``1`` reduces exactly to :func:`sfrcs`.
+        number of regional curves. ``1`` reduces exactly to `sfrcs()`.
     sort : {"growth", "age", "diameter", "none"}, default "growth"
-        how trees are ranked before the equal-count split (see :func:`mrcs`).
+        how trees are ranked before the equal-count split (see `mrcs()`).
+    fit, spline_period, nyrs0, f, pos_slope, min_n, preset, ss, rise :
+        the regional-curve settings, identical to `sfrcs()` (``preset="crust"``
+        by default; ``period=`` is a deprecated alias of ``spline_period``).
     method : {"ratio", "difference"}, default "ratio"
         ratio (division) or difference (subtraction) indices.
-    biweight_curve, biweight_crn, ss, rise, max_iterations, tol, verbose :
-        the signal-free settings, identical to :func:`sfrcs`.
+    biweight, max_iterations, tol, verbose :
+        the signal-free settings, identical to `sfrcs()` (``biweight_curve=`` /
+        ``biweight_crn=`` are deprecated aliases of ``biweight``).
     reset_means : bool, default True
         restore each tree's one-curve mean (ratios only; skipped with a warning
         for ``method="difference"``).
+    rescale_difference : bool, default False
+        ``method="difference"`` only: rescale residual indices onto the ratio
+        scale, as in `sfrcs()` (needed for signal-free difference indices; see
+        there). Before 0.9.0 the rescale was always applied.
     plot : bool, default True
         draw the per-class regional-curve figure (``make_plot=`` is a deprecated
         alias).
@@ -93,7 +101,7 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
         ``return_info=True``, a dict with ``rwi``, ``sfc`` (the signal-free
         chronology + sample depth), ``samp_depth``, ``conv`` (per-iteration max
         change), ``n_iter``, ``converged``, ``rc`` (list of per-class regional
-        curves) and ``alloc`` (series -> class).
+        curves that produced ``rwi``) and ``alloc`` (series -> class).
 
     References
     ----------
@@ -102,74 +110,49 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
+    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "sfmrcs")
+    biweight = _sf_options(kwargs, biweight, max_iterations, "sfmrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)
-    if sort not in ("growth", "age", "diameter", "none"):
-        raise ValueError("sort must be 'growth', 'age', 'diameter', or 'none', "
-                         "got '" + str(sort) + "'.")
+    sort = _normalize_choice(sort, _SORTS, "sort")
     n_curves = int(n_curves)
     if n_curves < 1:
         raise ValueError("n_curves must be >= 1, got %d." % n_curves)
-    if int(max_iterations) < 1:
-        raise ValueError("max_iterations must be >= 1.")
+    curve = _curve_settings(fit, spline_period, nyrs0, f, pos_slope, preset, ss,
+                            rise, min_n)
 
     # n_curves == 1 is exactly single-curve signal-free RCS
     if n_curves == 1:
-        return sfrcs(rwl, po=po, method=method, biweight_curve=biweight_curve,
-                     biweight_crn=biweight_crn, ss=ss, rise=rise,
+        return sfrcs(rwl, po=po, method=method, biweight=biweight,
                      max_iterations=max_iterations, tol=tol, plot=plot,
-                     return_info=return_info, verbose=verbose)
+                     return_info=return_info, verbose=verbose,
+                     rescale_difference=rescale_difference, **curve)
 
     if reset_means and method != "ratio":
-        warnings.warn("sfmrcs: reset_means is only applied with method='ratio'; "
-                      "skipped for method='difference'.")
+        _warn("sfmrcs: reset_means is only applied with method='ratio'; "
+              "skipped for method='difference'.")
     do_reset = reset_means and method == "ratio"
 
     cols = list(rwl.columns)
     M = rwl.to_numpy(dtype=float)
-    po_map = _po_map(rwl, po)
-    alloc, groups = _allocate(rwl, po_map, n_curves, sort, label="sfmrcs")
+    po_arr = _resolve_po(rwl, po, label="sfmrcs")
+    alloc, groups = _allocate(rwl, po_arr, n_curves, sort, label="sfmrcs")
 
-    idx, crn, samp_depth, history, n_iter, converged = _sfrcs_run(
-        M, cols, po_map, ratios=(method == "ratio"),
-        biweight_curve=biweight_curve, biweight_crn=biweight_crn, ss=ss,
-        rise=rise, max_iterations=int(max_iterations), tol=float(tol),
-        verbose=verbose, alloc=alloc, reset_means=do_reset)
+    run = _sfrcs_run(M, po_arr, method=method, biweight=biweight, curve=curve,
+                     max_iterations=int(max_iterations), tol=float(tol),
+                     verbose=verbose, alloc=alloc, reset_means=do_reset,
+                     rescale_difference=rescale_difference, label="sfmrcs")
+    rwi = _as_rwi_frame(rwl, run["rwi"])
+    rc_list = run["rc_list"]
 
-    rwi = rwl.copy().astype(float)
-    rwi.iloc[:, :] = idx
-
-    if plot or return_info:
-        # rebuild each class's final regional curve from the converged
-        # signal-free measurements (as sfrcs does for its single curve)
-        present = ~np.isnan(M)
-        po_arr = np.array([int(po_map[c]) for c in cols])
-        counts = present.sum(axis=0)
-        nrow = int(counts.max()) + int(po_arr.max())
-        qok = (present.sum(axis=1) > 1)
-        div = present & qok[:, None] & (crn[:, None] >= 0.01)
-        fx = np.where(div, M / np.where(crn == 0, np.nan, crn)[:, None], M)
-        fx[~present] = np.nan
-        rwca_sf = _build_rwca(fx, po_arr, nrow)
-        rise_flag = (nrow > 1500) if rise is None else bool(rise)
-        row_mean = _row_biweight if biweight_curve else (
-            lambda a: np.nanmean(np.where(np.isnan(a), np.nan, a), axis=1))
-        rc_list = []
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            for gi in range(len(groups)):
-                sel = np.where(alloc == gi)[0]
-                sub = rwca_sf[:, sel]
-                rc_list.append(_crust_regional_curve(
-                    row_mean(sub), np.sum(~np.isnan(sub), axis=1), nrow,
-                    ss=ss, rise=rise_flag))
-        if plot:
-            _plot_mrcs(rc_list)
+    if plot:
+        _plot_mrcs(rc_list)
 
     if return_info:
-        sfc = pd.DataFrame({"sfc": crn, "samp.depth": samp_depth}, index=rwl.index)
-        return {"rwi": rwi, "sfc": sfc, "samp_depth": samp_depth,
-                "conv": np.asarray(history), "n_iter": n_iter,
-                "converged": converged, "rc": rc_list,
+        sfc = pd.DataFrame({"sfc": run["crn"], "samp.depth": run["samp_depth"]},
+                           index=rwl.index)
+        return {"rwi": rwi, "sfc": sfc, "samp_depth": run["samp_depth"],
+                "conv": np.asarray(run["history"]), "n_iter": run["n_iter"],
+                "converged": run["converged"], "rc": rc_list,
                 "alloc": {cols[i]: int(alloc[i]) for i in range(len(cols))}}
     return rwi

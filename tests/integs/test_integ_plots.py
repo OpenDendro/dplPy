@@ -1,3 +1,5 @@
+import warnings
+
 import matplotlib
 matplotlib.use("Agg")                                     # headless: no display
 import matplotlib.pyplot as plt
@@ -9,16 +11,16 @@ import dplpy as dpl
 # unit tests; here we just exercise both file formats end to end.)
 
 
-def _datasets():
-    ca533 = dpl.readers("./tests/data/csv/ca533.csv")
-    ca667 = dpl.readers("./tests/data/rwl/ca667.rwl", header=True)
-    return ca533, ca667
-
-
-def test_all_plot_types_run():
-    for data in _datasets():
+def test_all_plot_types_run(ca533_rwl, DATA):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ca667 = dpl.readers(str(DATA / "rwl" / "ca667.rwl"), header=True)
+    for data in (ca533_rwl, ca667):
         for t in ("line", "spag", "seg"):
             plt.close("all")
-            dpl.plot(data, type=t)
-            assert len(plt.get_fignums()) >= 1, t
+            fig, ax = dpl.plot(data, type=t)
+            assert isinstance(fig, plt.Figure), t
+            assert len(ax.lines) > 0, t                   # something was drawn
+            # under Agg, plot() closes what it "showed": no leaked figures
+            assert plt.get_fignums() == [], t
     plt.close("all")

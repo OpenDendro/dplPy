@@ -2,8 +2,6 @@
 # Clean data stays quiet; each planted defect raises its own finding; the
 # engine never stops on a failing check; file-level and summary paths work.
 
-import io
-import contextlib
 import warnings
 
 import numpy as np
@@ -155,3 +153,84 @@ def test_reads_a_path_and_runs():
         f = dpl.check(path)
     assert (f["severity"] == "error").sum() == 0
     assert isinstance(f, pd.DataFrame)
+
+
+# --- v0.9.0 audit follow-ups ---------------------------------------------------
+
+def test_dating_lag_sign_negative_means_missing_ring():
+    # A9/E10: check's lag scan is xdate._lag_table (master slides, series fixed),
+    # so a series with a ring REMOVED (its earlier rings now dated a year too late)
+    # correlates best with the master at lag -1, as xdate and COFECHA report it.
+    df = _clean()
+    v = df["T05"].to_numpy().copy()
+    df["T05"] = np.concatenate([[np.nan], np.delete(v, 270)])   # last year stays dated
+    f = dpl.check(df)
+    hit = f[(f["check"] == "RWL_DATING_LAG") & (f["series"] == "T05")]
+    assert len(hit) == 1
+    assert int(hit.iloc[0]["value"]) == -1
+    assert "missing ring" in hit.iloc[0]["message"]
+    # and the mirror image: a duplicated (false) ring gives +1
+    df = _clean()
+    v = df["T06"].to_numpy().copy()
+    df["T06"] = np.insert(v, 270, v[270])[1:]                   # drop the oldest to fit
+    f = dpl.check(df)
+    hit = f[(f["check"] == "RWL_DATING_LAG") & (f["series"] == "T06")]
+    assert len(hit) == 1 and int(hit.iloc[0]["value"]) == 1
+
+
+def test_unsorted_index_matches_sorted():
+    # A4: shuffled rows used to make check report RWL_UNCHECKABLE instead of the
+    # planted RWL_DATING_LAG; the index is now sorted first (with a warning).
+    df = _clean()
+    s = df["T05"].copy()
+    s.index = s.index + 1
+    df["T05"] = s.reindex(df.index)
+    ref = dpl.check(df, file="x")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        got = dpl.check(df.sample(frac=1.0, random_state=0), file="x")
+    assert any("not sorted" in str(m.message) for m in w)
+    pd.testing.assert_frame_equal(ref, got)
+    assert ((got["check"] == "RWL_DATING_LAG") & (got["series"] == "T05")).any()
+
+
+def test_lag_and_spline_period_aliases():
+    # D3: lag_max= and spline_nyrs= are deprecated aliases of lag= and spline_period=
+    df = _clean()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        old = dpl.check(df, file="x", lag_max=5, spline_nyrs=32)
+    assert sum(isinstance(m.message, DeprecationWarning) for m in w) == 2
+    new = dpl.check(df, file="x", lag=5, spline_period=32)
+    pd.testing.assert_frame_equal(old, new)
+    with pytest.raises(TypeError):
+        dpl.check(df, bogus=1)
+
+
+def test_header_span_regex_handles_bc_years(tmp_path):
+    # G7: the ITRDB header span regex must read negative (BC) years, so nm580's
+    # "-136 2004" header no longer reports a false RWL_HEADER_SPAN.
+    from dplpy.check import _itrdb_span
+    assert _itrdb_span(["SITE  Some site name          PIED",
+                        "SITE  New Mexico  Pinyon  2000M  3500N 10800W      -136 2004",
+                        "SITE  Somebody                  "]) == (-136, 2004)
+    assert _itrdb_span(["AAA   Site name                PIED",
+                        "AAA   Place      PIED  1000M  3500N 10800W        1500 2004",
+                        "AAA   Someone"]) == (1500, 2004)
+    import os
+    here = os.path.dirname(__file__)
+    path = os.path.join(here, "..", "data", "rwl", "nm580.rwl")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        f = dpl.check(path, checks=["file"])
+    assert not (f["check"] == "RWL_HEADER_SPAN").any()
+
+
+def test_reader_warnings_are_not_blanket_suppressed():
+    # G3: only the reader diagnostics that become findings are silenced; a
+    # DeprecationWarning raised while checking still reaches the caller.
+    df = _clean()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        dpl.check(df, lag_max=5)
+    assert any(isinstance(m.message, DeprecationWarning) for m in w)

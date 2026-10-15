@@ -75,3 +75,21 @@ def test_errors():
 
 def test_exported():
     assert hasattr(dpl, "combine_rwl")
+
+
+def test_combine_carries_attrs_and_merges_precision():
+    # G10: attrs come from the first input (kind 'rwl'), per-series precision dicts
+    # are merged across inputs and the mixed flag recomputed.
+    a = _df({"A": [1.0, 2.0]}, [2001, 2002])
+    a.attrs.update({"dplpy_metadata": {"site_id": "AAA"}, "dplpy_precision": {"A": 0.01},
+                    "dplpy_mixed_precision": False, "kind": "rwl"})
+    b = _df({"B": [3.0, 4.0]}, [2002, 2003])
+    b.attrs.update({"dplpy_precision": {"B": 0.001}})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = dpl.combine_rwl(a, b)
+    assert out.attrs["kind"] == "rwl"
+    assert out.attrs["dplpy_metadata"] == {"site_id": "AAA"}
+    assert out.attrs["dplpy_precision"] == {"A": 0.01, "B": 0.001}
+    assert out.attrs["dplpy_mixed_precision"] is True
+    assert a.attrs["dplpy_precision"] == {"A": 0.01}             # inputs untouched

@@ -35,14 +35,49 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from .rcs import _sfrcs_run, _plot_rcs, _build_rwca, _crust_regional_curve
-from ._validate import _plot_kwarg
-from .detrend import _normalize_method
+from .rcs import _sfrcs_run, _plot_rcs, _resolve_po, _as_rwi_frame
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
+                        _normalize_choice)
+from .detrend import _normalize_method, _normalize_fit
 
 
-def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
-          biweight_crn=False, ss=10, rise=None, max_iterations=40, tol=1e-3,
-          plot=True, return_info=False, verbose=True, **kwargs):
+def _sf_options(kwargs, biweight, max_iterations, func):
+    """Shared argument plumbing for sfrcs/sfmrcs: the deprecated
+    ``biweight_curve``/``biweight_crn`` pair collapses onto ``biweight`` (if both
+    are given, ``biweight_crn`` wins with a warning), and ``max_iterations`` must
+    be >= 1."""
+    old = {k: kwargs.pop(k) for k in ("biweight_curve", "biweight_crn") if k in kwargs}
+    for k in old:
+        _warn(func + "(): " + k + "= is deprecated and will be removed in a future "
+              "release; use biweight= instead.", DeprecationWarning, stacklevel=4)
+    if len(old) == 2 and bool(old["biweight_curve"]) != bool(old["biweight_crn"]):
+        _warn(func + "(): biweight_curve and biweight_crn disagree; a single "
+              "biweight= now controls both the regional-curve mean and the "
+              "chronology mean -- using biweight_crn="
+              + str(bool(old["biweight_crn"])) + ".", stacklevel=4)
+    if "biweight_crn" in old:
+        biweight = bool(old["biweight_crn"])
+    elif "biweight_curve" in old:
+        biweight = bool(old["biweight_curve"])
+    if int(max_iterations) < 1:
+        raise ValueError("max_iterations must be >= 1.")
+    return biweight
+
+
+def _curve_settings(fit, spline_period, nyrs0, f, pos_slope, preset, ss, rise, min_n):
+    """Normalise the regional-curve options shared by sfrcs/sfmrcs into the dict
+    ``_sfrcs_run`` hands to ``_regional_curve``."""
+    return dict(fit=None if fit is None else _normalize_fit(fit),
+                spline_period=spline_period, nyrs0=nyrs0, f=f, pos_slope=pos_slope,
+                preset=_normalize_choice(preset, ("crust",), "preset", none_ok=True),
+                ss=ss, rise=rise, min_n=min_n)
+
+
+def sfrcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
+          spline_period=0.1, nyrs0=50, f=0.5, pos_slope=False, biweight=False,
+          min_n=None, preset="crust", ss=10, rise=None, max_iterations=40,
+          tol=1e-3, rescale_difference=False, plot=True, return_info=False,
+          verbose=True, **kwargs):
     """Signal-Free Regional Curve Standardization of a set of ring-width series.
 
     Ordinary RCS lets the single regional curve absorb some of the common climate
@@ -51,36 +86,49 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
     rebuilding the regional curve from measurements with the current chronology
     divided out, while still forming the tree indices from the original
     measurements. Iteration stops when the chronology stops changing (``tol``). Port
-    of CRUST's single-curve signal-free RCS (Melvin & Briffa 2014).
+    of CRUST's single-curve signal-free RCS (Melvin & Briffa 2014). The regional
+    curve is built exactly as ``rcs`` builds it, so ``sfrcs(max_iterations=1)``
+    equals ``rcs`` (with the same curve settings) up to the signal-free
+    normalisation of the chronology to mean 1.
 
     Parameters
     ----------
     rwl : pandas.DataFrame
         ring-width series, years as the index and series as columns.
-    po : pandas.DataFrame or None, default None
-        pith offsets, columns ``series`` and ``pith_offset`` -- rings between the pith
-        and the first measured ring (0 = pith present). None assumes 0 for all. (A dplR
-        ``po`` table stores the cambial age of the first ring, 1 = pith present, so
-        subtract 1 first.)
+    po : pandas.DataFrame, dict, Series or None, default None
+        pith offsets (true offset, 0 = pith present), as in ``rcs``. None assumes
+        0 for all; a missing or NA offset is taken as 0 with a warning.
+    fit, spline_period, nyrs0, f, pos_slope, min_n :
+        regional-curve settings, as in ``rcs``; used when ``preset`` is None.
     method : {"ratio", "difference"}, default "ratio"
         how indices are formed: "ratio" divides, "difference" subtracts.
-    biweight_curve : bool, default False
-        build the regional curve with a biweight robust mean by cambial age. Default
-        False (arithmetic mean by age) matches CRUST.
-    biweight_crn : bool, default False
-        build the yearly chronology mean with a biweight robust mean. Default False
-        (arithmetic) matches CRUST's default.
+    biweight : bool, default False
+        use a Tukey biweight robust mean both for the regional curve by cambial age
+        and for the yearly chronology. Default False (arithmetic means) matches
+        CRUST. The former pair ``biweight_curve=``/``biweight_crn=`` is accepted
+        with a DeprecationWarning (if both are given, ``biweight_crn`` wins).
+    preset : {None, "crust"}, default "crust"
+        "crust" (the default, unlike ``rcs``) builds the regional curve the CRUST way
+        -- an age-dependent spline with per-point stiffness ``ss + cambial age``
+        smoothed only where sample depth >= 4, the no-rise tail rule, gaps infilled,
+        a 0.02 mm floor and flat tail extension -- ignoring ``fit`` and its
+        companions. None uses the ``fit`` vocabulary of ``rcs`` instead.
     ss : int, default 10
-        age-dependent spline stiffness offset for the regional curve; per-point
-        stiffness is ``ss + cambial age`` (ss=10 -> 11-year minimum), as in CRUST.
+        CRUST's age-dependent spline stiffness offset (``preset="crust"`` only).
     rise : bool or None, default None
-        allow the smoothed regional curve to rise in its final third. None uses CRUST's
-        rule (allowed only for curves longer than 1500 years); otherwise the tail is
-        flattened to prevent an artefactual old-age upturn.
+        allow the CRUST curve to rise in its final third. None uses CRUST's rule
+        (allowed only for curves longer than 1500 years).
     max_iterations : int, default 40
         maximum signal-free iterations.
     tol : float, default 1e-3
         convergence threshold on the maximum chronology change between iterations.
+    rescale_difference : bool, default False
+        ``method="difference"`` only. False (as in ``rcs``) returns raw residual
+        indices centred on ~0. True rescales each series' residuals onto the mean
+        and SD of its own ratio index, so difference indices sit on the ~1 ratio
+        scale -- CRUST's residual mode (``ind==2``) and what signal-free difference
+        indices need before the chronology is divided out, so prefer True for
+        difference-mode signal-free work. (Before 0.9.0 sfrcs always rescaled.)
     plot : bool, default True
         draw the regional-curve figure (series and final curve vs cambial age). The
         former name ``make_plot=`` is accepted for now with a DeprecationWarning.
@@ -100,7 +148,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
              "conv":       max absolute chronology change at each iteration,
              "n_iter":     iterations run,
              "converged":  whether tol was reached within max_iterations,
-             "rc":         the final regional curve (by cambial age)}
+             "rc":         the regional curve (by cambial age) that produced rwi}
 
     Notes
     -----
@@ -108,7 +156,8 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
     ``sfmrcs``. There is no dplR reference for this method: the port follows CRUST's
     ``stand.f90`` and its spline smoother is validated against CRUST's compiled
     kernel, but the full iteration is not checked against a gold standard, so treat
-    results as CRUST-faithful rather than machine-verified.
+    results as CRUST-faithful rather than machine-verified. An interior NaN is an
+    unmeasured ring: it advances cambial age and stays NaN in the output.
 
     References
     ----------
@@ -119,62 +168,31 @@ def sfrcs(rwl: pd.DataFrame, po=None, method="ratio", biweight_curve=False,
        implementation of Regional Chronology Standardisation: Part 2, Further RCS
        options and recommendations. Dendrochronologia, 32, 343-356.
     """
-    if not isinstance(rwl, pd.DataFrame):
-        raise TypeError("Expected dataframe input, got " + str(rwl.__class__) + " instead.")
-    if int(max_iterations) < 1:
-        raise ValueError("max_iterations must be >= 1.")
+    _require_dataframe(rwl)
+    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "sfrcs")
+    biweight = _sf_options(kwargs, biweight, max_iterations, "sfrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)
-    ratios = (method == "ratio")
+    curve = _curve_settings(fit, spline_period, nyrs0, f, pos_slope, preset, ss,
+                            rise, min_n)
 
-    cols = list(rwl.columns)
     M = rwl.to_numpy(dtype=float)
+    po_arr = _resolve_po(rwl, po, label="sfrcs")
 
-    if po is None:
-        po_map = {c: 0 for c in cols}
-    else:
-        s = po["series"] if "series" in po.columns else po.iloc[:, 0]
-        pv = po["pith_offset"] if "pith_offset" in po.columns else po.iloc[:, 1]
-        po_map = dict(zip(np.asarray(s), np.asarray(pv)))
+    run = _sfrcs_run(M, po_arr, method=method, biweight=biweight, curve=curve,
+                     max_iterations=int(max_iterations), tol=float(tol),
+                     verbose=verbose, rescale_difference=rescale_difference,
+                     label="sfrcs")
+    rwi = _as_rwi_frame(rwl, run["rwi"])
+    rc = run["rc_list"][0]
 
-    idx, crn, samp_depth, history, n_iter, converged = _sfrcs_run(
-        M, cols, po_map, ratios=ratios, biweight_curve=biweight_curve,
-        biweight_crn=biweight_crn, ss=ss, rise=rise,
-        max_iterations=int(max_iterations), tol=float(tol), verbose=verbose)
-
-    # detrended series back into a calendar-indexed frame
-    rwi = rwl.copy().astype(float)
-    rwi.iloc[:, :] = idx
-
-    if plot or return_info:
-        # rebuild the final regional curve (from the converged signal-free
-        # measurements) for plotting / return
-        present = ~np.isnan(M)
-        po_arr = np.array([int(po_map[c]) for c in cols])
-        counts = present.sum(axis=0)
-        nrow = int(counts.max()) + int(po_arr.max())
-        qok = (present.sum(axis=1) > 1)
-        crn_col = crn.copy()
-        div = present & qok[:, None] & (crn_col[:, None] >= 0.01)
-        fx = np.where(div, M / np.where(crn_col == 0, np.nan, crn_col)[:, None], M)
-        fx[~present] = np.nan
-        rwca_sf = _build_rwca(fx, po_arr, nrow)
-        rwca_orig = _build_rwca(M, po_arr, nrow)
-        if biweight_curve:
-            from .xdate import _row_biweight
-            ca_m = _row_biweight(rwca_sf)
-        else:
-            with np.errstate(invalid="ignore"):
-                ca_m = np.nanmean(rwca_sf, axis=1)
-        ca_n = np.sum(~np.isnan(rwca_sf), axis=1)
-        rise_flag = (nrow > 1500) if rise is None else bool(rise)
-        rc = _crust_regional_curve(ca_m, ca_n, nrow, ss=ss, rise=rise_flag)
-        if plot:
-            _plot_rcs(rwca_orig, ca_m, rc, len(cols))
+    if plot:
+        _plot_rcs(run["rwca"], run["ca_m_list"][0], rc, len(rwl.columns))
 
     if return_info:
-        sfc = pd.DataFrame({"sfc": crn, "samp.depth": samp_depth}, index=rwl.index)
-        return {"rwi": rwi, "sfc": sfc, "samp_depth": samp_depth,
-                "conv": np.asarray(history), "n_iter": n_iter,
-                "converged": converged, "rc": rc}
+        sfc = pd.DataFrame({"sfc": run["crn"], "samp.depth": run["samp_depth"]},
+                           index=rwl.index)
+        return {"rwi": rwi, "sfc": sfc, "samp_depth": run["samp_depth"],
+                "conv": np.asarray(run["history"]), "n_iter": run["n_iter"],
+                "converged": run["converged"], "rc": rc}
     return rwi

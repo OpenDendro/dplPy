@@ -35,9 +35,9 @@ __license__ = "GNU GPLv3"
 #   >>> b = dpl.readers("site_b.rwl")
 #   >>> both = dpl.combine_rwl([a, b])      # or dpl.combine_rwl(a, b)
 
-import warnings
-
 import pandas as pd
+
+from ._validate import _warn, _carry_attrs
 
 
 def combine_rwl(x, y=None, warn_duplicates=True) -> pd.DataFrame:
@@ -59,6 +59,8 @@ def combine_rwl(x, y=None, warn_duplicates=True) -> pd.DataFrame:
     pandas.DataFrame
         All series side by side, indexed by a contiguous year range spanning the
         earliest to the latest year of the inputs (years with no data are NaN).
+        ``attrs`` are carried from the first input (``kind == "rwl"``); the
+        per-series ``dplpy_precision`` dicts of all inputs are merged.
 
     Notes
     -----
@@ -92,9 +94,21 @@ def combine_rwl(x, y=None, warn_duplicates=True) -> pd.DataFrame:
     combined = combined.reindex(range(lo, hi + 1))
     combined.index.name = index_name
 
+    # provenance: carry the first frame's attrs (still raw widths), merging the
+    # per-series precision dicts of every input (audit G10)
+    _carry_attrs(frames[0], combined, kind="rwl", keep_measurement=True)
+    precs = {}
+    for f in frames:
+        p = f.attrs.get("dplpy_precision")
+        if isinstance(p, dict):
+            precs.update(p)
+    if precs:
+        combined.attrs["dplpy_precision"] = precs
+        combined.attrs["dplpy_mixed_precision"] = len(set(precs.values())) > 1
+
     if warn_duplicates:
         dups = combined.columns[combined.columns.duplicated()].unique().tolist()
         if dups:
-            warnings.warn("combined dataset has duplicate series names (kept "
-                          "as-is): " + ", ".join(str(d) for d in dups))
+            _warn("combined dataset has duplicate series names (kept as-is): "
+                  + ", ".join(str(d) for d in dups))
     return combined

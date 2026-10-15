@@ -33,11 +33,10 @@ import pandas as pd
 from ._validate import _coerce_to_frame
 from .stats import stats
 from .interseries_corr import interseries_corr
-import numpy as np
 
 def report(inp: pd.DataFrame | str):
     """Generates a report
-    
+
     Extended Summary
     ----------------
     Generates a text report about the input dataset that includes:
@@ -50,29 +49,31 @@ def report(inp: pd.DataFrame | str):
         Mean (Standard Deviation) AR1
         Years with locally absent rings (zero values), with per-series and total counts
         Years with internal NA (missing measurements), with per-series and total counts
-    
+
     Parameters
     ----------
     inp : str or pandas dataframe
         a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
-              
+
     Returns
     -------
-    None
-    
+    pandas.DataFrame
+        the per-series statistics table the report is built from (the output of
+        ``dpl.stats()``), so the printed report is also available as data.
+
     Examples
     --------
     >>> import dplpy as dpl
     >>> data = dpl.readers("../tests/data/csv/file.csv")
-    >>> dpl.report(data) 
-    
+    >>> dpl.report(data)
+
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#report
+    .. [1] https://opendendro.github.io/dplPy/reference/io/#report
 
     """
     series_data = _coerce_to_frame(inp)
-    
+
     statistics = stats(series_data)
     no_of_series = series_data.shape[1]
     no_of_measurements = series_data.count().sum()
@@ -84,7 +85,7 @@ def report(inp: pd.DataFrame | str):
     ar1 = statistics["ar1"]
     # Mean interseries correlation (each series vs a leave-one-out master --
     # the COFECHA-style statistic; see dpl.interseries_corr()).
-    ic = interseries_corr(series_data)[1]["interseries_corr"]   # (mean, per-series df)
+    ic = interseries_corr(series_data)["table"]["rho"]
 
     print("Number of dated series:", no_of_series)
     print("Number of measurements:", no_of_measurements)
@@ -101,6 +102,7 @@ def report(inp: pd.DataFrame | str):
     print("-------------")
     print("Years with internal NA (missing measurements) listed by series\n")
     print_missing_ring_data(internal_nans, "Total internal NA years")
+    return statistics
 
 # Analyze the dataframe to generate report on missing data (and internal NAs)
 def get_report_stats(series_data):

@@ -45,7 +45,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _warn, _carry_attrs
 
 
 def _resolve_per_series(param, rwl, value_name):
@@ -97,22 +97,40 @@ def bai_out(rwl: pd.DataFrame, diam=None) -> pd.DataFrame:
     -------
     pandas.DataFrame
         BAI in squared length units, same shape/index as ``rwl`` (NaN where ring
-        width was missing).
+        width was missing), tagged ``attrs["kind"] = "bai"``. A warning names any
+        series whose supplied ``diam`` is smaller than twice its summed ring
+        widths: the radius then goes negative inside the stem and the innermost
+        BAI values are negative (dplR behaves the same, silently).
     """
     _require_dataframe(rwl)
     dmap = _resolve_per_series(diam, rwl, "diam")
-    out = rwl.copy()
+    out = _bai_frame(rwl)
+    short = []
     for col in rwl.columns:
         dat = rwl[col].dropna()
         vals = dat.to_numpy(dtype=float)
         if vals.size == 0:
             continue
         d = dmap[str(col)] if dmap is not None else vals.sum() * 2.0
+        if dmap is not None and d / 2.0 < vals.sum():
+            short.append(str(col))
         # radii from the outer edge inward: d/2, d/2 - rw_outer, ...
         r0 = d / 2.0 - np.concatenate(([0.0], np.cumsum(vals[::-1])))
         bai = -np.pi * np.diff(r0 * r0)[::-1]
         out.loc[dat.index, col] = bai
+    if short:
+        _warn("bai_out: diam/2 is smaller than the summed ring widths for "
+              + str(len(short)) + " series (" + ", ".join(short[:8])
+              + (" ..." if len(short) > 8 else "") + "); their inner radii go "
+              "negative and the innermost BAI values will be negative.")
     return out
+
+
+def _bai_frame(rwl):
+    """An all-NaN float frame shaped like ``rwl`` carrying its provenance attrs
+    and tagged as basal-area increment (audit G10)."""
+    out = pd.DataFrame(np.nan, index=rwl.index, columns=rwl.columns, dtype=float)
+    return _carry_attrs(rwl, out, kind="bai")
 
 
 def bai_in(rwl: pd.DataFrame, d2pith=None) -> pd.DataFrame:
@@ -134,11 +152,11 @@ def bai_in(rwl: pd.DataFrame, d2pith=None) -> pd.DataFrame:
     -------
     pandas.DataFrame
         BAI in squared length units, same shape/index as ``rwl`` (NaN where ring
-        width was missing).
+        width was missing), tagged ``attrs["kind"] = "bai"``.
     """
     _require_dataframe(rwl)
     dmap = _resolve_per_series(d2pith, rwl, "d2pith")
-    out = rwl.copy()
+    out = _bai_frame(rwl)
     for col in rwl.columns:
         dat = rwl[col].dropna()
         vals = dat.to_numpy(dtype=float)

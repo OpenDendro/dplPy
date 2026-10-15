@@ -56,24 +56,27 @@ __license__ = "GNU GPLv3"
 
 import os
 import re
-import warnings
 from datetime import date
 
 import numpy as np
 import pandas as pd
 
+from ._validate import _warn
+
 _MISSING = 9990          # ITRDB missing-value code (before /1000 scaling)
+_URL_TIMEOUT = 30        # seconds (audit C7)
 
 
-def read_crn(filename, strict=True, split_by_site=False):
+def read_crn(filename, strict=True, split_by_site=False, verbose=True):
     """Read a Tucson (.crn) chronology file into a DataFrame.
 
     Parameters
     ----------
-    filename : str
+    filename : str or path-like
         Path (or http/https URL) to a .crn chronology file. Standard single
         chronologies and combined multi-block files (stacked ARSTAN types, or
-        many sites concatenated) are both handled.
+        many sites concatenated) are both handled, as are BC chronologies in
+        dplR's layout (a 5-character site ID with the year's sign in column 6).
     strict : bool, default True
         ``True`` (the default) refuses a file with no readable chronology;
         ``False`` returns None instead. (Individual malformed rows are skipped
@@ -84,6 +87,8 @@ def read_crn(filename, strict=True, split_by_site=False):
         plus a shared ``samp_depth``). Useful for multi-site bundles, where the
         default single wide frame is unwieldy. A single-site file yields a
         one-entry dict.
+    verbose : bool, default True
+        print the one-line success summary. Advisories are warnings regardless.
 
     Returns
     -------
@@ -94,8 +99,9 @@ def read_crn(filename, strict=True, split_by_site=False):
         index values divided by 1000 and 9990 mapped to NaN, with sample depths
         as 'samp_depth' (shared when several chronologies carry identical depth)
         or '<name> samp_depth' otherwise. With ``split_by_site=True``, a dict
-        {site_id: DataFrame}. ``df.attrs`` carries ``dplpy_crn`` (a summary) and
-        ``dplpy_crn_stats`` (embedded statistics lines).
+        {site_id: DataFrame}. ``df.attrs`` carries ``kind == "crn"``,
+        ``dplpy_crn`` (a summary) and ``dplpy_crn_stats`` (embedded statistics
+        lines).
 
     Examples
     --------
@@ -105,12 +111,13 @@ def read_crn(filename, strict=True, split_by_site=False):
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#read_crn
+    .. [1] https://opendendro.github.io/dplPy/reference/io/#read_crn
     """
     if not isinstance(strict, bool):
         raise ValueError("strict must be True (strict) or False (salvage), got "
                          + repr(strict))
 
+    filename = os.fspath(filename)
     lines = _read_lines(filename)
     decade_pos = _detect_decade_pos(lines)
     blocks, stats = _parse_blocks(lines, decade_pos)
@@ -120,16 +127,17 @@ def read_crn(filename, strict=True, split_by_site=False):
     # instead of crashing downstream when the year set is empty.
     if not blocks or not any(b["values"] for b in blocks):
         if not strict:
-            warnings.warn("No chronology data found in "
-                          + os.path.basename(filename) + "; returning None.")
+            _warn("No chronology data found in "
+                  + os.path.basename(filename) + "; returning None.")
             return None
         raise ValueError("No chronology data found in " + os.path.basename(filename)
                          + " -- is this a Tucson .crn file?")
 
     if decade_pos != 7:
-        warnings.warn("Using columns " + str(decade_pos) + "-10 for the decade field "
-                      "(the site ID is shorter than 6 characters, or a BC year "
-                      "borrows column 6 for its sign).")
+        _warn("Using columns " + str(decade_pos) + "-10 for the decade field "
+              "(the site ID is shorter than 6 characters, or a BC year "
+              "borrows column 6 for its sign).")
+    _check_header_span(lines, blocks, decade_pos)
 
     sites = list(dict.fromkeys(b["site"] for b in blocks))
 
@@ -146,11 +154,13 @@ def read_crn(filename, strict=True, split_by_site=False):
                 "n_chronologies": len(sub),
             }
             d.attrs["dplpy_crn_stats"] = [s for s in stats if s[:6].strip() == site]
+            d.attrs["kind"] = "crn"
             result[site] = d
-        print(os.path.basename(filename) + " successfully read as crn file: "
-              + str(len(blocks)) + (" chronology" if len(blocks) == 1 else " chronologies")
-              + " across " + str(len(sites)) + (" site" if len(sites) == 1 else " sites")
-              + " (split_by_site)")
+        if verbose:
+            print(os.path.basename(filename) + " successfully read as crn file: "
+                  + str(len(blocks)) + (" chronology" if len(blocks) == 1 else " chronologies")
+                  + " across " + str(len(sites)) + (" site" if len(sites) == 1 else " sites")
+                  + " (split_by_site)")
         return result
 
     df = _assemble(blocks)
@@ -160,29 +170,72 @@ def read_crn(filename, strict=True, split_by_site=False):
         "n_chronologies": len(blocks),
     }
     df.attrs["dplpy_crn_stats"] = stats
+    df.attrs["kind"] = "crn"
 
     # one-line success summary, in the style of dpl.readers()
-    info = df.attrs["dplpy_crn"]
-    n = info["n_chronologies"]
-    print(os.path.basename(filename) + " successfully read as crn file with "
-          + str(n) + (" chronology" if n == 1 else " chronologies")
-          + " [" + ", ".join(str(t) for t in info["types"]) + "]"
-          + (" from " + str(len(info["sites"])) + " sites" if len(info["sites"]) > 1 else "")
-          + " covering the period from " + str(int(df.index.min()))
-          + " to " + str(int(df.index.max())))
+    if verbose:
+        info = df.attrs["dplpy_crn"]
+        n = info["n_chronologies"]
+        print(os.path.basename(filename) + " successfully read as crn file with "
+              + str(n) + (" chronology" if n == 1 else " chronologies")
+              + " [" + ", ".join(str(t) for t in info["types"]) + "]"
+              + (" from " + str(len(info["sites"])) + " sites" if len(info["sites"]) > 1 else "")
+              + " covering the period from " + str(int(df.index.min()))
+              + " to " + str(int(df.index.max())))
     return df
 
 
 # --- line acquisition -------------------------------------------------------
 
 def _read_lines(filename):
+    """Lines of a local file or an http(s) URL, decoded as latin-1 (a .crn is
+    ASCII fixed-width; latin-1 is lossless for any stray byte). A URL read has a
+    socket timeout so a stalled server cannot hang the reader (audit C7)."""
     if str(filename).lower().startswith(("http://", "https://")):
         import urllib.request
-        with urllib.request.urlopen(filename) as resp:
-            text = resp.read().decode("latin-1", errors="replace")
-        return text.splitlines()
-    with open(filename, encoding="latin-1") as fh:
-        return [ln.rstrip("\n").rstrip("\r") for ln in fh]
+        with urllib.request.urlopen(filename, timeout=_URL_TIMEOUT) as resp:
+            raw = resp.read()
+        return raw.decode("latin-1").splitlines()
+    with open(filename, "rb") as fh:
+        raw = fh.read()
+    return [ln.rstrip("\n").rstrip("\r") for ln in raw.decode("latin-1").splitlines()]
+
+
+_RE_HEADER_YEARS = re.compile(r"(-?\d{1,5})\s+(-?\d{3,5})\s*$")   # 'first last' at the end
+_RE_RECORD2 = re.compile(r"^\s*\S+\s+2\s")                            # 'SITEID 2 ...'
+
+
+def _check_header_span(lines, blocks, decade_pos):
+    """Cross-check the first data decade against the year range the header
+    (record 2) declares, and warn on a mismatch -- the symptom of a mis-detected
+    decade column in a BC file (audit A6). Silent when no header year pair is
+    found."""
+    first_data = None
+    for i, ln in enumerate(lines):
+        if _decade_field(ln, decade_pos)[0] is not None:
+            first_data = i
+            break
+    if first_data is None:
+        return
+    # the year range lives on header record 2 ('SITEID 2 ...'); fall back to the
+    # second line of a 3-line header without record numbers
+    hdr = [ln for ln in lines[:first_data] if ln.strip()]
+    rec2 = [ln for ln in hdr if _RE_RECORD2.match(ln)]
+    if not rec2 and len(hdr) == 3:
+        rec2 = [hdr[1]]
+    declared = None
+    for ln in rec2:
+        m = _RE_HEADER_YEARS.search(ln.rstrip())
+        if m:
+            declared = (int(m.group(1)), int(m.group(2)))
+    if declared is None or declared[0] > declared[1]:
+        return
+    first_year = min(min(b["values"]) for b in blocks if b["values"])
+    if first_year // 10 != declared[0] // 10:
+        _warn("the header declares the chronology starts in " + str(declared[0])
+              + " but the first data decade read is " + str(first_year // 10 * 10)
+              + "; the decade column may be mis-detected (a BC year's sign is "
+              "expected in column 6) or the header is stale.", stacklevel=4)
 
 
 # --- parsing ----------------------------------------------------------------
@@ -245,13 +298,18 @@ def _detect_decade_pos(lines):
     for ln in lines:
         if len(ln) < 14:
             continue
+        # confirm this is a real data line: the first value pair (cols 11-14) parses
+        if _to_int(ln[10:14]) is None:
+            continue
+        # dplR's BC layout: the year's sign sits in column 6 ('MWK51-1265'). A real
+        # 6-character site code never has '-' there, so this is decisive even when
+        # cols 7-10 alone read as a plausible AD year (audit A6).
+        if ln[5] == "-" and ln[6:10].isdigit():
+            return 6
         seg = ln[6:10]
         try:
             yr = int(seg)
         except ValueError:
-            continue
-        # confirm this is a real data line: the first value pair (cols 11-14) parses
-        if _to_int(ln[10:14]) is None:
             continue
         if -12000 <= yr <= this_year:
             return 7                                   # standard layout
@@ -390,9 +448,9 @@ def _assemble(blocks):
             dropped.append(c)
     if dropped:
         df = df.drop(columns=dropped)
-        warnings.warn("Dropped sample-depth column"
-                      + ("s " if len(dropped) > 1 else " ")
-                      + ", ".join(dropped)
-                      + ": all recorded sample depths are 1 (the sample size was not "
-                        "actually recorded).")
+        _warn("Dropped sample-depth column"
+              + ("s " if len(dropped) > 1 else " ")
+              + ", ".join(dropped)
+              + ": all recorded sample depths are 1 (the sample size was not "
+                "actually recorded).", stacklevel=4)
     return df

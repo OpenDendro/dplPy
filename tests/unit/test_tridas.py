@@ -237,3 +237,49 @@ def test_ids_grouping(tmp_path):
     xml = open(out).read()
     assert xml.count("<element>") == 1            # grouped under one tree
     assert xml.count("<measurementSeries>") == 2
+
+
+# --------------------------------------------------------------------------- #
+# v0.9.0 audit follow-ups (C2, C6)
+# --------------------------------------------------------------------------- #
+def test_disjoint_series_give_contiguous_index(tmp_path):
+    # C6: two series 1800-1850 and 1900-1959 -> one frame on the full year range
+    # (gap years NaN), not 111 rows.
+    a = pd.DataFrame({"A": np.linspace(0.5, 1.0, 51)}, index=pd.Index(range(1800, 1851), name="Year"))
+    b = pd.DataFrame({"B": np.linspace(0.5, 1.0, 60)}, index=pd.Index(range(1900, 1960), name="Year"))
+    both = pd.concat([a, b], axis=1)                      # 111 rows, non-contiguous
+    f = _quiet_write(str(tmp_path / "disjoint"), rwl=both, metadata=_meta(), taxon="PCGL")
+    frame = dpl.read_tridas(f).rwl()
+    assert list(frame.index) == list(range(1800, 1960))
+    assert np.isnan(frame.loc[1875, "A"]) and np.isnan(frame.loc[1875, "B"])
+    assert frame.loc[1850, "A"] == pytest.approx(1.0)
+
+
+def test_unrounded_millimetres_leave_precision_unset(tmp_path):
+    # C6: prec=None (and no attr) writes unrounded mm; the reader must not then
+    # claim a 1.0 mm precision for values like 0.52.
+    f = _quiet_write(str(tmp_path / "mm"), rwl=_rwl(), metadata=_meta(), taxon="PCGL")
+    frame = dpl.read_tridas(f).rwl()
+    assert "dplpy_precision" not in frame.attrs
+    assert frame.loc[2001, "ABC01A"] == pytest.approx(0.52)
+
+
+def test_write_tridas_uses_read_precision_by_default(tmp_path):
+    # C2: a frame read at 0.01 mm is written in 1/100th millimetres unless prec
+    # is given explicitly; mixed precisions fall back to unrounded mm with a warning.
+    rwl = _rwl()
+    rwl.attrs["dplpy_precision"] = {"ABC01A": 0.01, "ABC01B": 0.01}
+    f = _quiet_write(str(tmp_path / "p01"), rwl=rwl, metadata=_meta(), taxon="PCGL")
+    txt = open(f).read()
+    assert 'normalTridas="1/100th millimetres"' in txt
+    back = dpl.read_tridas(f).rwl()
+    assert set(back.attrs["dplpy_precision"].values()) == {0.01}
+    pd.testing.assert_frame_equal(back, rwl, check_names=False)
+    # explicit prec wins
+    g = _quiet_write(str(tmp_path / "p001"), rwl=rwl, metadata=_meta(), taxon="PCGL", prec=0.001)
+    assert 'normalTridas="micrometres"' in open(g).read()
+    # mixed -> warn, unrounded mm
+    rwl.attrs["dplpy_precision"] = {"ABC01A": 0.01, "ABC01B": 0.001}
+    with pytest.warns(UserWarning, match="mixed"):
+        h = dpl.write_tridas(str(tmp_path / "mixed"), rwl=rwl, metadata=_meta(), taxon="PCGL")
+    assert 'normalTridas="millimetres"' in open(h).read()

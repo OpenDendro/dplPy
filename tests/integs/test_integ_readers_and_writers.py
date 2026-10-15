@@ -7,7 +7,7 @@ def test_read_and_write_csv(tmp_path):
     ca533 = dpl.readers("./tests/data/csv/ca533.csv")
 
     write_path = os.path.join(tmp_path,"test_write")
-    
+
     dpl.writers(ca533, write_path, "csv")
 
     ca533_alt = dpl.readers(write_path + ".csv")

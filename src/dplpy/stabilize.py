@@ -34,7 +34,9 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from .rbar import running_rbar_vector, mean_series_intercorrelation, pairwise_corr_mean
+from ._validate import (_alias_kwarg, _reject_kwargs, _normalize_choice,
+                        _carry_attrs)
+from .rbar import running_rbar_vector, pairwise_corr_mean
 from .smoothingspline import variance_stabilize_spline
 
 _METHODS = ("rbar", "spline", "both")
@@ -52,27 +54,26 @@ def _prepare_stabilize_kwargs(stabilize, stabilize_kwargs):
     """Validate the ``stabilize=`` convenience-flag inputs shared by chron() and
     chron_ars().
 
-    Returns a dict of keyword arguments to forward to :func:`stabilize_chron`
-    (empty when ``stabilize_kwargs`` is None), or ``None`` when ``stabilize`` is
-    None (i.e. no stabilization requested). Raises if stabilize_kwargs is given
-    without a method, or tries to set an internally-managed argument.
+    Returns ``(method, skw)``: the canonical (lower-case) method name and a dict
+    of keyword arguments to forward to `stabilize_chron()` (empty when
+    ``stabilize_kwargs`` is None), or ``(None, None)`` when ``stabilize`` is None
+    (no stabilization requested). Raises if stabilize_kwargs is given without a
+    method, or tries to set an internally-managed argument.
     """
     if stabilize is None:
         if stabilize_kwargs:
             raise ValueError(
                 "stabilize_kwargs was given but stabilize is None; set stabilize "
                 "to 'rbar', 'spline', or 'both'.")
-        return None
-    if stabilize not in _METHODS:
-        raise ValueError("stabilize must be one of %s (or None); got %r"
-                         % (_METHODS, stabilize))
+        return None, None
+    stabilize = _normalize_choice(stabilize, _METHODS, "stabilize")
     skw = dict(stabilize_kwargs or {})
     bad = _STABILIZE_MANAGED & set(skw)
     if bad:
         raise ValueError(
             "stabilize_kwargs may not set %s (managed internally by "
             "chron/chron_ars)." % ", ".join(sorted(bad)))
-    return skw
+    return stabilize, skw
 
 
 def _restandardize(a, target_mean, target_sd):
@@ -109,30 +110,35 @@ def _rbar_component(x, depth, rbar_per_year):
     return _restandardize(stab, xbar, xsd), n_eff
 
 
-def _spline_component(x, period, f):
+def _spline_component(x, period, f=0.5, clip_negative=False, ok=None):
     """ARSTAN stabit: absolute-departure spline envelope, restandardized to the
-    input's mean/SD. Fits only on the finite values (a residual chronology can
-    have leading NaN), reinserting NaN where the input was NaN."""
+    input's mean/SD. The one NaN-aware entry to the spline stabilization
+    (audit E15; the numerical core is smoothingspline.variance_stabilize_spline).
+    Fits only on the finite values (a residual chronology can have leading NaN,
+    a chronology zero-depth years), reinserting NaN where the input was NaN.
+    ``ok`` optionally masks the positions used for the mean/SD (e.g. sample
+    depth > 0); ``clip_negative`` clamps the result at >= 0."""
     x = np.asarray(x, dtype=float)
     out = np.full(x.shape, np.nan)
     finite = np.isfinite(x)
     if finite.sum() < 4:                      # too few points to fit a spline
         out[finite] = x[finite]
         return out
+    ok_f = None if ok is None else np.asarray(ok, dtype=bool)[finite]
     out[finite] = variance_stabilize_spline(x[finite], period=period, f=f,
-                                             clip_negative=False, ok=None)
+                                             clip_negative=clip_negative, ok=ok_f)
     return out
 
 
 def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
                     running_rbar=None, samp_depth=None, rbar_mode="running",
-                    win_length=50, min_seg_ratio=1 / 3, spline_period=None,
-                    f=0.5, clip_negative=True, return_info=False):
+                    window_length=50, min_seg_ratio=1 / 3, spline_period=None,
+                    f=0.5, clip_negative=True, return_info=False, **kwargs):
     """Variance-stabilize an already-built chronology.
 
-    Scales the departures of a chronology you already built with :func:`chron` or
-    :func:`chron_ars` (standard, residual, or ARSTAN) to remove time-varying
-    variance. Unlike :func:`chron_stabilized`, which takes the RWI matrix and builds
+    Scales the departures of a chronology you already built with `chron()` or
+    `chron_ars()` (standard, residual, or ARSTAN) to remove time-varying
+    variance. Unlike `chron_stabilized()`, which takes the RWI matrix and builds
     its own standard chronology, this takes the finished chronology.
 
     Parameters
@@ -142,7 +148,7 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
         chron()/chron_ars() output) uses ``column`` and, if present, its
         ``samp_depth`` column.
     method : {"rbar", "spline", "both"}
-        required, explicit:
+        required, explicit (case-insensitive):
 
         - ``"rbar"``   -- Osborn (1997) / Frank (2006) N_eff scaling; corrects
           variance driven by changing sample size (and, with running rbar, changing
@@ -168,9 +174,10 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     rbar_mode : {"running", "constant"}, default "running"
         running rbar (Frank RUNNINGr) or a single time-constant rbar (Osborn/Briffa
         MEANr).
-    win_length, min_seg_ratio : int, float
-        running-rbar window length and minimum overlap ratio (as in
-        chron_stabilized).
+    window_length, min_seg_ratio : int, float
+        running-rbar window length (default 50; must be shorter than the
+        chronology) and minimum overlap ratio (as in chron_stabilized).
+        (``win_length=`` is accepted as a deprecated alias.)
     spline_period : int, float or None, default None
         spline stiffness for the ``"spline"``/``"both"`` families. ``None`` = the 67%
         spline (``floor(0.67*n)`` years); an int > 1 is a fixed wavelength in years; a
@@ -180,19 +187,27 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     clip_negative : bool, default True
         clamp the stabilized chronology at >= 0.
     return_info : bool, default False
-        also return a dict of diagnostics (rbar used, N_eff, sample depth).
+        also return the diagnostics (rbar used, N_eff, sample depth).
 
     Returns
     -------
     pandas.DataFrame
         indexed by year, with the stabilized chronology in column ``vsc`` and, when
-        known, ``samp_depth``. If ``return_info`` is True, returns
-        ``(DataFrame, info_dict)``.
+        known, ``samp_depth``. If ``return_info`` is True, returns a dict instead,
+        with the DataFrame under ``"vsc"`` plus ``"method"``, ``"rbar"``,
+        ``"n_eff"`` and ``"samp_depth"`` (the latter three for the rbar family).
 
     Notes
     -----
-    Both families restandardize to the input chronology's full-period mean and SD.
-    For the ARSTAN chronology, stabilization must precede re-reddening, so use
+    Both families restandardize to the input chronology's full-period mean and SD,
+    so the stabilized chronology stays on the scale you already had. dplR's
+    ``chron.stabilized`` (ported as `chron_stabilized()`) instead scales the
+    departures by ``sqrt(n_eff * rbar)`` and adds the grand mean back, which puts
+    the chronology on the variance of an infinitely replicated chronology
+    (Osborn, Briffa & Jones 1997). The two flatten the same variance trend and
+    differ only by a uniform level and scale (on ca533: slope 1.11, offset -0.12,
+    residual below 0.002), which matters for anything read off absolute index
+    values but not for correlation-based uses. For the ARSTAN chronology, stabilization must precede re-reddening, so use
     ``chron_ars(stabilize=...)`` rather than calling this on an already re-reddened
     series.
 
@@ -201,10 +216,11 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     Osborn, Briffa & Jones (1997) Dendrochronologia 15, 89-99.
     Frank, Esper & Cook (2006) TRACE 4, 56-66.
     """
-    if method not in _METHODS:
-        raise ValueError("method must be one of %s; got %r" % (_METHODS, method))
-    if rbar_mode not in _RBAR_MODES:
-        raise ValueError("rbar_mode must be 'running' or 'constant'; got %r" % (rbar_mode,))
+    window_length = _alias_kwarg(kwargs, "win_length", "window_length",
+                                 window_length, "stabilize_chron")
+    _reject_kwargs(kwargs)
+    method = _normalize_choice(method, _METHODS, "method")
+    rbar_mode = _normalize_choice(rbar_mode, _RBAR_MODES, "rbar_mode")
 
     # resolve the chronology series (+ sample depth) from Series or DataFrame
     if isinstance(chron, pd.DataFrame):
@@ -232,11 +248,16 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
         if rwi is not None:
             rwi_a = rwi.reindex(index) if isinstance(rwi, pd.DataFrame) else rwi
             if depth is None:
-                depth = rwi_a.notnull().sum(axis=1).to_numpy().astype(float)
+                depth = rwi_a.notna().sum(axis=1).to_numpy().astype(float)
             if rbar_mode == "running":
+                if window_length >= n:
+                    raise ValueError(
+                        "window_length (" + str(window_length) + ") must be shorter "
+                        "than the chronology (" + str(n) + " years) for a running "
+                        "rbar; shorten it or use rbar_mode='constant'.")
                 # correlations are location-invariant, so the running rbar can be
                 # computed on the matrix as-is (no need to zero-mean first).
-                rby = running_rbar_vector(rwi_a, win_length, min_seg_ratio, depth)
+                rby = running_rbar_vector(rwi_a, window_length, min_seg_ratio, depth)
             else:
                 rby = np.full(n, pairwise_corr_mean(rwi_a, "pearson",
                                                     min_overlap=20, strict=True))
@@ -276,7 +297,8 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     if samp_depth is not None:
         out["samp_depth"] = np.asarray(samp_depth)
     stabilized = pd.DataFrame(out, index=index)
+    _carry_attrs(chron, stabilized, kind="crn")
 
     if return_info:
-        return stabilized, info
+        return {"vsc": stabilized, **info}
     return stabilized

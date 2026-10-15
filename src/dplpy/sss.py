@@ -44,7 +44,6 @@ __license__ = "GNU GPLv3"
 # >>> dpl.sss(rwi)                                  # one core per tree
 # >>> dpl.sss(rwi, ids=dpl.read_ids(data, stc=(3, 2, 1)))
 
-import numpy as np
 import pandas as pd
 from ._validate import _require_dataframe
 
@@ -52,7 +51,7 @@ from .rwi_stats import rwi_stats, _resolve_tree_mapping
 from .common_interval import apply_common_interval
 
 
-def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
+def sss(rwi_data: pd.DataFrame, ids=None, corr="spearman", zero_is_missing=True,
         common_interval=None):
     """Subsample signal strength (SSS) as a per-year series.
 
@@ -81,8 +80,9 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
         tree/core structure (see dpl.rwi_stats() / dpl.read_ids()). When given, both
         N and the per-year sample depth are counted in trees; when None, every series
         is its own tree and they are counted in cores.
-    corr : str, default "Spearman"
-        correlation type used for the underlying rbar ("Spearman" or "Pearson").
+    corr : str, default "spearman"
+        correlation type used for the underlying rbar ("spearman" or "pearson",
+        case-insensitive).
     zero_is_missing : boolean, default True
         treat exact zeros as missing (applied consistently to the rbar calculation
         and the per-year sample-depth count).
@@ -108,6 +108,7 @@ def sss(rwi_data: pd.DataFrame, ids=None, corr="Spearman", zero_is_missing=True,
     .. [1] https://rdrr.io/cran/dplR/man/sss.html
     .. [2] Wigley, Briffa & Jones (1984), J. Climate Appl. Meteor., 23, 201-213.
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
+    .. [4] https://opendendro.github.io/dplPy/reference/statistics/#sss
     """
     _require_dataframe(rwi_data)
 

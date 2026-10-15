@@ -3,7 +3,6 @@ import contextlib
 import warnings
 
 import numpy as np
-import pandas as pd
 import pytest
 
 import dplpy as dpl
@@ -82,3 +81,12 @@ def test_detrend_agedepspline_matches_dplR_ca533():
             rwi = dpl.detrend(data, fit="AgeDepSpline", plot=False)
     cam011 = rwi["CAM011"].dropna().to_numpy()[:3]
     assert np.allclose(cam011, [1.17709, 1.01217, 1.17706], atol=1e-4)
+
+
+def test_ads_requires_four_points_and_defaults_pos_slope_false():
+    with pytest.raises(ValueError, match="at least 4"):
+        dpl.ads(np.array([1.0, 2.0, 3.0]))
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    y = data["CAM011"].dropna().to_numpy()
+    assert np.allclose(dpl.ads(y), dpl.ads(y, pos_slope=False))
+    assert not np.allclose(dpl.ads(y), dpl.ads(y, pos_slope=True))

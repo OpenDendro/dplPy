@@ -53,10 +53,12 @@ class SiteMetadata:
     """Site/sample metadata shared by dplPy's file exporters.
 
     Field names mirror ``dpl.metadata()`` / ``df.attrs['dplpy_metadata']``. Use
-    :meth:`from_rwl` to auto-fill from a frame read by ``dpl.readers()``,
-    :meth:`from_metadata` from a metadata dict, or construct one directly and set
-    fields by hand. :meth:`to_crn_header` renders the dict the Tucson ``.crn``
-    writer expects (which uses a few different key names).
+    `from_rwl()` to auto-fill from a frame read by ``dpl.readers()``,
+    `from_metadata()` from a metadata dict, or construct one directly and set
+    fields by hand. `to_crn_header()` renders the dict the Tucson ``.crn``
+    writer expects (which uses a few different key names). Coordinates are
+    decimal degrees and elevation is metres; the ``.crn`` writer packs them into
+    the ITRDB fields (DDMM / DDDMM, ``"%dM"``) itself.
     """
 
     site_id: Optional[str] = None
@@ -114,9 +116,11 @@ class SiteMetadata:
     def to_crn_header(self) -> dict:
         """Render the header dict the Tucson ``.crn`` writer expects. The writer
         uses a few different key names (``state_country``/``species``/
-        ``elevation``); this maps them. Fields that are None are omitted, so the
-        writer's own "missing required key" check reports what still needs
-        filling rather than writing the literal 'None'."""
+        ``elevation``); this maps them. Values are passed through unchanged
+        (decimal degrees, metres); ``write_crn`` packs them into the ITRDB
+        fields via `pack_crn_coordinates()` / `pack_crn_elevation()`. Fields that
+        are None are omitted, so the writer's own "missing required key" check
+        reports what still needs filling rather than writing the literal 'None'."""
         mapped = {
             "site_id": self.site_id,
             "site_name": self.site_name,
@@ -129,3 +133,83 @@ class SiteMetadata:
             "investigators": self.investigators,
         }
         return {k: v for k, v in mapped.items() if v is not None}
+
+
+# --------------------------------------------------------------------------- #
+# Packing decimal metadata into the ITRDB .crn header fields (audit A18). These
+# are the inverse of readers._dm_to_decimal: 37.5167 -> '3731', -118.2 -> '-11812'.
+# --------------------------------------------------------------------------- #
+def _decimal_to_dm(value, lon=False):
+    """Encode decimal degrees as the packed ITRDB degrees-minutes string:
+    DDMM for latitude, DDDMM for longitude, with a leading '-' for South/West."""
+    v = float(value)
+    neg = v < 0
+    a = abs(v)
+    deg = int(a)
+    minutes = int(round((a - deg) * 60))
+    if minutes == 60:
+        deg += 1
+        minutes = 0
+    width = 3 if lon else 2
+    return ("-" if neg else "") + ("%0*d%02d" % (width, deg, minutes))
+
+
+def _coord_text(value, lon=False):
+    """One coordinate as packed text. A str without a decimal point is taken as
+    already packed ('3731'); a str with one, or any number within the decimal
+    range (|lat| <= 90, |lon| <= 180), is decimal degrees and is encoded; a
+    larger number is already packed."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        txt = value.strip()
+        if "." not in txt:
+            return txt
+        value = float(txt)
+    limit = 180.0 if lon else 90.0
+    if abs(float(value)) <= limit:
+        return _decimal_to_dm(value, lon=lon)
+    return str(int(round(float(value))))
+
+
+def pack_crn_coordinates(latitude, longitude):
+    """The 10-character packed lat/long field of an ITRDB .crn header record 2,
+    e.g. ``'3731-11812'`` or ``'1917 09856'``. Decimal degrees are encoded
+    (see `_coord_text()`); already-packed strings pass through. Raises
+    ValueError if the pair cannot fit the 10-character field."""
+    lat = _coord_text(latitude, lon=False)
+    lon = _coord_text(longitude, lon=True)
+    if not lat and not lon:
+        return ""
+    field = lat + lon if lon.startswith("-") else lat + " " + lon
+    if len(field) > 10 and not lon.startswith("-"):
+        field = lat + lon                      # southern + eastern: drop the separator
+    if len(field) > 10 and lon.startswith("-0") and len(lon) == 6:
+        field = lat + "-" + lon[2:]            # drop a leading zero: '-07112' -> '-7112'
+    if len(field) > 10:
+        raise ValueError(
+            "latitude/longitude " + repr(latitude) + ", " + repr(longitude)
+            + " pack to '" + field + "' (" + str(len(field)) + " chars), which does "
+            "not fit the 10-character .crn header field.")
+    return field
+
+
+def pack_crn_elevation(elevation):
+    """The elevation field of an ITRDB .crn header: ``'2375M'``. A number is
+    written as ``'%dM'``; a str already ending in M/m passes through; a bare
+    numeric str gets the suffix. At most 5 characters, else ValueError."""
+    if elevation is None:
+        return ""
+    if isinstance(elevation, str):
+        txt = elevation.strip()
+        if txt and txt[-1] not in "Mm":
+            try:
+                txt = "%dM" % int(round(float(txt)))
+            except ValueError:
+                pass
+    else:
+        txt = "%dM" % int(round(float(elevation)))
+    if len(txt) > 5:
+        raise ValueError("elevation " + repr(elevation) + " packs to '" + txt
+                         + "', which does not fit the 5-character .crn header field.")
+    return txt

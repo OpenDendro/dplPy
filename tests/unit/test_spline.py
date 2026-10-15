@@ -30,3 +30,19 @@ def test_spline(mock_csaps: Mock):
     x = np.arange(10)
     y = np.arange(0.1, 1.0)
     assert np.array_equal(spline.spline(x, y, period=0.5), y * 0.5)
+
+
+def test_get_period_default_fraction():
+    # E20: one resolver; dplR's ssf uses 0.6667 where detrend uses 0.67
+    assert spline.get_period(None, 100) == 67
+    assert spline.get_period(None, 100, default=0.6667) == 66
+
+
+def test_caps_and_spline_clamp_degenerate_wavelength():
+    # B9: a wavelength below 2 years would divide by zero in get_param
+    y = np.array([1.0, 2.0, 1.5])
+    out = spline._caps(y, 1)
+    assert np.isfinite(out).all() and len(out) == 3
+    out2 = spline.spline(np.arange(3), y, period=None)       # floor(0.67*3) = 2
+    assert np.isfinite(out2).all()
+    assert np.allclose(spline._caps(y, 1), spline._caps(y, 2))

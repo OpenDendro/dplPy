@@ -97,6 +97,33 @@ printed (even with `verbose=False`), and the returned plot carries a red
 "best date is in the future" banner. Check the series orientation (oldest →
 youngest) and the reference before trusting such a result.
 
+## No dated reference at all: `xdate_undated`
+
+`xdate_floater` needs a dated reference. When there is none — a stand of
+sub-fossil or river-drowned trees, a pile of timbers from one structure — but the
+samples overlap one another in time, `xdate_undated` crossdates the undated
+series **against each other** and assembles them into a single, relatively dated
+floating chronology, in the manner of COFECHA's UFLOAT routine. It scores every
+pair of series at every offset with the same transform / correlation / *t*
+machinery as `xdate_floater`, joins series to a running mean chronology in order
+of strength (a series is admitted only if its best *t* reaches `crit_t`, default
+4.0), sets the earliest inferred ring to `anchor_year` (default 1), and then
+re-checks every placement by leaving it out and re-dating it against the rest
+(`verify`, with an `isolation` score and a `review` flag for ambiguous
+placements).
+
+```python
+floating = dpl.xdate_undated(undated_rwl, plot=True)
+floating["offsets"]      # start/end of each series on the relative axis
+floating["chronology"]   # the mean floating chronology
+floating["unplaced"]     # series that never reached crit_t
+```
+
+The result is relative: the chronology (or any series in `floating["placed"]`)
+can then be dated absolutely with `xdate_floater` against a dated reference, or
+by a radiocarbon/wiggle-match anchor. See the
+[`xdate_undated` reference](../reference/crossdating.md#xdate_undated).
+
 ## Relationship to dplR
 
 `xdate_floater` is based on dplR's `xdate.floater` and extends it with the *t*

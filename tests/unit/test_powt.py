@@ -66,7 +66,6 @@ def test_powt_rescale_restores_moments():
 
 
 def test_powt_universal_matches_dplR():
-    pytest.importorskip("statsmodels")
     rwl = _read_quiet("tests/data/csv/ca533.csv")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -140,7 +139,33 @@ def test_powt_plot_smoke():
     from unittest.mock import patch
     rwl = _read_quiet("tests/data/csv/ca533.csv")
     plt.close("all")
-    with patch("matplotlib.pyplot.show"):
+    with patch("matplotlib.pyplot.show") as show:
         dpl.powt(rwl, plot=True)
-    assert len(plt.get_fignums()) >= 1
+    show.assert_called_once()
+    # F2: under a non-interactive backend the figure is closed after display
+    assert len(plt.get_fignums()) == 0
     plt.close("all")
+
+
+def test_powt_drops_all_nan_columns_and_is_case_insensitive():
+    rwl = _read_quiet("tests/data/csv/ca533.csv").loc[1900:1983]
+    empty = [c for c in rwl.columns if rwl[c].isna().all()]
+    assert empty
+    with pytest.warns(UserWarning, match="no measured values"):
+        out = dpl.powt(rwl)
+    assert set(out.columns) == set(rwl.columns) - set(empty)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        a = dpl.powt(rwl, method="Cook")
+        b = dpl.powt(rwl, method="cook")
+    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
+
+
+def test_powt_output_attrs():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    rwl.attrs.update({"dplpy_precision": 0.01, "kind": "rwl", "site": "ca533"})
+    out = dpl.powt(rwl)
+    assert out.attrs["kind"] == "rwl_powt" and out.attrs["site"] == "ca533"
+    assert "dplpy_precision" not in out.attrs
+    pt, p = dpl.powt(rwl, return_power=True)
+    assert pt.attrs["kind"] == "rwl_powt"

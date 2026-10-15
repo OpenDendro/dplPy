@@ -78,7 +78,7 @@ def _ads_curve(y, stiffness):
     return y - np.convolve(x, (1.0, -2.0, 1.0))
 
 
-def ads(y, nyrs0=50, pos_slope=True):
+def ads(y, nyrs0=50, pos_slope=False):
     """Age-dependent smoothing spline of a single series (dplR's ads()).
 
     Fit a smoothing spline whose stiffness increases with cambial age: the i-th
@@ -88,13 +88,15 @@ def ads(y, nyrs0=50, pos_slope=True):
     Parameters
     ----------
     y : array-like
-        a single ring-width series (no missing values), oldest ring first.
+        a single ring-width series (no missing values, at least 4 rings), oldest
+        ring first.
     nyrs0 : int, default 50
         initial spline stiffness (wavelength, in years) at the first ring.
-    pos_slope : bool, default True
-        if False, once the spline stops decreasing its tail is held flat and the
-        spline is refit, preventing an artefactual upturn at the end of the series
-        (dplR uses pos.slope=FALSE inside detrend()).
+    pos_slope : bool, default False
+        if False (the default, as in dplR's detrend() and every dplPy detrender),
+        once the spline stops decreasing its tail is held flat and the spline is
+        refit, preventing an artefactual upturn at the end of the series. True
+        lets the curve rise (dplR's standalone ads() default).
 
     Returns
     -------
@@ -121,8 +123,9 @@ def ads(y, nyrs0=50, pos_slope=True):
     """
     y = np.asarray(y, dtype=float)
     nobs = len(y)
-    if nobs < 3:
-        raise ValueError("there must be at least 3 data points")
+    if nobs < 4:
+        raise ValueError("age-dependent spline: there must be at least 4 data "
+                         "points, got " + str(nobs) + ".")
     if nobs > 10000:
         raise ValueError("y should not be longer than 1e4.")
     if not isinstance(nyrs0, (int, np.integer)) or nyrs0 <= 1:

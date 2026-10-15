@@ -119,3 +119,46 @@ def test_sfmrcs_bad_args():
         _q(rwl, po=po, max_iterations=0, plot=False)
     with pytest.raises(TypeError):
         _q("not a frame", plot=False)
+
+
+# --- v0.9.0 audit follow-ups ------------------------------------------------
+
+def test_sfmrcs_interior_gap_advances_cambial_age():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    g = rwl.copy()
+    g.loc[[1630, 1631, 1632], "CAM011"] = np.nan
+    full = _q(rwl, n_curves=2, plot=False)["CAM011"]
+    gap = _q(g, n_curves=2, plot=False)["CAM011"]
+    assert gap.loc[[1630, 1631, 1632]].isna().all()
+    assert gap.notna().sum() == full.notna().sum() - 3
+    post = full.index > 1632
+    same = np.nanmax(np.abs(full[post].to_numpy() - gap[post].to_numpy()))
+    shifted = np.nanmax(np.abs(full[post].to_numpy()[3:] - gap[post].to_numpy()[:-3]))
+    assert same < 5e-3 and shifted > 0.5
+
+
+def test_sfmrcs_accepts_rcs_curve_vocabulary_and_aliases():
+    rwl, po = _gp()
+    a = _q(rwl, po=po, n_curves=2, fit="Spline", preset=None, spline_period=0.1,
+           plot=False, max_iterations=3)
+    assert a.shape == rwl.shape
+    with pytest.warns(DeprecationWarning, match="biweight_crn"):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                b = dpl.sfmrcs(rwl, po=po, n_curves=2, biweight_crn=True,
+                               verbose=False, plot=False, max_iterations=3)
+    c = _q(rwl, po=po, n_curves=2, biweight=True, plot=False, max_iterations=3)
+    assert np.allclose(b.to_numpy(), c.to_numpy(), equal_nan=True)
+    assert c.attrs["kind"] == "rwi"
+
+
+def test_sfmrcs_difference_rescale_switch():
+    rwl, po = _gp()
+    plain = _q(rwl, po=po, n_curves=2, method="difference", reset_means=False,
+               plot=False, max_iterations=5)
+    resc = _q(rwl, po=po, n_curves=2, method="difference", reset_means=False,
+              rescale_difference=True, plot=False, max_iterations=5)
+    assert abs(np.nanmean(plain.to_numpy())) < 0.2        # residuals ~0
+    assert 0.8 < np.nanmean(resc.to_numpy()) < 1.2         # ratio scale ~1

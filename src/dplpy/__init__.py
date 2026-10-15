@@ -88,7 +88,7 @@ from .writers import writers
 from .site_metadata import SiteMetadata
 from .tridas import read_tridas, write_tridas, TridasProject, TridasMetadata
 from .lipd import to_lipd, from_lipd, lipd_metadata
-from .cli import help, readme
+from .cli import help as help, readme as readme
 
 __all__ = [
     "readers",
@@ -148,6 +148,6 @@ __all__ = [
     "to_lipd",
     "from_lipd",
     "lipd_metadata",
-    "help",
-    "readme",
 ]
+# dpl.help() and dpl.readme() stay available as attributes but are kept out of
+# __all__ so that "from dplpy import *" does not shadow the builtin help().

@@ -42,11 +42,12 @@ __license__ = "GNU GPLv3"
 #   * Anomalous negative values (anything < 0 that is not the -9999 stop
 #     marker, e.g. -7 or -2599) are set to NaN AND a warning is emitted. Ring
 #     widths cannot be negative, so these are treated as missing and the user
-#     is told.
+#     is told. A series whose negatives are all one gap sentinel (-9/-99/-999,
+#     what dpl.writers writes for an interior gap) is reported as gap sentinels
+#     instead, and not counted as unreadable.
 
 import os
 import re
-import warnings
 import urllib.request
 from collections import Counter
 from datetime import date
@@ -54,22 +55,36 @@ from datetime import date
 import pandas as pd
 import numpy as np
 
+from ._validate import _warn, _normalize_choice
 
-def _read_text(filename, encoding=None):
-    """Read a text file as a string, resolving its character encoding.
+# How much of a long reader diagnostic is kept on df.attrs. pandas deep-copies
+# attrs on every column access, so a 27,000-entry blank-line list on a
+# double-spaced ITRDB file made every downstream call 10-40x slower (audit F1).
+# Totals are always recorded; only the first few examples are kept.
+_ATTR_EXAMPLES = 20
+_ATTR_FINDINGS = 50
+
+# Socket timeout (seconds) for reading a file from a URL (audit C7).
+_URL_TIMEOUT = 30
+
+# stacklevel for _warn so a warning points at the USER's dpl.readers() call:
+# read_rwl -> _lines_to_dataframe -> process_rwl_pandas -> readers -> user.
+_SL_PARSE = 6
+
+
+def _decode_bytes(raw, encoding=None):
+    """Decode file bytes, resolving the character encoding.
 
     UTF-8 is tried first -- it is self-validating and ASCII passes, so virtually
     every clean ITRDB file takes this path unchanged. If the bytes are not valid
-    UTF-8 and the caller named an ``encoding``, that is used; otherwise the file is
-    read as latin1, which decodes all 256 byte values losslessly, so a wrong guess
-    discards nothing and the file can be re-read with ``encoding=`` set. This keeps
-    a single accented byte in a header comment (an investigator's name, the ITRDB
-    norm for European sites) from crashing the reader with a UnicodeDecodeError.
+    UTF-8 and the caller named an ``encoding``, that is used; otherwise the bytes
+    are read as latin1, which decodes all 256 byte values losslessly, so a wrong
+    guess discards nothing and the file can be re-read with ``encoding=`` set. This
+    keeps a single accented byte in a header comment (an investigator's name, the
+    ITRDB norm for European sites) from crashing the reader.
 
     Returns ``(text, used_encoding, assumed)`` where ``assumed`` is True only when
     the latin1 fallback was taken without the caller naming an encoding."""
-    with open(filename, "rb") as fh:
-        raw = fh.read()
     if encoding is not None:
         return raw.decode(encoding), encoding, False
     try:
@@ -78,27 +93,61 @@ def _read_text(filename, encoding=None):
         return raw.decode("latin1"), "latin1", True
 
 
-def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
-            join=True, encoding=None):
+def _read_text(filename, encoding=None):
+    """Read a local text file as a string; see ``_decode_bytes`` for the
+    encoding policy. Returns ``(text, used_encoding, assumed)``."""
+    with open(filename, "rb") as fh:
+        raw = fh.read()
+    return _decode_bytes(raw, encoding)
+
+
+def _fetch_url_bytes(url, timeout=_URL_TIMEOUT):
+    """Download a file from an http(s) URL and return its raw bytes (with a
+    socket timeout, so a stalled server cannot hang the reader forever)."""
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _read_source(filename, encoding=None):
+    """Read a local path or an http(s) URL as text through ONE decode policy
+    (``_decode_bytes``). Returns ``(text, used_encoding, assumed)``."""
+    if _is_url(filename):
+        return _decode_bytes(_fetch_url_bytes(filename), encoding)
+    return _read_text(filename, encoding)
+
+
+def _is_url(filename):
+    return str(filename).lower().startswith(("http://", "https://"))
+
+
+def readers(filename, skip_lines=0, header=None, strict=True, format=None,
+            join=True, encoding=None, verbose=True):
     """Read a common ring-width data file (.csv, .rwl) into a pandas DataFrame.
 
     Parameters
     ----------
-    filename : str
-        a data file (.CSV, .RWL or .RAW). May be a local path or an http(s) URL
-        (e.g. from the NOAA/ITRDB archive) -- both are read the same way.
+    filename : str or path-like
+        a data file (.CSV, .RWL or .RAW). May be a local path (str or
+        ``pathlib.Path``) or an http(s) URL (e.g. from the NOAA/ITRDB archive) --
+        both are read the same way.
     header : bool or None, default None
-        whether a 3-line site-metadata header sits at the top of the file. ``None``
-        auto-detects it the way dplR does; pass ``True``/``False`` to force.
+        whether a site-metadata header sits at the top of the file. ``None``
+        auto-detects it the way dplR does (any number of leading non-data lines, up
+        to 3). ``False`` reads every line as data. ``True`` asserts a header is
+        present: the auto-detected header is used, and when none is detected the
+        standard 3-line ITRDB header is skipped anyway (dplR's ``header=TRUE``).
     skip_lines : int, default 0
-        how many of the first lines of the file to skip when reading it.
+        how many of the first PHYSICAL lines of the file to skip before anything
+        else (blank and comment lines count). The skipped lines are recorded on
+        ``df.attrs["dplpy_skipped_lines"]``.
     format : {None, "tucson", "csv", "tridas"}, default None
-        force the file format regardless of suffix. ``None`` infers it: .csv as CSV,
-        .rwl/.raw as Tucson, .xml as TRiDaS, any other suffix by sniffing content.
-        ("rwl"/"raw" are aliases for "tucson"; "xml" for "tridas".) A TRiDaS file is
-        parsed and, for the common single-table case, returned as one ring-width
-        DataFrame; a multi-table or chronology TRiDaS file raises with a pointer to
-        ``dpl.read_tridas()``, which returns the full ``TridasProject``.
+        force the file format regardless of suffix (case-insensitive). ``None``
+        infers it: .csv as CSV, .rwl/.raw as Tucson, .xml as TRiDaS, any other
+        suffix by sniffing content. ("rwl"/"raw" are aliases for "tucson"; "xml" for
+        "tridas".) A TRiDaS file is parsed and, for the common single-table case,
+        returned as one ring-width DataFrame; a multi-table or chronology TRiDaS
+        file raises with a pointer to ``dpl.read_tridas()``, which returns the
+        full ``TridasProject``.
     strict : bool, default True
         ``True`` refuses a file with an unrecoverable problem (fail-loud). ``False``
         (salvage) recovers as much as possible: a self-overlapping or
@@ -113,16 +162,23 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
         character encoding. ``None`` reads as UTF-8 (covers ASCII) and falls back to
         latin1 with a warning for non-UTF-8 bytes (e.g. an accented investigator
         name). Pass an explicit encoding to silence the warning. The encoding used is
-        recorded in ``df.attrs["dplpy_encoding"]``.
+        recorded in ``df.attrs["dplpy_encoding"]``. Applies to URLs too.
+    verbose : bool, default True
+        print the one-line success summary (file, format, series count, period)
+        and the report of merged/split duplicate IDs. Advisories about the file
+        (a truncated value, a short interior gap, case-variant IDs, an assumed
+        encoding) are always issued as warnings, never printed.
 
     Returns
     -------
     data : pandas dataframe
-        Year-indexed ring widths. Non-fatal advisories about the file are attached to
-        ``df.attrs`` (and a concise heads-up is printed): ``dplpy_beyond_column``,
-        ``dplpy_interior_gaps``, ``dplpy_case_merged``, ``dplpy_case_variant_ids``,
-        ``dplpy_blank_lines`` and ``dplpy_encoding`` (plus ``dplpy_salvage`` in
-        salvage mode).
+        Year-indexed ring widths, ``df.attrs["kind"] == "rwl"``. Non-fatal
+        advisories about the file are attached to ``df.attrs``:
+        ``dplpy_beyond_column`` (first 50; total in ``dplpy_beyond_column_n``),
+        ``dplpy_interior_gaps`` (per series, year lists capped with ``n_`` totals),
+        ``dplpy_case_merged``, ``dplpy_case_variant_ids``, ``dplpy_blank_lines``
+        and ``dplpy_skipped_lines`` (``{"n", "first"}``), ``dplpy_encoding`` and
+        ``dplpy_precision`` (plus ``dplpy_salvage`` in salvage mode).
 
     Examples
     --------
@@ -134,29 +190,30 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#readers
+    .. [1] https://opendendro.github.io/dplPy/reference/io/#readers
     """
     if not isinstance(strict, bool):
         raise ValueError("strict must be True (strict) or False (salvage), got "
                          + repr(strict))
+    if header is not None and not isinstance(header, (bool, np.bool_)):
+        raise ValueError("header must be None (auto-detect), True or False, got "
+                         + repr(header))
+    if header is not None:
+        header = bool(header)
+    # a pathlib.Path (or any os.PathLike) is accepted as well as a str (audit B7)
+    filename = os.fspath(filename)
 
     # `filename` may be a local path or an http(s) URL -- read either the same way.
-    is_url = filename.lower().startswith(("http://", "https://"))
+    is_url = _is_url(filename)
     FORMAT = "." + filename.split(".")[-1]
 
     # Resolve the format: explicit `format` wins; otherwise infer from a known
     # suffix; otherwise sniff the content so a Tucson file with a nonstandard
     # extension (e.g. .txt) still reads.
     if format is not None:
-        f = str(format).strip().lower()
-        if f in ("tucson", "rwl", "raw"):
-            fmt = "tucson"
-        elif f == "csv":
-            fmt = "csv"
-        elif f in ("tridas", "xml"):
-            fmt = "tridas"
-        else:
-            raise ValueError("format must be None, 'tucson', 'csv', or 'tridas'")
+        f = _normalize_choice(format, ("tucson", "rwl", "raw", "csv", "tridas", "xml"),
+                              "format")
+        fmt = {"rwl": "tucson", "raw": "tucson", "xml": "tridas"}.get(f, f)
     elif filename.upper().endswith(".CSV"):
         fmt = "csv"
     elif filename.upper().endswith((".RWL", ".RAW")):
@@ -170,8 +227,8 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
                 "Could not determine the file format; pass format='tucson', 'csv', "
                 "or 'tridas' (suffixes: .csv, .rwl, .raw, .xml)."
             )
-        warnings.warn("File suffix '" + FORMAT + "' not recognized; inferred "
-                      + fmt + " format from the file contents.")
+        _warn("File suffix '" + FORMAT + "' not recognized; inferred "
+              + fmt + " format from the file contents.")
 
     # TRiDaS XML is a different shape (a hierarchy of possibly many tables). For
     # the common single-table file we return one ring-width frame; a multi-table
@@ -194,16 +251,18 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
             series_data = pd.read_csv(filename, skiprows=skip_lines, encoding="latin1")
             csv_encoding, csv_assumed = "latin1", True
         if series_data is not None:
+            series_data = _csv_year_column(series_data, os.path.basename(filename))
             series_data.attrs["dplpy_encoding"] = csv_encoding
             series_data.attrs["dplpy_encoding_assumed"] = csv_assumed
     else:  # tucson
         if is_url:
-            raw_lines = _fetch_url_lines(filename)
+            text, enc, assumed = _read_source(filename, encoding)
+            raw_lines = text.splitlines(keepends=True)
             series_data = _lines_to_dataframe(raw_lines, skip_lines, header, strict,
                                               os.path.basename(filename), join=join)
             if series_data is not None:
-                series_data.attrs["dplpy_encoding"] = "utf-8"
-                series_data.attrs["dplpy_encoding_assumed"] = False
+                series_data.attrs["dplpy_encoding"] = enc
+                series_data.attrs["dplpy_encoding_assumed"] = assumed
         else:
             series_data = process_rwl_pandas(filename, skip_lines, header, strict,
                                              join=join, encoding=encoding)
@@ -213,45 +272,36 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
         if not strict:
             # Salvage mode: nothing usable, but don't derail a batch -- warn and
             # return None so the caller can simply skip this file.
-            warnings.warn(
-                "No usable data could be read from " + os.path.basename(filename)
-                + "; returning None (strict=False)."
-            )
+            _warn("No usable data could be read from " + os.path.basename(filename)
+                  + "; returning None (strict=False).")
             return None
-        errorMsg = """
-        Error reading file. Check that file exists and that file formatting is consistent with {format} format.
-        If your file contains headers, run dpl.headers(file_path, header=True)
-        """.format(format=FORMAT)
-        raise ValueError(errorMsg)
-    salvage_report = series_data.attrs.get("dplpy_salvage", [])
-    combined = series_data.attrs.get("dplpy_combined", [])
-    case_merged = series_data.attrs.get("dplpy_case_merged", [])
-    hdr_skipped = series_data.attrs.get("dplpy_header_lines_skipped", None)
-    meta = series_data.attrs.get("dplpy_metadata", None)
-    dropped = series_data.attrs.get("dplpy_dropped", 0)
-    beyond_column = series_data.attrs.get("dplpy_beyond_column", [])
-    interior_gaps = series_data.attrs.get("dplpy_interior_gaps", [])
-    blank_lines = series_data.attrs.get("dplpy_blank_lines", [])
-    enc_used = series_data.attrs.get("dplpy_encoding", "utf-8")
-    enc_assumed = series_data.attrs.get("dplpy_encoding_assumed", False)
-    precision = series_data.attrs.get("dplpy_precision", {})
-    mixed_precision = series_data.attrs.get("dplpy_mixed_precision", False)
+        raise ValueError(
+            "Error reading " + os.path.basename(filename) + ": no usable data was "
+            "found. Check that the file exists and is formatted as " + FORMAT
+            + " (Tucson decadal or CSV). To inspect the header, try "
+            "dpl.metadata(path); to control header handling, pass "
+            "dpl.readers(path, header=True/False).")
+    attrs = dict(series_data.attrs)            # set_index drops attrs: re-attach after
+    salvage_report = attrs.get("dplpy_salvage", [])
+    combined = attrs.get("dplpy_combined", [])
+    case_merged = attrs.get("dplpy_case_merged", [])
+    hdr_skipped = attrs.get("dplpy_header_lines_skipped", None)
+    dropped = attrs.get("dplpy_dropped", 0)
+    beyond_column = attrs.get("dplpy_beyond_column", [])
+    beyond_n = attrs.get("dplpy_beyond_column_n", len(beyond_column))
+    interior_gaps = attrs.get("dplpy_interior_gaps", [])
     series_data.set_index('Year', inplace=True, drop=True)
-    series_data.attrs["dplpy_encoding"] = enc_used                 # re-attach
-    series_data.attrs["dplpy_encoding_assumed"] = enc_assumed
-    series_data.attrs["dplpy_precision"] = precision
-    series_data.attrs["dplpy_mixed_precision"] = mixed_precision
-    series_data.attrs["dplpy_salvage"] = salvage_report            # re-attach (survives set_index)
-    series_data.attrs["dplpy_combined"] = combined
-    series_data.attrs["dplpy_case_merged"] = case_merged
-    series_data.attrs["dplpy_dropped"] = dropped
-    series_data.attrs["dplpy_beyond_column"] = beyond_column
-    series_data.attrs["dplpy_interior_gaps"] = interior_gaps
-    series_data.attrs["dplpy_blank_lines"] = blank_lines
-    if hdr_skipped is not None:
-        series_data.attrs["dplpy_header_lines_skipped"] = hdr_skipped
-    if meta is not None:
-        series_data.attrs["dplpy_metadata"] = meta
+    series_data.attrs.clear()
+    series_data.attrs.update(attrs)
+    for key, default in (("dplpy_salvage", []), ("dplpy_combined", []),
+                         ("dplpy_case_merged", []), ("dplpy_dropped", 0),
+                         ("dplpy_beyond_column", []), ("dplpy_interior_gaps", []),
+                         ("dplpy_blank_lines", {"n": 0, "first": []}),
+                         ("dplpy_skipped_lines", {"n": 0, "first": []}),
+                         ("dplpy_precision", {}), ("dplpy_mixed_precision", False),
+                         ("dplpy_encoding", "utf-8"), ("dplpy_encoding_assumed", False)):
+        series_data.attrs.setdefault(key, default)
+    series_data.attrs["kind"] = "rwl"
 
     # Advisory: series IDs that differ only in letter case (e.g. 'FDD08A' vs
     # 'FDD08a'). A case-sensitive read keeps them as separate series, and a core
@@ -266,10 +316,9 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
     # Advisory: the file was not valid UTF-8 and no encoding was named, so it was
     # read as latin1 (lossless, but non-ASCII header text may be approximate).
     if series_data.attrs.get("dplpy_encoding_assumed"):
-        warnings.warn(
-            basename + " is not valid UTF-8; read as latin1. Non-ASCII text (e.g. "
-            "accented names in the header) may be approximate -- pass encoding= to "
-            "set it explicitly. Ring-width values are unaffected.")
+        _warn(basename + " is not valid UTF-8; read as latin1. Non-ASCII text (e.g. "
+              "accented names in the header) may be approximate -- pass encoding= to "
+              "set it explicitly. Ring-width values are unaffected.")
 
     first_year = int(series_data.index.min())
     last_year = int(series_data.index.max())
@@ -284,106 +333,145 @@ def readers(filename: str, skip_lines=0, header=None, strict=True, format=None,
                + "). A ring cannot post-date the present -- the file may be "
                "misdated or a year was mis-parsed.")
         if not strict:
-            warnings.warn(msg)
+            _warn(msg)
         else:
             raise ValueError(msg)
 
     # One-line success summary (concise for notebooks): file, format, series
     # count, and the period covered, plus a note if a header was auto-detected.
-    label = {"csv": "csv", "tucson": "rwl"}.get(fmt, fmt)
-    summary = (basename + " successfully extracted as " + label + " file with "
-               + str(series_data.shape[1]) + " series covering the period from "
-               + str(first_year) + " to " + str(last_year))
-    if hdr_skipped:
-        summary += (" (auto-detected " + str(hdr_skipped) + " header line"
-                    + ("s" if hdr_skipped != 1 else "") + ")")
-    if dropped:
-        summary += (", with " + str(dropped) + " unreadable value"
-                    + ("s" if dropped != 1 else "") + " set to NaN")
-    print(summary)
+    # Printed (not warned) because it reports success; gated by verbose.
+    if verbose:
+        label = {"csv": "csv", "tucson": "rwl"}.get(fmt, fmt)
+        summary = (basename + " successfully extracted as " + label + " file with "
+                   + str(series_data.shape[1]) + " series covering the period from "
+                   + str(first_year) + " to " + str(last_year))
+        if hdr_skipped:
+            summary += (" (auto-detected " + str(hdr_skipped) + " header line"
+                        + ("s" if hdr_skipped != 1 else "") + ")")
+        if dropped:
+            summary += (", with " + str(dropped) + " unreadable value"
+                        + ("s" if dropped != 1 else "") + " set to NaN")
+        print(summary)
 
-    # Report any duplicate-ID series that were merged from more than one block
-    # (non-overlapping segments sharing a code), so the combining is visible.
-    if combined:
-        print("  " + str(len(combined)) + " series combined from non-overlapping "
-              "duplicate IDs (merged segments):")
-        for c in combined:
-            print("    " + str(c["series"]) + ": " + str(c["n_blocks"])
-                  + " segments spanning " + str(c["first_year"]) + " to "
-                  + str(c["last_year"]))
+        # Report any duplicate-ID series that were merged from more than one block
+        # (non-overlapping segments sharing a code), so the combining is visible.
+        if combined:
+            print("  " + str(len(combined)) + " series combined from non-overlapping "
+                  "duplicate IDs (merged segments):")
+            for c in combined:
+                print("    " + str(c["series"]) + ": " + str(c["n_blocks"])
+                      + " segments spanning " + str(c["first_year"]) + " to "
+                      + str(c["last_year"]))
 
-    # Report case-variant series that were merged into one core (IDs differing only
-    # in letter case, disjoint years, a missing stop marker -- see read_rwl). Shown
-    # so the merge is never silent; the pieces are also on df.attrs['dplpy_case_merged'].
-    if case_merged:
-        print("  " + str(len(case_merged)) + " case-variant series merged (IDs "
-              "differing only in letter case with a missing stop marker -- likely "
-              "one core split by a case change):")
-        for c in case_merged:
-            print("    " + " / ".join(c["ids"]) + " -> " + str(c["canonical"])
-                  + " (" + str(c["first_year"]) + " to " + str(c["last_year"]) + ")")
+        # Report case-variant series that were merged into one core (IDs differing
+        # only in letter case, disjoint years, a missing stop marker -- see
+        # read_rwl). Shown so the merge is never silent; the pieces are also on
+        # df.attrs['dplpy_case_merged'].
+        if case_merged:
+            print("  " + str(len(case_merged)) + " case-variant series merged (IDs "
+                  "differing only in letter case with a missing stop marker -- likely "
+                  "one core split by a case change):")
+            for c in case_merged:
+                print("    " + " / ".join(c["ids"]) + " -> " + str(c["canonical"])
+                      + " (" + str(c["first_year"]) + " to " + str(c["last_year"]) + ")")
 
-    # Report any duplicate-ID series that were kept SEPARATE under join=False (the
-    # counterpart of the merge report above), so the split is visible in both strict
-    # and salvage mode -- it lives in df.attrs["dplpy_salvage"] but is a normal,
-    # successful action, not an error, so it is surfaced here rather than only warned.
-    splits = [r for r in salvage_report if str(r.get("action", "")).startswith("split to ")]
-    if splits:
-        print("  " + str(len(splits)) + " duplicate series ID"
-              + ("s" if len(splits) != 1 else "")
-              + " kept as separate series (join=False):")
-        for s in splits:
-            newid = str(s["action"]).replace("split to ", "")
-            print("    " + str(s["series"]) + ": disjoint block kept as " + newid)
+        # Report any duplicate-ID series that were kept SEPARATE under join=False
+        # (the counterpart of the merge report above). It lives in
+        # df.attrs["dplpy_salvage"] but is a normal, requested action, not an error.
+        splits = [r for r in salvage_report
+                  if str(r.get("action", "")).startswith("split to ")]
+        if splits:
+            print("  " + str(len(splits)) + " duplicate series ID"
+                  + ("s" if len(splits) != 1 else "")
+                  + " kept as separate series (join=False):")
+            for s in splits:
+                newid = str(s["action"]).replace("split to ", "")
+                print("    " + str(s["series"]) + ": disjoint block kept as " + newid)
 
-    # Advisory heads-ups: the file read fine, but these spots deserve a human eye.
+    # Advisory heads-ups (warnings, so they reach the user whatever the verbosity
+    # and can be filtered): the file read fine, but these spots deserve a human eye.
     # 1. Characters beyond the last data column (col 72) that were not parsed --
     #    most importantly a value that overflowed its field and was truncated.
     if beyond_column:
-        print("  heads-up: " + str(len(beyond_column)) + " row"
-              + ("s" if len(beyond_column) != 1 else "")
-              + " had characters beyond the last data column (col 72) that were "
-              "not parsed -- check for a truncated value:")
+        lines_ = []
         for b in beyond_column[:10]:
             note = ("  (looks like a split value)" if b["kind"] == "truncated_value"
                     else "")
-            print("    " + str(b["series"]) + " " + str(b["year"]) + ": read "
-                  + repr(b["in_column"]) + ", ignored " + repr(b["unparsed"]) + note)
-        if len(beyond_column) > 10:
-            print("    ... and " + str(len(beyond_column) - 10) + " more "
-                  "(see df.attrs['dplpy_beyond_column']).")
+            lines_.append("    " + str(b["series"]) + " " + str(b["year"]) + ": read "
+                          + repr(b["in_column"]) + ", ignored " + repr(b["unparsed"])
+                          + note)
+        if beyond_n > 10:
+            lines_.append("    ... and " + str(beyond_n - 10) + " more "
+                          "(see df.attrs['dplpy_beyond_column']).")
+        _warn(basename + ": " + str(beyond_n) + " row"
+              + ("s" if beyond_n != 1 else "")
+              + " had characters beyond the last data column (col 72) that were "
+              "not parsed -- check for a truncated value:\n" + "\n".join(lines_))
     # 2. Short interior gaps -- a blank year (or two) between measured years, i.e.
     #    a value that was probably dropped. Long structural gaps are recorded on
     #    df.attrs['dplpy_interior_gaps'] but not announced (they are usually real).
     short_gaps = [g for g in interior_gaps if g["short_gap_years"]]
     if short_gaps:
-        total = sum(len(g["short_gap_years"]) for g in short_gaps)
-        print("  heads-up: " + str(total) + " short interior gap"
-              + ("s" if total != 1 else "") + " (a blank year between measured "
-              "years -- possibly a dropped value) in " + str(len(short_gaps))
-              + " series:")
+        total = sum(g["n_short_gap_years"] for g in short_gaps)
+        lines_ = []
         for g in short_gaps[:10]:
             yrs = ", ".join(str(y) for y in g["short_gap_years"][:8])
-            print("    " + str(g["series"]) + ": " + yrs)
+            lines_.append("    " + str(g["series"]) + ": " + yrs)
         if len(short_gaps) > 10:
-            print("    ... and " + str(len(short_gaps) - 10) + " more series "
-                  "(see df.attrs['dplpy_interior_gaps']).")
+            lines_.append("    ... and " + str(len(short_gaps) - 10) + " more series "
+                          "(see df.attrs['dplpy_interior_gaps']).")
+        _warn(basename + ": " + str(total) + " short interior gap"
+              + ("s" if total != 1 else "") + " (a blank year between measured "
+              "years -- possibly a dropped value) in " + str(len(short_gaps))
+              + " series:\n" + "\n".join(lines_))
     # 3. Series IDs that differ only in letter case -- read as separate series but
     #    usually one core whose ID case flipped mid-file (which can also strip a
     #    stop marker from one block, tripping the precision fallback). Name the
     #    real cause so it isn't mistaken for a generic missing-terminator issue.
     if case_variants:
-        print("  heads-up: " + str(len(case_variants)) + " set"
+        lines_ = ["    " + " / ".join(g["ids"]) for g in case_variants[:10]]
+        if len(case_variants) > 10:
+            lines_.append("    ... and " + str(len(case_variants) - 10) + " more "
+                          "(see df.attrs['dplpy_case_variant_ids']).")
+        _warn(basename + ": " + str(len(case_variants)) + " set"
               + ("s" if len(case_variants) != 1 else "")
               + " of series IDs differ only in letter case -- read as separate "
               "series, but likely one core each (make the case consistent in the "
-              "file if so):")
-        for g in case_variants[:10]:
-            print("    " + " / ".join(g["ids"]))
-        if len(case_variants) > 10:
-            print("    ... and " + str(len(case_variants) - 10) + " more "
-                  "(see df.attrs['dplpy_case_variant_ids']).")
+              "file if so):\n" + "\n".join(lines_))
     return series_data
+
+
+def _csv_year_column(frame, basename):
+    """Locate and normalise the year column of a CSV read (audit B4).
+
+    Accepts a column named 'Year' in any letter case, or an unnamed first column
+    (pandas' default ``to_csv`` index). Renames it 'Year' and coerces it to int,
+    naming the offending row if a cell is not a whole number."""
+    cols = list(frame.columns)
+    year_col = None
+    for c in cols:
+        if str(c).strip().lower() == "year":
+            year_col = c
+            break
+    if year_col is None and cols and str(cols[0]).startswith("Unnamed: 0"):
+        year_col = cols[0]
+    if year_col is None:
+        raise ValueError(
+            basename + ": no year column found. A dplPy CSV has a 'Year' column "
+            "(any letter case) or an unnamed first column holding the years, then "
+            "one column per series; found columns " + str(cols[:8])
+            + (" ..." if len(cols) > 8 else "") + ".")
+    years = pd.to_numeric(frame[year_col], errors="coerce")
+    bad = years.isna() | (years.notna() & (np.mod(years.fillna(0), 1) != 0))
+    if bad.any():
+        row = int(np.flatnonzero(bad.to_numpy())[0])
+        raise ValueError(
+            basename + ": the year column '" + str(year_col) + "' must hold whole "
+            "numbers; row " + str(row + 1) + " has " + repr(frame[year_col].iloc[row])
+            + ".")
+    frame = frame.rename(columns={year_col: "Year"})
+    frame["Year"] = years.astype(int)
+    return frame
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +531,59 @@ def _is_noaa_template(raw_lines):
     return False
 
 
+def _clean_lines(raw_lines, skip_lines=0, header=None):
+    """Turn raw file lines into ``(header_block, data_lines, info)``.
+
+    * ``skip_lines`` physical lines are dropped FIRST (before blank/comment
+      stripping, so a count taken from the file is honoured -- audit A19).
+    * Blank lines are dropped and counted; lines whose first non-blank character
+      is '#' are comments.
+    * The header block is the run of leading non-data lines (``header=False``
+      makes it empty). A '#' INSIDE a header line (e.g. 'SITE #3', an accession
+      note) does not make it a comment (audit C8); the '#'-note rule
+      (``_is_comment_line``) is applied only to the data region -- and to the
+      leading block when it would otherwise exceed the Tucson header limit (a
+      CDendro-style '#### note' row sitting between header and data).
+    * ``header=True`` with no detectable header skips the standard 3 ITRDB lines
+      (dplR's header=TRUE).
+
+    ``info`` holds ``blank_lines``, ``skipped_lines`` (``{"n", "first"}``
+    summaries, 1-indexed against the input) and ``forced_header`` (True when the
+    3-line default was applied).
+    """
+    skipped = raw_lines[:skip_lines] if skip_lines else []
+    kept = []
+    blank_lines = []
+    for lineno, line in enumerate(raw_lines, start=1):
+        if lineno <= skip_lines:
+            continue
+        line = line.rstrip("\r\n")
+        if len(line.strip()) == 0:
+            blank_lines.append(lineno)
+            continue
+        if line.lstrip().startswith("#"):
+            continue
+        kept.append(line)
+    info = {
+        "blank_lines": {"n": len(blank_lines), "first": blank_lines[:_ATTR_EXAMPLES]},
+        "skipped_lines": {"n": len(skipped),
+                          "first": [s.rstrip("\r\n") for s in skipped[:_ATTR_EXAMPLES]]},
+        "forced_header": False,
+    }
+    if header is False:
+        start = 0
+    else:
+        start = _first_data_line_index(kept)
+        if start == 0 and header is True and len(kept) > _MAX_AUTO_HEADER:
+            start = _MAX_AUTO_HEADER
+            info["forced_header"] = True
+    header_block = kept[:start]
+    if len(header_block) > _MAX_AUTO_HEADER:
+        header_block = [ln for ln in header_block if not _is_comment_line(ln)]
+    data_lines = [ln for ln in kept[start:] if not _is_comment_line(ln)]
+    return header_block, data_lines, info
+
+
 def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join=True):
     """Shared pipeline for the file and URL readers: clean lines, resolve the
     header, parse, and assemble the Year-column dataframe (with salvage report on
@@ -454,41 +595,19 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
         msg = (source_name + " is a NOAA Template file, not a Tucson .rwl; use the "
                "Tucson decadal file (the same name without '-noaa').")
         if not strict:
-            warnings.warn(msg + " Returning None.")
+            _warn(msg + " Returning None.", stacklevel=5)
             return None
         raise ValueError("Cannot read file -- " + msg)
-    # 1. Drop blank lines and comment lines. A line is a comment (see
-    #    _is_comment_line) when its first non-blank character is '#', or when it
-    #    contains a '#' anywhere and does not parse as a data row -- so real series
-    #    IDs containing '#' (e.g. 'SP#1') are kept. Blank lines are harmless (a
-    #    trailing newline, or a "double-spaced" ITRDB file), so they are recorded
-    #    silently on df.attrs["dplpy_blank_lines"] (1-indexed against the original
-    #    input) rather than warned about line by line.
-    clean_lines = []
-    blank_lines = []
-    for lineno, line in enumerate(raw_lines, start=1):
-        line = line.rstrip("\r\n")
-        if len(line.strip()) == 0:
-            blank_lines.append(lineno)
-            continue
-        if _is_comment_line(line):
-            continue  # a '#'-comment or a '#'-marked note row (not a '#' inside an ID)
-        clean_lines.append(line)
-
-    # 2. Honour an explicit skip_lines against the cleaned stream.
-    if skip_lines:
-        clean_lines = clean_lines[skip_lines:]
-    if len(clean_lines) == 0:
-        return None
-
-    # 3. Resolve the header. Rather than assume a fixed 3-line header, skip any
-    #    number of leading header/metadata lines up to the first line that looks
-    #    like data (robust to 1-, 2- or other-length headers). header=False
-    #    disables this; header=True and header=None both skip robustly.
-    if header is False:
-        start = 0
-    else:
-        start = _first_data_line_index(clean_lines)
+    # 1-3. Skip, strip blank/comment lines, and resolve the header (see
+    #    _clean_lines). Rather than assume a fixed 3-line header, any number of
+    #    leading header/metadata lines up to the first line that looks like data
+    #    is skipped (robust to 1-, 2- or other-length headers).
+    header_block, clean_lines, info = _clean_lines(raw_lines, skip_lines, header)
+    start = len(header_block)
+    if info["forced_header"]:
+        _warn(source_name + ": header=True but no header line was detected; the "
+              "first " + str(start) + " lines were skipped as the standard ITRDB "
+              "header (pass header=False if the file has none).", stacklevel=5)
 
     # Guard: refuse a file whose header is too long to be a Tucson .rwl. This
     # catches non-Tucson formats (e.g. NOAA Template files) before they are
@@ -502,12 +621,10 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
                "tab-delimited table under a large '#' metadata header). If it really "
                "is Tucson data, pass header=False to force the read.")
         if not strict:
-            warnings.warn(msg + " Returning None.")
+            _warn(msg + " Returning None.", stacklevel=5)
             return None
         raise ValueError(msg)
 
-    header_block = clean_lines[:start]      # the lines auto-skipped as header
-    clean_lines = clean_lines[start:]
     if len(clean_lines) == 0:
         return None
 
@@ -522,6 +639,11 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     df = _assemble_dataframe(rwl_data, precision, order)
     if df is None:
         return None
+    # Advisory (non-fatal) data-quality notes -- surfaced in both strict and salvage
+    # mode, since these rows parse successfully but a human should eyeball them.
+    # Computed BEFORE attrs are attached (column access deep-copies attrs; audit F1).
+    beyond = _beyond_column_findings(clean_lines)
+    gaps = _interior_gap_findings(df)
     df.attrs["dplpy_salvage"] = report
     df.attrs["dplpy_combined"] = combined            # duplicate IDs merged from >1 block
     df.attrs["dplpy_case_merged"] = case_merged      # case-variant IDs merged into one core
@@ -535,11 +657,11 @@ def _lines_to_dataframe(raw_lines, skip_lines, header, strict, source_name, join
     df.attrs["dplpy_mixed_precision"] = (len(set(prec_mm.values())) > 1)
     df.attrs["dplpy_header_lines_skipped"] = start   # header lines auto-skipped
     df.attrs["dplpy_metadata"] = _extract_header_metadata(header_block)
-    df.attrs["dplpy_blank_lines"] = blank_lines      # blank input lines, dropped silently
-    # Advisory (non-fatal) data-quality notes -- surfaced in both strict and salvage
-    # mode, since these rows parse successfully but a human should eyeball them.
-    df.attrs["dplpy_beyond_column"] = _beyond_column_findings(clean_lines)
-    df.attrs["dplpy_interior_gaps"] = _interior_gap_findings(df)
+    df.attrs["dplpy_blank_lines"] = info["blank_lines"]      # {"n", "first"}: dropped silently
+    df.attrs["dplpy_skipped_lines"] = info["skipped_lines"]  # {"n", "first"}: skip_lines
+    df.attrs["dplpy_beyond_column"] = beyond[:_ATTR_FINDINGS]
+    df.attrs["dplpy_beyond_column_n"] = len(beyond)
+    df.attrs["dplpy_interior_gaps"] = gaps
     if not strict and report:
         _warn_salvage_summary(source_name, report)
     return df
@@ -618,26 +740,75 @@ def _dm_to_decimal(token):
 
 
 # Precompiled ITRDB Tucson header-parsing patterns (compiled once, not per file).
-_RE_HEADER_PREFIX = re.compile(r"^\s*(\S+)\s+(?:\d\s)?(.*)$")
+_RE_HEADER_PREFIX = re.compile(r"^\s*(\S+)\s+(?:(\d)\s)?(.*)$")
 _RE_TRAILING_JUNK = re.compile(r"[\s\-]+$")     # trailing spaces / placeholder dashes
 _RE_SPECIES_CODE = re.compile(r"[A-Z]{2,4}")
 _RE_YEAR_PAIR = re.compile(r"(-?\d{3,4})\s*(-?\d{3,4})$")
 _RE_ELEVATION = re.compile(r"(\d{2,5})\s*[Mm]\b")
-_RE_LATLONG = re.compile(r"(-?\d{4})\s*(-?\d{4,5})")
+# every candidate position of a packed lat/long pair (a lookahead so candidates
+# may overlap: '1560  4757-12328' offers both ('1560','4757') and ('4757','-12328'))
+_RE_LATLONG = re.compile(r"(?=(-?\d{4})\s*(-?\d{4,5}))")
+_RE_BARE_ELEVATION = re.compile(r"(?<!\S)(\d{3,4})\s*$")   # '1560' with no 'M' suffix
 _RE_FIELD_SPLIT = re.compile(r"\s{2,}")
 _RE_LEADING_DIGIT = re.compile(r"^-?\d")
 
 
-def _split_header_prefix(line):
-    """Strip the leading 'SITEID  N ' prefix from a header line, returning
-    (site_id, remaining_content). The line number (1/2/3) is optional -- some
-    ITRDB files omit it -- so a header like 'SFP519AA ARIZONA ...' still splits
-    into ('SFP519AA', 'ARIZONA ...')."""
+def _split_header_record(line):
+    """Split a header line into (site_id, record_number, content). The record
+    number (1/2/3) is optional -- some ITRDB files omit it -- so a header like
+    'SFP519AA ARIZONA ...' splits into ('SFP519AA', None, 'ARIZONA ...')."""
     m = _RE_HEADER_PREFIX.match(line)
     if m:
-        return m.group(1), m.group(2)
+        rec = int(m.group(2)) if m.group(2) else None
+        return m.group(1), rec, m.group(3)
     toks = line.split()
-    return (toks[0] if toks else None), line
+    return (toks[0] if toks else None), None, line
+
+
+def _split_header_prefix(line):
+    """Strip the leading 'SITEID  N ' prefix from a header line, returning
+    (site_id, remaining_content)."""
+    sid, _rec, content = _split_header_record(line)
+    return sid, content
+
+
+def _route_header_lines(header_lines):
+    """Assign header lines to ITRDB records 1-3 by the record number each carries,
+    falling back to position for lines without one (audit A17). Returns
+    ``{1: content, 2: content, 3: content}`` (missing -> None) and the site id."""
+    slots = {1: None, 2: None, 3: None}
+    site_id = None
+    leftovers = []
+    for i, line in enumerate(header_lines):
+        sid, rec, content = _split_header_record(line)
+        if site_id is None:
+            site_id = sid
+        if rec in slots and slots[rec] is None:
+            slots[rec] = content
+        else:
+            leftovers.append((i + 1, content))
+    for pos, content in leftovers:
+        if pos in slots and slots[pos] is None:
+            slots[pos] = content
+        else:
+            free = next((k for k in (1, 2, 3) if slots[k] is None), None)
+            if free is not None:
+                slots[free] = content
+    return slots, site_id
+
+
+def _find_latlong(text):
+    """The packed lat/long pair in ``text``: the LAST candidate (before the year
+    pair) whose two halves both decode as DDMM / DDDMM. Returns
+    ``(latitude, longitude, start, end)`` or None."""
+    best = None
+    for m in _RE_LATLONG.finditer(text):
+        lat = _dm_to_decimal(m.group(1))
+        lon = _dm_to_decimal(m.group(2))
+        if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
+            continue
+        best = (lat, lon, m.start(1), m.end(2))
+    return best
 
 
 def _extract_header_metadata(header_lines):
@@ -648,21 +819,31 @@ def _extract_header_metadata(header_lines):
     if not header_lines:
         return md
 
-    # ---- line 1: site id, site name, species code ----
-    sid, c1 = _split_header_prefix(header_lines[0])
-    md["site_id"] = sid
-    c1 = _RE_TRAILING_JUNK.sub("", c1)          # strip trailing spaces / placeholder dashes
-    toks1 = c1.split()
-    if toks1 and _RE_SPECIES_CODE.fullmatch(toks1[-1]):
-        md["species_code"] = toks1[-1]
-        md["site_name"] = c1[:c1.rfind(toks1[-1])].strip() or None
-    elif c1.strip():
-        md["site_name"] = c1.strip()
+    slots, site_id = _route_header_lines(header_lines)
+    md["site_id"] = site_id
 
-    # ---- line 2: region, species name, elevation, lat/long, year range ----
-    if len(header_lines) >= 2:
-        _, c2 = _split_header_prefix(header_lines[1])
-        c2 = _RE_TRAILING_JUNK.sub("", c2)      # strip trailing junk (e.g. ' -')
+    # ---- record 1: site name, species code ----
+    if slots[1] is not None:
+        c1 = _RE_TRAILING_JUNK.sub("", slots[1])    # strip trailing spaces / placeholder dashes
+        toks1 = c1.split()
+        # The species code is the last 2-4 letter upper-case token, allowing only
+        # junk (an accession note such as 'UAFACC#=04-223') after it.
+        code_idx = None
+        for k in range(len(toks1) - 1, -1, -1):
+            if _RE_SPECIES_CODE.fullmatch(toks1[k]):
+                code_idx = k
+                break
+            if toks1[k].isalpha():
+                break                            # a real word: no trailing code
+        if code_idx is not None:
+            md["species_code"] = toks1[code_idx]
+            md["site_name"] = " ".join(toks1[:code_idx]).strip() or None
+        elif c1.strip():
+            md["site_name"] = c1.strip()
+
+    # ---- record 2: region, species name, elevation, lat/long, year range ----
+    if slots[2] is not None:
+        c2 = _RE_TRAILING_JUNK.sub("", slots[2])    # strip trailing junk (e.g. ' -')
         # trailing year pair: space-separated OR bunched negatives ('-2220-1890')
         ym = _RE_YEAR_PAIR.search(c2)
         if ym:
@@ -671,23 +852,29 @@ def _extract_header_metadata(header_lines):
             c2_geo = c2[:ym.start()]
         else:
             c2_geo = c2
-        em = _RE_ELEVATION.search(c2_geo)          # elevation
+        text_end = len(c2_geo)                   # where the region/species text ends
+        ll = _find_latlong(c2_geo)               # packed lat/long (both halves decode)
+        if ll is not None:
+            md["latitude"], md["longitude"], ll_start, _ll_end = ll
+            text_end = ll_start
+        em = _RE_ELEVATION.search(c2_geo[:text_end])       # elevation '2375M'
         if em:
             md["elevation_m"] = int(em.group(1))
-        gm = _RE_LATLONG.search(c2_geo)      # packed lat/long
-        if gm:
-            md["latitude"] = _dm_to_decimal(gm.group(1))
-            md["longitude"] = _dm_to_decimal(gm.group(2))
-        fields2 = [f for f in _RE_FIELD_SPLIT.split(c2.strip()) if f]
+            text_end = min(text_end, em.start())
+        elif ll is not None:
+            bm = _RE_BARE_ELEVATION.search(c2_geo[:text_end])  # '1560' right before lat/long
+            if bm:
+                md["elevation_m"] = int(bm.group(1))
+                text_end = min(text_end, bm.start())
+        fields2 = [f for f in _RE_FIELD_SPLIT.split(c2_geo[:text_end].strip()) if f]
         if fields2:
             md["country_region"] = fields2[0]
             if len(fields2) >= 2 and not _RE_LEADING_DIGIT.match(fields2[1]):
                 md["species_name"] = fields2[1]
 
-    # ---- line 3: investigator(s) ----
-    if len(header_lines) >= 3:
-        _, c3 = _split_header_prefix(header_lines[2])
-        c3 = _RE_TRAILING_JUNK.sub("", c3)
+    # ---- record 3: investigator(s) ----
+    if slots[3] is not None:
+        c3 = _RE_TRAILING_JUNK.sub("", slots[3])
         md["investigators"] = c3.strip() or None
 
     # ---- hemisphere correction ----
@@ -709,44 +896,23 @@ def _extract_header_metadata(header_lines):
     return md
 
 
-def metadata(filename, header=None, skip_lines=0):
+def metadata(filename, header=None, skip_lines=0, encoding=None):
     """Extract site/sample metadata from a Tucson (.rwl) file's header.
 
     Returns a dict with best-effort fields (site_id, site_name, species_code,
     species_name, country_region, elevation_m, latitude, longitude, first_year,
     last_year, investigators) plus n_header_lines and the raw header lines.
     Unreadable fields are None. Reads only the header, so it is cheap and
-    independent of loading the data; accepts a local path or an http(s) URL.
-    This is a prototype -- see df.attrs['dplpy_metadata'] for the same result
-    captured at read time.
+    independent of loading the data; accepts a local path (str or pathlib.Path)
+    or an http(s) URL. ``header`` and ``skip_lines`` mean what they mean in
+    ``readers()`` (``skip_lines`` counts physical lines). The same result is
+    captured at read time on ``df.attrs['dplpy_metadata']``.
     """
-    is_url = filename.lower().startswith(("http://", "https://"))
-    if is_url:
-        raw = _fetch_url_lines(filename)
-    else:
-        raw = _read_text(filename)[0].split("\n")
-    clean = []
-    for line in raw:
-        line = line.rstrip("\r\n")
-        if len(line.strip()) == 0:
-            continue
-        if 0 <= line.find("#") <= 77:
-            continue
-        clean.append(line)
-    if skip_lines:
-        clean = clean[skip_lines:]
-    if not clean:
-        return _extract_header_metadata([])
-    start = 0 if header is False else _first_data_line_index(clean)
-    return _extract_header_metadata(clean[:start])
-
-
-def _fetch_url_lines(url):
-    """Download a Tucson file from an http(s) URL and return it as a list of
-    lines, matching what ``open(...).readlines()`` yields for a local file."""
-    with urllib.request.urlopen(url) as resp:
-        text = resp.read().decode("utf-8", errors="replace")
-    return text.split("\n")
+    filename = os.fspath(filename)
+    text = _read_source(filename, encoding)[0]
+    header_block, _data, _info = _clean_lines(text.splitlines(keepends=True),
+                                              skip_lines, header)
+    return _extract_header_metadata(header_block)
 
 
 def _sniff_format(filename, is_url):
@@ -756,10 +922,7 @@ def _sniff_format(filename, is_url):
     a CSV does not (its comma-joined fields fail that parse) but contains commas.
     File-open / network errors are left to propagate (so a missing file raises
     FileNotFoundError rather than a vague 'unknown format')."""
-    if is_url:
-        lines = _fetch_url_lines(filename)
-    else:
-        lines = _read_text(filename)[0].split("\n")
+    lines = _read_source(filename)[0].split("\n")
     # TRiDaS: a <tridas> element in the first lines (an XML declaration or
     # comments may precede it, so scan a block rather than line 1 alone).
     if any("<tridas" in ln for ln in lines[:30]):
@@ -852,29 +1015,38 @@ def _interior_gap_findings(df):
     """Find interior NaN gaps: years with no value that fall strictly *between* a
     series' first and last measured year (so leading/trailing missing years, which
     are just where a series does not reach, are ignored). Returns a list of
-    {series, gap_years, short_gap_years, max_run} -- one entry per series that has
-    at least one interior gap. ``short_gap_years`` are the years in runs no longer
-    than _SHORT_GAP_MAX (the 'probably a dropped value' subset)."""
+    {series, gap_years, n_gap_years, short_gap_years, n_short_gap_years, max_run}
+    -- one entry per series that has at least one interior gap. ``short_gap_years``
+    are the years in runs no longer than _SHORT_GAP_MAX (the 'probably a dropped
+    value' subset). The year lists keep the first few examples only (the ``n_``
+    counts are the totals), so df.attrs stays small (audit F1).
+
+    Works on the numpy array, not column by column: a column access on a frame
+    that already carries attrs deep-copies them every time."""
     if df is None or "Year" not in df.columns:
         return []
+    cols = [c for c in df.columns if c != "Year"]
     years = df["Year"].to_numpy()
+    values = df[cols].to_numpy(dtype=float)
+    present = ~np.isnan(values)
     findings = []
-    for col in df.columns:
-        if col == "Year":
+    for j, col in enumerate(cols):
+        pm = present[:, j]
+        if pm.sum() < 2:
             continue
-        present_mask = df[col].notna().to_numpy()
-        if present_mask.sum() < 2:
+        idx = np.flatnonzero(pm)
+        lo, hi = idx[0], idx[-1]
+        missing_pos = np.flatnonzero(~pm[lo:hi + 1]) + lo
+        if len(missing_pos) == 0:
             continue
-        present_years = years[present_mask]
-        lo, hi = int(present_years.min()), int(present_years.max())
-        present = set(int(y) for y in present_years.tolist())
-        missing = [y for y in range(lo, hi + 1) if y not in present]
-        if not missing:
-            continue
+        missing = [int(y) for y in years[missing_pos]]
         runs = _consecutive_runs(missing)
         short_years = [y for r in runs if len(r) <= _SHORT_GAP_MAX for y in r]
-        findings.append({"series": col, "gap_years": missing,
-                         "short_gap_years": short_years,
+        findings.append({"series": col,
+                         "gap_years": missing[:_ATTR_EXAMPLES],
+                         "n_gap_years": len(missing),
+                         "short_gap_years": short_years[:_ATTR_EXAMPLES],
+                         "n_short_gap_years": len(short_years),
                          "max_run": max(len(r) for r in runs)})
     return findings
 
@@ -940,7 +1112,7 @@ def _warn_salvage_summary(basename, report):
         parts.append("dropped a post-marker fragment from " + str(len(orphans))
                      + " series (" + preview + (" ..." if len(orphans) > 5 else "") + ")")
     if parts:
-        warnings.warn("Salvaged " + basename + ": " + "; ".join(parts))
+        _warn("Salvaged " + basename + ": " + "; ".join(parts), stacklevel=_SL_PARSE)
 
 
 def _looks_like_data(line):
@@ -1036,6 +1208,16 @@ def _parse_fixed(line):
     values = [rest[i:i + 6].strip() for i in range(0, len(rest), 6)]
     values = _trim_trailing_junk(values)
     return series_id, year, values
+
+
+def _is_gap_sentinel(v):
+    """True for the negative gap codes dpl.writers() may write for an interior
+    gap (-9, -99, -999, ...): a negative integer whose digits are all 9."""
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return False
+    return v < 0 and set(str(-v)) == {"9"} and v != -9999
 
 
 def _parse_ws(line):
@@ -1437,10 +1619,14 @@ def read_rwl(lines, strict=True, join=True):
     order     : [series_id, ...]           (first-appearance order)
     report    : [{series, issue, action, detail}, ...]  (salvage actions taken)
 
-    Uses a fixed-width parse first (the Tucson "standard"), falling back to a
-    whitespace-delimited parse when the fixed one fails validation -- exactly
-    the strategy dplR uses to cope with long IDs, negative years, etc. Returns
-    ``None`` if nothing usable could be parsed.
+    Uses a fixed-width parse first (the Tucson "standard"). When the fixed grid
+    is broken -- it recovers no rows, or far fewer than a whitespace-delimited
+    parse does (long IDs, single-space-separated files) -- the whitespace parse
+    is used instead, in strict and salvage mode alike, provided it validates
+    (no row carries more values than its decade allows). This is in the spirit of
+    dplR's read.tucson fallback, not a replica of it: dplR keys the switch on a
+    failed fixed read, dplPy on the row counts. Returns ``None`` if nothing
+    usable could be parsed.
 
     strict=False enables salvage mode: instead of raising on an unrecoverable
     per-series problem, a self-overlap or precision-shift series is dropped and a
@@ -1471,8 +1657,8 @@ def read_rwl(lines, strict=True, join=True):
             "Cannot read file -- " + str(n_joined) + " missing line break(s): a stop "
             "marker runs into the next series ID (e.g. '" + str(joined_example) + "').")
     if n_joined:
-        warnings.warn(str(n_joined) + " missing line break(s) split (a stop marker ran "
-                      "into the next series ID)")
+        _warn(str(n_joined) + " missing line break(s) split (a stop marker ran "
+                      "into the next series ID)", stacklevel=_SL_PARSE)
     lines = repaired
 
     fixed_rows = _parse_all(lines, "fixed")
@@ -1484,8 +1670,25 @@ def read_rwl(lines, strict=True, join=True):
     # instead of mislabelling it a fixed-width/column failure the way it reads.
     decade_overrun = [r for r in fixed_rows if r is not None
                       and len(r[2]) > (10 - (r[1] % 10)) + 1]
-    if _rows_valid(fixed_rows):
+    # A broken fixed grid: the fixed parse recovers no rows, or far fewer than a
+    # whitespace-delimited parse does (a long-ID or single-space-separated file,
+    # which dplR reads). Then the whitespace parse is tried in BOTH modes
+    # (audit B14); a decade-misaligned but intact grid is NOT a broken grid.
+    n_fixed = sum(1 for r in fixed_rows if r is not None)
+    ws_rows = None
+    broken_grid = False
+    if not _rows_valid(fixed_rows) or n_fixed == 0:
+        ws_rows = _parse_all(lines, "ws")
+        n_ws = sum(1 for r in ws_rows if r is not None)
+        broken_grid = (n_fixed == 0 and n_ws > 0) or (n_fixed < 0.5 * n_ws)
+    if not broken_grid and _rows_valid(fixed_rows):
         rows = fixed_rows
+    elif broken_grid and _rows_valid(ws_rows):
+        _warn("fixed-width parse failed; re-read with variable (whitespace) columns",
+              stacklevel=_SL_PARSE)
+        rows = ws_rows
+        decade_overrun = [r for r in rows if r is not None
+                          and len(r[2]) > (10 - (r[1] % 10)) + 1]
     elif not salvage:
         # Clean grid, just decade-misaligned: accept the fixed parse and let the
         # duplicate/overlap analysis and the decade guard below produce the precise
@@ -1497,27 +1700,32 @@ def read_rwl(lines, strict=True, join=True):
         # the duplicate renamer can split an offset stacked block; only a broken
         # grid falls back to a whitespace re-parse.
         grid_clean = not any(_row_misaligned(r) for r in fixed_rows)
-        if grid_clean:
+        if grid_clean and not broken_grid:
             rows = fixed_rows
         else:
-            ws_rows = _parse_all(lines, "ws")
+            if ws_rows is None:
+                ws_rows = _parse_all(lines, "ws")
             if _rows_valid(ws_rows):
-                warnings.warn("fixed-width parse failed; re-read with variable (whitespace) columns")
+                _warn("fixed-width parse failed; re-read with variable (whitespace) "
+                      "columns", stacklevel=_SL_PARSE)
                 rows = ws_rows
             else:
                 # Neither validated cleanly. Keep the parse that recovered the most
                 # rows so a single malformed file still yields as much data as
                 # possible, and tell the user the read may be incomplete.
-                n_fixed = sum(1 for r in fixed_rows if r is not None)
                 n_ws = sum(1 for r in ws_rows if r is not None)
                 if max(n_fixed, n_ws) == 0:
                     return None
-                warnings.warn("file has formatting problems; read may be incomplete")
+                _warn("file has formatting problems; read may be incomplete",
+                      stacklevel=_SL_PARSE)
                 rows = fixed_rows if n_fixed >= n_ws else ws_rows
 
     n_bad = sum(1 for r in rows if r is None)
     if n_bad:
-        warnings.warn(str(n_bad) + " line(s) could not be parsed and were skipped")
+        _warn(str(n_bad) + " line(s) could not be parsed and were skipped",
+              stacklevel=_SL_PARSE)
+    if n_bad == len(rows):
+        return None                  # nothing parsed at all: no further diagnostics
 
     # Column-misalignment guard (fixed-width). A value field that -- once stripped
     # -- still contains an internal space means the decadal 6-char grid captured
@@ -1562,8 +1770,8 @@ def read_rwl(lines, strict=True, join=True):
                                "action": "misaligned row(s) set to NaN",
                                "detail": "a fixed-width field held an embedded space or TAB"})
         rows = [None if _row_misaligned(r) else r for r in rows]
-        warnings.warn(str(len(misaligned)) + " misaligned row(s) (embedded space/TAB) "
-                      "set to NaN: " + ex + more)
+        _warn(str(len(misaligned)) + " misaligned row(s) (embedded space/TAB) "
+                      "set to NaN: " + ex + more, stacklevel=_SL_PARSE)
 
     # Salvage: rename the later block(s) of any duplicate series ID whose blocks
     # overlap in time (two cores sharing a code) so both are kept as distinct
@@ -1701,7 +1909,7 @@ def read_rwl(lines, strict=True, join=True):
 
     rwl_data = {}
     order = []
-    neg_hits = []       # (series, year) for anomalous negatives -> NaN
+    neg_hits = []       # (series, year, value) for negatives -> NaN (sentinel or anomalous)
     nonint_cells = []   # (series, year, token) for non-integer tokens -> NaN
     identical_dups = 0  # cells duplicated with an identical value (copy-paste)
     year_src = {}       # sid -> {year: start-year of the row that wrote it}
@@ -1745,7 +1953,7 @@ def read_rwl(lines, strict=True, join=True):
                 continue
             if v < 0:
                 # Anomalous negative (not a stop marker): treat as missing.
-                neg_hits.append((sid, y))
+                neg_hits.append((sid, y, v))
                 continue
             if y in rwl_data[sid]:
                 # A value is already present for this (series, year). If it is
@@ -1912,11 +2120,11 @@ def read_rwl(lines, strict=True, join=True):
                                            "overlapping years joined into one series "
                                            "(likely one core split by a case change)"})
             else:
-                warnings.warn(
+                _warn(
                     "case-variant IDs " + " / ".join(sids) + " (differing only in "
                     "letter case, with a missing stop marker and no overlapping "
                     "years) merged into '" + canonical + "' -- likely one core split "
-                    "by a case change. Pass join=False to keep them separate.")
+                    "by a case change. Pass join=False to keep them separate.", stacklevel=_SL_PARSE)
 
     known = list(precision.values())
     missing = [sid for sid in order if sid not in precision]
@@ -1927,18 +2135,18 @@ def read_rwl(lines, strict=True, join=True):
         dominant = Counter(known).most_common(1)[0][0]
     else:
         dominant = 1000
-        warnings.warn("no stop markers found in file; assuming 0.001 mm precision")
+        if order:
+            _warn("no stop markers found in file; assuming 0.001 mm precision",
+                  stacklevel=_SL_PARSE)
     for sid in missing:
         precision[sid] = dominant
-        warnings.warn(
-            "series '" + str(sid) + "': no stop marker; assuming the file's dominant "
-            + ("0.01" if dominant == 100 else "0.001") + " mm precision."
-        )
+        _warn("series '" + str(sid) + "': no stop marker; assuming the file's dominant "
+              + ("0.01" if dominant == 100 else "0.001") + " mm precision.",
+              stacklevel=_SL_PARSE)
 
     if identical_dups:
-        warnings.warn(
-            str(identical_dups) + " identical duplicate value(s) ignored (looks copy-pasted)"
-        )
+        _warn(str(identical_dups) + " identical duplicate value(s) ignored (looks "
+              "copy-pasted)", stacklevel=_SL_PARSE)
 
     if nonint_cells:
         # A measurement field that is not a whole number is a format violation (the
@@ -1951,16 +2159,40 @@ def read_rwl(lines, strict=True, join=True):
             raise ValueError(
                 "Cannot read file -- " + str(len(nonint_cells)) + " non-integer "
                 "measurement value(s): " + ex + more + ".")
-        warnings.warn(str(len(nonint_cells)) + " non-integer value(s) could not be read "
-                      "and were set to NaN: " + ex + more)
+        _warn(str(len(nonint_cells)) + " non-integer value(s) could not be read "
+              "and were set to NaN: " + ex + more, stacklevel=_SL_PARSE)
 
+    # Negative values that are not a stop marker. A series whose negatives are ALL
+    # one gap sentinel (-9, -99, -999: what dpl.writers(..., gaps=) writes for an
+    # interior gap) is a round trip, not a defect: report it as such and keep it
+    # out of the unreadable count (audit C3). Anything else is an anomalous
+    # negative -- a ring width cannot be negative -- set to NaN and counted.
+    sentinel_hits = []
+    anomalous_hits = []
     if neg_hits:
-        preview = ", ".join(str(sid) + "@" + str(yr) for sid, yr in neg_hits[:5])
-        more = "" if len(neg_hits) <= 5 else " ..."
-        warnings.warn(
-            str(len(neg_hits)) + " anomalous negative value(s) (not the -9999 stop "
-            "marker) were set to NaN [" + preview + more + "]"
-        )
+        by_sid = {}
+        for sid, y, v in neg_hits:
+            by_sid.setdefault(sid, []).append((y, v))
+        for sid, hits in by_sid.items():
+            vals = {v for _y, v in hits}
+            if len(vals) == 1 and _is_gap_sentinel(next(iter(vals))):
+                sentinel_hits.extend((sid, y, v) for y, v in hits)
+            else:
+                anomalous_hits.extend((sid, y, v) for y, v in hits)
+    if sentinel_hits:
+        codes = sorted({v for _s, _y, v in sentinel_hits})
+        _warn(str(len(sentinel_hits)) + " gap sentinel(s) ("
+              + ", ".join(str(c) for c in codes) + ") read as NaN in "
+              + str(len({s for s, _y, _v in sentinel_hits})) + " series "
+              "(the marker dpl.writers and some archives use for an interior gap).",
+              stacklevel=_SL_PARSE)
+    if anomalous_hits:
+        preview = ", ".join(str(sid) + "@" + str(yr) + "=" + str(v)
+                            for sid, yr, v in anomalous_hits[:5])
+        more = "" if len(anomalous_hits) <= 5 else " ..."
+        _warn(str(len(anomalous_hits)) + " anomalous negative value(s) (not the -9999 "
+              "stop marker) were set to NaN [" + preview + more + "]",
+              stacklevel=_SL_PARSE)
 
     # Values written after a series' stop marker are not data (the marker ends the
     # series); they are ignored. Note it once -- an unusual file structure worth
@@ -1970,12 +2202,12 @@ def read_rwl(lines, strict=True, join=True):
         if survivors:
             if len(survivors) == 1:
                 sid, n = next(iter(survivors.items()))
-                warnings.warn("Series " + str(sid) + " had " + str(n) + " value(s) "
-                              "after its stop marker (ignored).")
+                _warn("Series " + str(sid) + " had " + str(n) + " value(s) "
+                              "after its stop marker (ignored).", stacklevel=_SL_PARSE)
             else:
                 ids = ", ".join(str(s) for s in survivors)
-                warnings.warn(str(len(survivors)) + " series had value(s) after their "
-                              "stop marker (ignored): " + ids + ".")
+                _warn(str(len(survivors)) + " series had value(s) after their "
+                              "stop marker (ignored): " + ids + ".", stacklevel=_SL_PARSE)
 
     # Drop salvage-flagged series (self-overlap / precision-shift), then any
     # series that ended up with no usable data at all.
@@ -1986,7 +2218,7 @@ def read_rwl(lines, strict=True, join=True):
     if len(order) == 0:
         return None
 
-    dropped = len(nonint_cells) + len(neg_hits)   # values the file had but couldn't be used
+    dropped = len(nonint_cells) + len(anomalous_hits)   # values the file had but couldn't be used
 
     # Duplicate IDs written as two or more terminator-delimited blocks with disjoint
     # years -- a series split into forward pieces (dplR's BT006) or two cores stacked
@@ -2036,12 +2268,12 @@ def read_rwl(lines, strict=True, join=True):
         else:
             ids = ", ".join(str(s) for s in dj)
             if len(dj) == 1:
-                warnings.warn("Series " + ids + " had a duplicate ID in separate blocks "
-                              "with no overlapping years (joined into one series).")
+                _warn("Series " + ids + " had a duplicate ID in separate blocks "
+                              "with no overlapping years (joined into one series).", stacklevel=_SL_PARSE)
             else:
-                warnings.warn(str(len(dj)) + " series had a duplicate ID in separate "
+                _warn(str(len(dj)) + " series had a duplicate ID in separate "
                               "blocks with no overlapping years (joined into one series "
-                              "each): " + ids + ".")
+                              "each): " + ids + ".", stacklevel=_SL_PARSE)
 
     # Out-of-order rows: a surviving series whose row years step backward in file
     # order (a decade written before an earlier one -- wy002's 283012, nm604's
@@ -2064,11 +2296,11 @@ def read_rwl(lines, strict=True, join=True):
                     and s not in orphan_year]   # an orphan's backward jump was the dropped fragment
     if out_of_order:
         if len(out_of_order) == 1:
-            warnings.warn("Series " + str(out_of_order[0]) + " had rows out of year "
-                          "order (read correctly by placing each row at its year).")
+            _warn("Series " + str(out_of_order[0]) + " had rows out of year "
+                          "order (read correctly by placing each row at its year).", stacklevel=_SL_PARSE)
         else:
-            warnings.warn(str(len(out_of_order)) + " series had rows out of year order "
+            _warn(str(len(out_of_order)) + " series had rows out of year order "
                           "(read correctly by placing each row at its year): "
-                          + ", ".join(str(s) for s in out_of_order))
+                          + ", ".join(str(s) for s in out_of_order), stacklevel=_SL_PARSE)
 
     return rwl_data, precision, order, report, dropped, combined, case_merged

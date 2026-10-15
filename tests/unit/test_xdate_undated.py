@@ -105,3 +105,42 @@ def test_make_plot_runs():
     res = _quiet(dpl.xdate_undated, und, plot=True)
     assert "chronology" in res
     plt.close("all")
+
+
+# --- v0.9.0 audit follow-ups ---------------------------------------------------
+
+def test_interior_nan_keeps_ring_positions():
+    # A3: an unmeasured ring inside a series is a position, not a value to drop;
+    # with one interior NaN in a series the recovered relative offsets are the same.
+    und, true = _synthetic_floats(seed=1)
+    ref = _quiet(dpl.xdate_undated, und)["offsets"]["start_year"]
+    gap = und.copy()
+    gap.loc[80, "T02"] = np.nan
+    got = _quiet(dpl.xdate_undated, gap)["offsets"]["start_year"]
+    assert (ref - got).abs().max() == 0
+    # the placed matrix carries the NaN at its ring position
+    placed = _quiet(dpl.xdate_undated, gap)["placed"]
+    assert np.isnan(placed.loc[int(got["T02"]) + 80, "T02"])
+
+
+def test_shuffled_dataframe_rows_are_sorted_first():
+    # A4: a DataFrame whose integer index is shuffled is put back in ring order.
+    und, _ = _synthetic_floats(seed=1)
+    ref = _quiet(dpl.xdate_undated, und)["offsets"]
+    import warnings
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        got = _quiet(dpl.xdate_undated, und.sample(frac=1.0, random_state=2))["offsets"]
+    assert any("not sorted" in str(x.message) for x in w)
+    pd.testing.assert_frame_equal(ref, got)
+
+
+def test_transform_case_insensitive_and_bad_rejected():
+    # D11
+    und, _ = _synthetic_floats(n_series=3, seed=5)
+    a = _quiet(dpl.xdate_undated, und, transform="PW")["offsets"]
+    b = _quiet(dpl.xdate_undated, und, transform="pw")["offsets"]
+    pd.testing.assert_frame_equal(a, b)
+    with pytest.raises(ValueError):
+        _quiet(dpl.xdate_undated, und, transform="bogus")
+

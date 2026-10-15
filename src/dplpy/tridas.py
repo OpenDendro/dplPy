@@ -45,13 +45,14 @@ __license__ = "GNU GPLv3"
 #   - v1 keeps duplicate series IDs separate with a warning (no series merging).
 
 import os
-import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+from ._validate import _warn
 
 # The namespace dplR writes (TRiDaS 1.2.2). Reading is namespace-agnostic (we
 # match on local names), so 1.1/1.2.x files parse too; writing emits 1.2.2.
@@ -96,8 +97,8 @@ class TridasMetadata:
 
     Project-level fields are named (they are the mandatory ones in Brewer's list
     and what a .crn-style export needs). The object hierarchy is kept as nested
-    dicts under :attr:`objects` so the whole tree stays navigable without a deep
-    class hierarchy. :attr:`laboratories` and :attr:`extra` capture the rest.
+    dicts under ``objects`` so the whole tree stays navigable without a deep
+    class hierarchy. ``laboratories`` and ``extra`` capture the rest.
     """
 
     project_title: Optional[str] = None
@@ -140,7 +141,7 @@ class TridasProject:
 
     def rwl(self) -> pd.DataFrame:
         """Return the single ring-width table, or raise if the file holds more
-        than one measurement table (then use :attr:`measurements`)."""
+        than one measurement table (then use ``measurements``)."""
         if len(self.measurements) == 1:
             return next(iter(self.measurements.values()))
         if len(self.measurements) == 0:
@@ -254,7 +255,7 @@ def read_tridas(filename, warn_units=True):
     # v1 reads the first project (TRiDaS allows several; multi-project files are
     # rare and a later refinement). Record if we skipped any.
     if len(projects) > 1:
-        warnings.warn("read_tridas: %d projects in the file; reading the first "
+        _warn("read_tridas: %d projects in the file; reading the first "
                       "only (multi-project support is a later addition)."
                       % len(projects))
     proj = projects[0]
@@ -373,9 +374,9 @@ def _read_measurement_series(ms, obj_path, taxon, groups, prec, undated, warn_un
     factor = _UNIT_TO_MM.get(unit)
     if not is_width or factor is None:
         if warn_units:
-            warnings.warn("read_tridas: series %r has variable %r / unit %r that "
-                          "is not a length width; left out of the ring-width "
-                          "tables." % (colname, variable, unit))
+            _warn("read_tridas: series %r has variable %r / unit %r that "
+                  "is not a length width; left out of the ring-width "
+                  "tables." % (colname, variable, unit), stacklevel=6)
         return info
 
     values_mm = [np.nan if v is None else v * factor for v in raw]
@@ -455,10 +456,6 @@ def _read_derived(ds, warn_units):
     if values_el is None:
         return (title, None)
 
-    var_el = _child(values_el, "variable")
-    variable = None
-    if var_el is not None:
-        variable = var_el.get("normalTridas") or var_el.get("normal") or _text(var_el)
     unit_el = _child(values_el, "unit")
     unitless = _child(values_el, "unitless") is not None
     unit = None
@@ -494,15 +491,32 @@ def _read_derived(ds, warn_units):
 
 
 def _assemble_group(cols, prec):
-    """Build a Year-indexed ring-width frame from {colname: Series(year->mm)}."""
+    """Build a Year-indexed ring-width frame from {colname: Series(year->mm)}.
+
+    The index is the full, contiguous year range (disjoint series leave NaN rows
+    between them, as the Tucson reader does -- audit C6). A series in
+    "millimetres" whose values are not whole millimetres carries no
+    ``dplpy_precision`` entry: the unit says nothing about the measurement
+    resolution in that case."""
     frame = pd.concat(cols.values(), axis=1)
     frame.columns = list(cols.keys())
     frame = frame.sort_index()
+    lo, hi = int(frame.index.min()), int(frame.index.max())
+    frame = frame.reindex(range(lo, hi + 1))
     frame.index.name = "Year"
     frame.attrs["kind"] = "rwl"
     if prec:
-        frame.attrs["dplpy_precision"] = dict(prec)
-        frame.attrs["dplpy_mixed_precision"] = (len(set(prec.values())) > 1)
+        kept = {}
+        for name, p in prec.items():
+            if p == 1.0 and name in frame.columns:
+                vals = frame[name].to_numpy(dtype=float)
+                vals = vals[~np.isnan(vals)]
+                if len(vals) and not np.allclose(vals, np.round(vals)):
+                    continue                 # unrounded mm: resolution unknown
+            kept[name] = p
+        if kept:
+            frame.attrs["dplpy_precision"] = kept
+            frame.attrs["dplpy_mixed_precision"] = (len(set(kept.values())) > 1)
     return frame
 
 
@@ -515,8 +529,8 @@ def _unique_key(name, existing):
     while ("%s_%d" % (name, i)) in existing:
         i += 1
     newname = "%s_%d" % (name, i)
-    warnings.warn("read_tridas: duplicate series id %r; kept separately as %r "
-                  "(v1 does not merge series)." % (name, newname))
+    _warn("read_tridas: duplicate series id %r; kept separately as %r "
+          "(v1 does not merge series)." % (name, newname), stacklevel=7)
     return newname
 
 
@@ -590,7 +604,9 @@ def write_tridas(fname, rwl=None, crn=None, metadata=None, prec=None,
         "unknown" where the standard allows).
     prec : float, optional
         measurement precision in mm (0.001, 0.01, 0.02, 0.05, 0.1, 1, 10, 1000).
-        ``None`` (default) writes millimetres without rounding.
+        ``None`` (default) uses the precision ``rwl`` was read at
+        (``rwl.attrs["dplpy_precision"]``, when every series shares one); else
+        millimetres without rounding (lossless; mixed precisions warn).
     ids : pandas DataFrame, optional
         tree/core[/radius/measurement] grouping, as from dpl.read_ids(). Default:
         each series is its own element (tree).
@@ -634,6 +650,8 @@ def write_tridas(fname, rwl=None, crn=None, metadata=None, prec=None,
     _leaf(proj, "period", md.period or "")
 
     if rwl is not None:
+        if prec is None:
+            prec = _precision_from_attrs(rwl)
         _write_object(proj, rwl, md, prec, ids, taxon, variable, measuring_method)
     if crn is not None:
         _write_derived(proj, crn, variable)
@@ -786,12 +804,28 @@ def _fmt_value(v, mult):
     return str(int(round(v * mult)))
 
 
+def _precision_from_attrs(rwl):
+    """The single precision recorded on ``rwl.attrs["dplpy_precision"]`` (what
+    the series were read at), or None (none recorded, or mixed -> warn and
+    write unrounded millimetres, which is lossless) -- audit C2."""
+    found = (getattr(rwl, "attrs", {}) or {}).get("dplpy_precision")
+    values = set(found.values()) if isinstance(found, dict) else set()
+    values = {v for v in values if v in _PREC_TO_UNIT}
+    if len(values) == 1:
+        return values.pop()
+    if len(values) > 1:
+        _warn("write_tridas: the data carry mixed measurement precisions "
+              + str(sorted(values)) + "; writing millimetres unrounded (pass prec= "
+              "to write one precision).", stacklevel=4)
+    return None
+
+
 def _resolve_prec(prec):
     if prec is None:
         return ("millimetres", 1)
     if prec not in _PREC_TO_UNIT:
-        warnings.warn("write_tridas: unknown prec %r; writing millimetres "
-                      "unrounded." % (prec,))
+        _warn("write_tridas: unknown prec %r; writing millimetres "
+              "unrounded." % (prec,), stacklevel=5)
         return ("millimetres", 1)
     return _PREC_TO_UNIT[prec]
 

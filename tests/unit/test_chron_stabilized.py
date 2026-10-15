@@ -1,159 +1,189 @@
-import dplpy as dpl
+import re
+import warnings
+
+import numpy as np
 import pandas as pd
 import pytest
-import re
-from unittest.mock import patch, Mock
 
-def mock_get_running_rbar_method(data, min_seg_ratio, method="osborn", corr_type="pearson"):
-    return 1.0
-
-def mock_get_mean_series_intercorr_method(data_set, corr_type, min_seg_ratio, apply_mask=True):
-    return 0.0
-
-def mock_chron_method(input_df, biweight=False, prewhiten=False, plot=False):
-    return pd.DataFrame(data={"std": [0.015, 0.035, 0.055, 0.075, 0.095, 0.115, 0.135, 0.155, 0.175, 0.195, 0.215, 0.235, 0.255, 0.275, 0.295, 0.315, 0.335, 0.355, 0.375, 0.395, 0.415, 0.435, 0.455, 0.475, 0.495, 0.515, 0.535, 0.555, 0.575, 0.595, 0.615, 0.635, 0.655, 0.675, 0.695, 0.715, 0.735, 0.755, 0.775, 0.795, 0.815, 0.835, 0.855, 0.875, 0.895, 0.915, 0.935, 0.955, 0.975, 0.995, 1.015, 1.035, 1.055, 1.075, 1.095, 1.115, 1.135, 1.155, 1.175, 1.195, 1.215, 1.235, 1.255, 1.275, 1.295, 1.315, 1.335, 1.355, 1.375, 1.395, 1.415, 1.435, 1.455, 1.475, 1.495, 1.515, 1.535, 1.555, 1.575, 1.595, 1.615, 1.635, 1.655, 1.675, 1.695, 1.715, 1.735, 1.755, 1.775, 1.795, 1.815, 1.835, 1.855, 1.875, 1.895, 1.915, 1.935, 1.955, 1.975, 1.995],
-                                    "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-
-import importlib
-_m_chron_stabilized = importlib.import_module("dplpy.chron_stabilized")
-
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_valid_input(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
-
-    input_df = pd.DataFrame(data={"SeriesA": [0.01, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.17, 0.19, 0.21, 0.23, 0.25, 0.27, 0.29, 0.31, 0.33, 0.35, 0.37, 0.39, 0.41, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53, 0.55, 0.57, 0.59, 0.61, 0.63, 0.65, 0.67, 0.69, 0.71, 0.73, 0.75, 0.77, 0.79, 0.81, 0.83, 0.85, 0.87, 0.89, 0.91, 0.93, 0.95, 0.97, 0.99, 1.01, 1.03, 1.05, 1.07, 1.09, 1.11, 1.13, 1.15, 1.17, 1.19, 1.21, 1.23, 1.25, 1.27, 1.29, 1.31, 1.33, 1.35, 1.37, 1.39, 1.41, 1.43, 1.45, 1.47, 1.49, 1.51, 1.53, 1.55, 1.57, 1.59, 1.61, 1.63, 1.65, 1.67, 1.69, 1.71, 1.73, 1.75, 1.77, 1.79, 1.81, 1.83, 1.85, 1.87, 1.89, 1.91, 1.93, 1.95, 1.97, 1.99],
-                                    "SeriesB": [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34, 1.36, 1.38, 1.4, 1.42, 1.44, 1.46, 1.48, 1.5, 1.52, 1.54, 1.56, 1.58, 1.6, 1.62, 1.64, 1.66, 1.68, 1.7, 1.72, 1.74, 1.76, 1.78, 1.8, 1.82, 1.84, 1.86, 1.88, 1.9, 1.92, 1.94, 1.96, 1.98, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-    
-    result_chron = dpl.chron_stabilized(input_df, running_rbar=True)
-    expected_chron = pd.DataFrame(data={"vsc": [1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005, 1.005],
-                                        "Running rbar": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                                    "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-    
-    pd.testing.assert_frame_equal(expected_chron, result_chron)
-
-    # add test for specific args
-    mock_mean_series_corr.assert_called_once()  
-    mock_chron.assert_called_once()
-
-    mock_get_running_rbar.assert_called()
+import dplpy as dpl
+from dplpy.rbar import running_rbar_vector, pairwise_corr_mean
 
 
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_wrong_input_type(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
+def _two_linear_series(n=100):
+    """Two perfectly correlated linear series: rbar is exactly 1 in every window."""
+    idx = pd.Index(np.arange(1, n + 1), name="Year")
+    return pd.DataFrame({"SeriesA": 0.01 + 0.02 * np.arange(n),
+                         "SeriesB": 0.02 + 0.02 * np.arange(n)}, index=idx)
 
+
+def _staggered_rwi(n_years=200, n_series=12, seed=0):
+    rng = np.random.default_rng(seed)
+    common = rng.normal(0, 1, n_years)
+    years = pd.Index(np.arange(1, n_years + 1), name="Year")
+    cols = {}
+    for s in range(n_series):
+        start = s * (n_years // (2 * n_series))
+        v = np.full(n_years, np.nan)
+        noise = rng.normal(0, 1, n_years)
+        v[start:] = 1.0 + 0.15 * (common[start:] + noise[start:])
+        cols["s%02d" % s] = v
+    return pd.DataFrame(cols, index=years)
+
+
+def _quiet(fn, *a, **k):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return fn(*a, **k)
+
+
+def test_chron_stabilized_valid_input():
+    # two perfectly correlated series: running rbar == 1 and rbar constant == 1,
+    # so Neff == 1 every year and the stabilized chronology is the plain mean
+    input_df = _two_linear_series()
+    result = dpl.chron_stabilized(input_df, running_rbar=True)
+    plain = dpl.chron(input_df, plot=False)
+    assert list(result.columns) == ["vsc", "running_rbar", "samp_depth"]
+    assert list(result.index) == list(input_df.index)
+    assert np.allclose(result["running_rbar"].to_numpy(), 1.0)
+    assert np.allclose(result["vsc"].to_numpy(), plain["std"].to_numpy())
+    assert (result["samp_depth"] == 2).all()
+    assert result.attrs["kind"] == "crn"
+
+
+def test_chron_stabilized_wrong_input_type():
     with pytest.raises(TypeError) as errorMsg:
         dpl.chron_stabilized("data")
-    expected_msg = "Expected dataframe input, got <class 'str'> instead."
-    assert expected_msg == str(errorMsg.value)
-
-    mock_mean_series_corr.assert_not_called()
-    mock_chron.assert_not_called()
-    mock_get_running_rbar.assert_not_called()
+    assert "Expected dataframe input, got <class 'str'> instead." == str(errorMsg.value)
 
 
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_invalid_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
-
-    input_df = pd.DataFrame(data={"SeriesA": [0.01, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.17, 0.19, 0.21, 0.23, 0.25, 0.27, 0.29, 0.31, 0.33, 0.35, 0.37, 0.39, 0.41, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53, 0.55, 0.57, 0.59, 0.61, 0.63, 0.65, 0.67, 0.69, 0.71, 0.73, 0.75, 0.77, 0.79, 0.81, 0.83, 0.85, 0.87, 0.89, 0.91, 0.93, 0.95, 0.97, 0.99, 1.01, 1.03, 1.05, 1.07, 1.09, 1.11, 1.13, 1.15, 1.17, 1.19, 1.21, 1.23, 1.25, 1.27, 1.29, 1.31, 1.33, 1.35, 1.37, 1.39, 1.41, 1.43, 1.45, 1.47, 1.49, 1.51, 1.53, 1.55, 1.57, 1.59, 1.61, 1.63, 1.65, 1.67, 1.69, 1.71, 1.73, 1.75, 1.77, 1.79, 1.81, 1.83, 1.85, 1.87, 1.89, 1.91, 1.93, 1.95, 1.97, 1.99],
-                                    "SeriesB": [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34, 1.36, 1.38, 1.4, 1.42, 1.44, 1.46, 1.48, 1.5, 1.52, 1.54, 1.56, 1.58, 1.6, 1.62, 1.64, 1.66, 1.68, 1.7, 1.72, 1.74, 1.76, 1.78, 1.8, 1.82, 1.84, 1.86, 1.88, 1.9, 1.92, 1.94, 1.96, 1.98, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-    
+def test_chron_stabilized_invalid_winlen():
+    input_df = _two_linear_series()
     with pytest.raises(ValueError) as errorMsg:
-        dpl.chron_stabilized(input_df, win_length=101)
-    
+        dpl.chron_stabilized(input_df, window_length=101)
     expected_msg = "Window length should not be greater than the number of rows in the dataset"
     assert expected_msg == str(errorMsg.value)
-
-    mock_mean_series_corr.assert_not_called()
-    mock_chron.assert_not_called()
-    mock_get_running_rbar.assert_not_called()
-
-
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_invalid_min_seg_ratio(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
+    # win_length= is a deprecated alias of window_length=
+    with pytest.warns(DeprecationWarning):
+        with pytest.raises(ValueError):
+            dpl.chron_stabilized(input_df, win_length=101)
+    with pytest.raises(TypeError):
+        dpl.chron_stabilized(input_df, bogus=1)
 
 
-    input_df = pd.DataFrame(data={"SeriesA": [0.01, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.17, 0.19, 0.21, 0.23, 0.25, 0.27, 0.29, 0.31, 0.33, 0.35, 0.37, 0.39, 0.41, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53, 0.55, 0.57, 0.59, 0.61, 0.63, 0.65, 0.67, 0.69, 0.71, 0.73, 0.75, 0.77, 0.79, 0.81, 0.83, 0.85, 0.87, 0.89, 0.91, 0.93, 0.95, 0.97, 0.99, 1.01, 1.03, 1.05, 1.07, 1.09, 1.11, 1.13, 1.15, 1.17, 1.19, 1.21, 1.23, 1.25, 1.27, 1.29, 1.31, 1.33, 1.35, 1.37, 1.39, 1.41, 1.43, 1.45, 1.47, 1.49, 1.51, 1.53, 1.55, 1.57, 1.59, 1.61, 1.63, 1.65, 1.67, 1.69, 1.71, 1.73, 1.75, 1.77, 1.79, 1.81, 1.83, 1.85, 1.87, 1.89, 1.91, 1.93, 1.95, 1.97, 1.99],
-                                    "SeriesB": [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34, 1.36, 1.38, 1.4, 1.42, 1.44, 1.46, 1.48, 1.5, 1.52, 1.54, 1.56, 1.58, 1.6, 1.62, 1.64, 1.66, 1.68, 1.7, 1.72, 1.74, 1.76, 1.78, 1.8, 1.82, 1.84, 1.86, 1.88, 1.9, 1.92, 1.94, 1.96, 1.98, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-    
+def test_chron_stabilized_invalid_min_seg_ratio():
     with pytest.raises(ValueError) as errorMsg:
-        dpl.chron_stabilized(input_df, min_seg_ratio=1.1)
-    
-    expected_msg = "min_seg_ratio cannot be <= 0 or > 1"
-    assert expected_msg == str(errorMsg.value)
-
-    mock_mean_series_corr.assert_not_called()
-    mock_chron.assert_not_called()
-    mock_get_running_rbar.assert_not_called()
+        dpl.chron_stabilized(_two_linear_series(), min_seg_ratio=1.1)
+    assert "min_seg_ratio cannot be <= 0 or > 1" == str(errorMsg.value)
 
 
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_weird_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
-
-    input_df = pd.DataFrame(data={"SeriesA": [0.01, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.17, 0.19, 0.21, 0.23, 0.25, 0.27, 0.29, 0.31, 0.33, 0.35, 0.37, 0.39, 0.41, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53, 0.55, 0.57, 0.59, 0.61, 0.63, 0.65, 0.67, 0.69, 0.71, 0.73, 0.75, 0.77, 0.79, 0.81, 0.83, 0.85, 0.87, 0.89, 0.91, 0.93, 0.95, 0.97, 0.99, 1.01, 1.03, 1.05, 1.07, 1.09, 1.11, 1.13, 1.15, 1.17, 1.19, 1.21, 1.23, 1.25, 1.27, 1.29, 1.31, 1.33, 1.35, 1.37, 1.39, 1.41, 1.43, 1.45, 1.47, 1.49, 1.51, 1.53, 1.55, 1.57, 1.59, 1.61, 1.63, 1.65, 1.67, 1.69, 1.71, 1.73, 1.75, 1.77, 1.79, 1.81, 1.83, 1.85, 1.87, 1.89, 1.91, 1.93, 1.95, 1.97, 1.99],
-                                    "SeriesB": [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34, 1.36, 1.38, 1.4, 1.42, 1.44, 1.46, 1.48, 1.5, 1.52, 1.54, 1.56, 1.58, 1.6, 1.62, 1.64, 1.66, 1.68, 1.7, 1.72, 1.74, 1.76, 1.78, 1.8, 1.82, 1.84, 1.86, 1.88, 1.9, 1.92, 1.94, 1.96, 1.98, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100], 
-                                                    name="Year"))
-    
+def test_chron_stabilized_weird_winlen():
     expected_msg = "Window length greater than 50% of the chronology length is not recommended. Consider a shorter window.\n"
     with pytest.warns(UserWarning, match=re.escape(expected_msg)):
-        dpl.chron_stabilized(input_df, win_length=100)
+        dpl.chron_stabilized(_two_linear_series(), window_length=100)
 
 
-@patch.object(_m_chron_stabilized, 'get_running_rbar')
-@patch.object(_m_chron_stabilized, 'chron')
-@patch.object(_m_chron_stabilized, 'mean_series_intercorrelation')
-def test_chron_stabilized_short_winlen(mock_mean_series_corr: Mock, mock_chron: Mock, mock_get_running_rbar: Mock):
-    mock_mean_series_corr.side_effect = mock_get_mean_series_intercorr_method
-    mock_chron.side_effect = mock_chron_method
-    mock_get_running_rbar.side_effect = mock_get_running_rbar_method
-
-    input_df = pd.DataFrame(data={"SeriesA": [0.01, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.17, 0.19, 0.21, 0.23, 0.25, 0.27, 0.29, 0.31, 0.33, 0.35, 0.37, 0.39, 0.41, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53, 0.55, 0.57, 0.59, 0.61, 0.63, 0.65, 0.67, 0.69, 0.71, 0.73, 0.75, 0.77, 0.79, 0.81, 0.83, 0.85, 0.87, 0.89, 0.91, 0.93, 0.95, 0.97, 0.99, 1.01, 1.03, 1.05, 1.07, 1.09, 1.11, 1.13, 1.15, 1.17, 1.19, 1.21, 1.23, 1.25, 1.27, 1.29, 1.31, 1.33, 1.35, 1.37, 1.39, 1.41, 1.43, 1.45, 1.47, 1.49, 1.51, 1.53, 1.55, 1.57, 1.59, 1.61, 1.63, 1.65, 1.67, 1.69, 1.71, 1.73, 1.75, 1.77, 1.79, 1.81, 1.83, 1.85, 1.87, 1.89, 1.91, 1.93, 1.95, 1.97, 1.99],
-                                    "SeriesB": [0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34, 1.36, 1.38, 1.4, 1.42, 1.44, 1.46, 1.48, 1.5, 1.52, 1.54, 1.56, 1.58, 1.6, 1.62, 1.64, 1.66, 1.68, 1.7, 1.72, 1.74, 1.76, 1.78, 1.8, 1.82, 1.84, 1.86, 1.88, 1.9, 1.92, 1.94, 1.96, 1.98, 2.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
-                                                    name="Year"))
-
-    # win_length=25 is <=30 (triggers the absolute-floor warning) but is only
+def test_chron_stabilized_short_winlen():
+    # window_length=25 is <=30 (triggers the absolute-floor warning) but is only
     # 25% of the 100-row chronology (well under the 50% relative-ceiling check),
     # so this should be the ONLY warning raised -- verifying the two checks
     # fire independently, matching dplR's chron.stabilized().
     expected_msg = "Window length less than 30 is not recommended. Consider a longer window.\n"
     with pytest.warns(UserWarning, match=re.escape(expected_msg)) as warning_record:
-        dpl.chron_stabilized(input_df, win_length=25)
+        dpl.chron_stabilized(_two_linear_series(), window_length=25)
     assert len(warning_record) == 1
+
+
+def test_chron_stabilized_running_uses_shared_running_rbar_vector():
+    # E14: the running rbar is rbar.running_rbar_vector on the zero-mean matrix
+    # (one implementation), and the dplR formula is applied around it
+    rwi = _staggered_rwi()
+    out = _quiet(dpl.chron_stabilized, rwi, running_rbar=True)
+    mean_val = rwi.mean(axis=1).mean()
+    zm = rwi - mean_val
+    n = zm.notna().sum(axis=1).to_numpy()
+    rbar = running_rbar_vector(zm, 50, 1 / 3, n)
+    assert np.allclose(out["running_rbar"].to_numpy(), rbar, equal_nan=True)
+    n_eff = np.minimum(n / (1 + (n - 1) * rbar), n)
+    std = dpl.chron(zm, plot=False)["std"].to_numpy()
+    expected = std * np.sqrt(n_eff * pairwise_corr_mean(zm, "pearson")) + mean_val
+    assert np.allclose(out["vsc"].to_numpy(), expected)
+
+
+def test_chron_stabilized_interior_nan_rbar_falls_back_to_depth():
+    # A13: a window where no pair meets the overlap requirement gives a NaN
+    # running rbar; dplR then uses Neff = n (not NaN), so vsc stays finite
+    rng = np.random.default_rng(1)
+    n = 160
+    idx = pd.Index(np.arange(1, n + 1), name="Year")
+    a = np.full(n, np.nan)
+    b = np.full(n, np.nan)
+    a[:70] = 1 + 0.1 * rng.standard_normal(70)        # A: years 1-70
+    b[90:] = 1 + 0.1 * rng.standard_normal(70)        # B: years 91-160, no overlap
+    c = 1 + 0.1 * rng.standard_normal(n)              # C: all years
+    df = pd.DataFrame({"A": a, "B": b, "C": c}, index=idx)
+    out = _quiet(dpl.chron_stabilized, df, window_length=40, running_rbar=True)
+    rb = out["running_rbar"].to_numpy()
+    assert np.isnan(rb).any()                          # some windows have no valid pair
+    depth = out["samp_depth"].to_numpy()
+    assert np.isfinite(out["vsc"].to_numpy()[depth > 0]).all()
+    # where rbar is NaN, the scaling used sqrt(n * rbar_const): rebuild it
+    mean_val = df.mean(axis=1).mean()
+    zm = df - mean_val
+    std = dpl.chron(zm, plot=False)["std"].to_numpy()
+    rc = pairwise_corr_mean(zm, "pearson")
+    hole = np.isnan(rb) & (depth > 0)
+    assert np.allclose(out["vsc"].to_numpy()[hole],
+                       std[hole] * np.sqrt(depth[hole] * rc) + mean_val)
+
+
+def test_chron_stabilized_zero_depth_year_kept():
+    # A14: a year with no series present is kept (samp_depth 0, vsc NaN)
+    df = _two_linear_series(60)
+    df.loc[30, :] = np.nan
+    out = _quiet(dpl.chron_stabilized, df, window_length=20)
+    assert len(out) == 60
+    assert out.loc[30, "samp_depth"] == 0 and np.isnan(out.loc[30, "vsc"])
+    assert np.isfinite(out["vsc"].drop(30)).all()
+
+
+def test_chron_stabilized_method_case_insensitive_and_alias():
+    rwi = _staggered_rwi()
+    a = _quiet(dpl.chron_stabilized, rwi, method="briffa")
+    b = _quiet(dpl.chron_stabilized, rwi, method="Briffa")
+    c = _quiet(dpl.chron_stabilized, rwi, method="MEAN_RBAR")
+    pd.testing.assert_frame_equal(a, b)
+    pd.testing.assert_frame_equal(a, c)
+    with pytest.raises(ValueError, match="method"):
+        dpl.chron_stabilized(rwi, method="bogus")
+
+
+def test_chron_stabilized_spline_period_default_and_alias():
+    # D3: spline stiffness is spline_period; None = the 67% spline (floor(0.67 n)),
+    # the same default as stabilize_chron (earlier releases used 0.5 n);
+    # spline_nyrs= is a deprecated alias
+    rwi = _staggered_rwi()
+    n = len(rwi)
+    default = _quiet(dpl.chron_stabilized, rwi, method="spline")
+    explicit = _quiet(dpl.chron_stabilized, rwi, method="spline",
+                      spline_period=int(np.floor(0.67 * n)))
+    half = _quiet(dpl.chron_stabilized, rwi, method="spline", spline_period=0.5)
+    pd.testing.assert_frame_equal(default, explicit)
+    assert not np.allclose(default["vsc"], half["vsc"])
+    with pytest.warns(DeprecationWarning):
+        alias = dpl.chron_stabilized(rwi, method="spline", spline_nyrs=0.5)
+    pd.testing.assert_frame_equal(alias, half)
+    assert (default["vsc"].dropna() >= 0).all()           # clipped at 0
+
+
+def test_chron_stabilized_spline_uses_shared_spline_component():
+    # E15: the spline path is stabilize._spline_component on the chronology
+    from dplpy.stabilize import _spline_component
+    rwi = _staggered_rwi()
+    out = _quiet(dpl.chron_stabilized, rwi, method="spline", spline_period=60)
+    std = dpl.chron(rwi, plot=False)["std"].to_numpy()
+    n = rwi.notna().sum(axis=1).to_numpy()
+    ref = _spline_component(std, 60, 0.5, clip_negative=True, ok=n > 0)
+    assert np.allclose(out["vsc"].to_numpy(), ref, equal_nan=True)
 
 
 def test_rbar_uses_flat_mean_not_column_means():
@@ -163,9 +193,6 @@ def test_rbar_uses_flat_mean_not_column_means():
     # mask drops pairs unevenly across series. Build such a case (C and D never
     # overlap, so the mask is uneven) and confirm pairwise_corr_mean returns the
     # flat mean, not the column-means mean.
-    import numpy as np
-    import pandas as pd
-    from dplpy.rbar import pairwise_corr_mean
     rng = np.random.default_rng(0)
     n = 40
     base = rng.standard_normal(n)
@@ -189,3 +216,31 @@ def test_rbar_uses_flat_mean_not_column_means():
     impl = pairwise_corr_mean(df, "pearson", min_overlap=10, strict=False)
     assert abs(impl - flat) < 1e-12            # matches dplR's flat mean
     assert abs(flat - col_means) > 1e-3        # and the case is meaningful (they differ)
+
+
+def test_running_rbar_vector_matches_per_window_corr():
+    # F5: the sliding-sum running rbar equals the per-window DataFrame.corr route
+    # (to 1e-10), including constant runs, gaps and a zero-depth block
+    rng = np.random.default_rng(0)
+    n, s = 300, 7
+    X = 1 + 0.2 * rng.standard_normal((n, s)) + 0.3 * rng.standard_normal((n, 1))
+    for j in range(s):
+        X[:j * 20, j] = np.nan
+    X[150:165, :] = np.nan
+    X[200:250, 3] = 1.0
+    X[rng.random((n, s)) < 0.05] = np.nan
+    df = pd.DataFrame(X)
+    for w, ratio in ((50, 1 / 3), (41, 0.5), (30, 0.9)):
+        ref = np.full(n, np.nan)
+        target = w // 2 if w % 2 == 0 else (w - 1) // 2
+        for i in range(n - w + 1):
+            seg = df.iloc[i:i + w]
+            ref[i + target] = pairwise_corr_mean(seg, "pearson", min_overlap=w * ratio)
+        valid = np.flatnonzero(~np.isnan(ref))
+        ref[:valid[0]] = ref[valid[0]]
+        ref[valid[-1]:] = ref[valid[-1]]
+        ref[df.notna().sum(axis=1).to_numpy() == 0] = np.nan
+        got = running_rbar_vector(df, w, ratio)
+        assert np.array_equal(np.isnan(got), np.isnan(ref))
+        ok = ~np.isnan(ref)
+        assert np.max(np.abs(got[ok] - ref[ok])) < 1e-10

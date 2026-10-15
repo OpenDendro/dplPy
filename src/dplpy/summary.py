@@ -28,7 +28,7 @@ __license__ = "GNU GPLv3"
 # Title: summary.py
 # Description: Generates a summary of each series recorded in Tucson format and CSV format files
 # example usage:
-# >>> import dplpy as dpl 
+# >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
 # >>> dpl.summary(data)
 #
@@ -61,7 +61,7 @@ def summary(inp: pd.DataFrame | str):
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#summary
+    .. [1] https://opendendro.github.io/dplPy/reference/io/#summary
     """
     series_data = _coerce_to_frame(inp)
 

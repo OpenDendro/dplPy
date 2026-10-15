@@ -98,3 +98,35 @@ def test_fill_arstan_leaves_leading_trailing_nan():
         out = dpl.fill_internal(df, fill="ARSTAN")
     assert out["S2"].loc[1900:1902].isna().all()
     assert out["S3"].loc[1947:1949].isna().all()
+
+
+# --- v0.9.0 audit follow-ups ---------------------------------------------------
+
+def test_fill_spline_clips_negative_and_warns():
+    # A20: an fmm spline next to a tiny ring can go negative (dplR returns the
+    # negative value); dplPy clips to 0 and names the series.
+    df = pd.DataFrame({"S": [1.0, 4.0, 0.0, np.nan, np.nan, 8.0],
+                       "T": [1.0, 1.1, 1.2, np.nan, 1.4, 1.5]},
+                      index=pd.Index(range(2000, 2006), name="Year"))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        out = dpl.fill_internal(df, fill="Spline")
+    assert list(out["S"].to_numpy()[3:5]) == [0.0, 0.0]        # fmm gives -4.8, -4.2
+    msgs = [str(m.message) for m in w if "clipped" in str(m.message)]
+    assert len(msgs) == 1 and "S (2)" in msgs[0] and "T (" not in msgs[0]
+    assert out["T"].loc[2003] == pytest.approx(1.3, abs=1e-9)   # a benign fill is untouched
+
+
+def test_fill_is_case_insensitive_and_keeps_attrs():
+    # D11 / G10 / A4
+    df = _frame()
+    df.attrs["dplpy_precision"] = 0.01
+    df.attrs["kind"] = "rwl"
+    out = dpl.fill_internal(df, fill="mean")
+    assert list(np.round(out["S"].to_numpy(), 6)) == [0.2, 0.35, 0.4, 0.0, 0.35, 0.8]
+    assert out.attrs["dplpy_precision"] == 0.01 and out.attrs["kind"] == "rwl"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        shuf = dpl.fill_internal(df.sample(frac=1.0, random_state=0), fill="Linear")
+    assert any("not sorted" in str(m.message) for m in w)
+    pd.testing.assert_frame_equal(shuf, dpl.fill_internal(df, fill="Linear"))

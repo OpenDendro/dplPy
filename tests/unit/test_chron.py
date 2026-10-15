@@ -1,14 +1,9 @@
+import warnings
+
+import numpy as np
 import pandas as pd
 import dplpy as dpl
 import pytest
-from unittest.mock import patch, Mock
-
-def mock_tbrm_out(inp):
-    return sum(inp)
-
-def mock_ar_func_out(inp_series, max_lag=10, aic=True, method="yw", first_aic_min=False):
-    inp_series += 0.01
-    return inp_series
 
 import importlib
 _m_chron = importlib.import_module("dplpy.chron")
@@ -16,67 +11,113 @@ _m_chron = importlib.import_module("dplpy.chron")
 def test_chron_simple_means():
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
 
     expected_df = pd.DataFrame(data={"std": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
                                     "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     result_df = dpl.chron(input_df, biweight=False, prewhiten=False, plot=False)
-    
+
     pd.testing.assert_frame_equal(expected_df, result_df)
-    
+
 
 def test_wrong_input():
     with pytest.raises(TypeError) as errorMsg:
         dpl.chron("string")
-    
+
     assert "Expected dataframe input, got <class 'str'> instead." == str(errorMsg.value)
 
-@patch.object(_m_chron, 'tbrm')
-@patch.object(_m_chron, 'ar_func')
-def test_chron_biweight_means(mock_ar_func: Mock, mock_tbrm: Mock):
-    mock_tbrm.side_effect = mock_tbrm_out
-    mock_ar_func.side_effect = mock_ar_func_out
 
+def test_chron_biweight_means():
+    # the std column is the row-wise Tukey biweight robust mean (tbrm_rows); a
+    # year with a single series equals that value, and an outlier is downweighted
+    from dplpy.tbrm import tbrm, tbrm_rows
+    rng = np.random.default_rng(0)
+    arr = 1.0 + 0.1 * rng.standard_normal((30, 6))
+    arr[5, 0] = 9.0                                   # outlier
+    arr[:10, 5] = np.nan                              # staggered start
+    df = pd.DataFrame(arr, index=pd.Index(range(1901, 1931), name="Year"),
+                      columns=list("ABCDEF"))
+    out = dpl.chron(df, biweight=True, plot=False)
+    assert np.allclose(out["std"].to_numpy(), tbrm_rows(arr))
+    assert np.allclose(out["std"].to_numpy(),
+                       [tbrm(r[~np.isnan(r)]) for r in arr])
+    assert abs(out["std"].iloc[5] - 1.0) < 0.2         # outlier downweighted
+    assert (out["samp_depth"].to_numpy() == df.notna().sum(axis=1).to_numpy()).all()
+
+
+def test_chron_prewhiten_routes_through_prewhiten(monkeypatch):
+    # chron(prewhiten=True) whitens every series with the package-standard
+    # autoreg._prewhiten (audit D1) and averages the result into 'res'.
+    calls = []
+
+    def fake_prewhiten(x, estimator="yw", ar_max=10, first_aic_min=True, order=None,
+                       backcast=True, return_params=False):
+        calls.append((estimator, ar_max, first_aic_min, order, backcast))
+        return np.asarray(x, dtype=float) + 0.01
+
+    monkeypatch.setattr(_m_chron, "_prewhiten", fake_prewhiten)
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
-                                    "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
-                                                    name="Year"))
-    
-    expected_df = pd.DataFrame(data={"std": [0.3, 0.7, 1.1, 1.5, 1.9, 2.3, 2.7, 3.1],
-                                     "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
-                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
-                                                    name="Year"))
-    
-    result_df = dpl.chron(input_df, biweight=True, prewhiten=False, plot=False)
-    pd.testing.assert_frame_equal(expected_df, result_df)
-    mock_tbrm.assert_called()
-    mock_ar_func.assert_not_called()
-    
-
-@patch.object(_m_chron, 'tbrm')
-@patch.object(_m_chron, 'ar_func')
-def test_chron_prewhiten(mock_ar_func: Mock, mock_tbrm: Mock):
-    mock_tbrm.side_effect = mock_tbrm_out
-    mock_ar_func.side_effect = mock_ar_func_out
-
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
-                                    "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
-                                                    name="Year"))
-    
+                                  "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
+                            index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], name="Year"))
     expected_df = pd.DataFrame(data={"std": [0.15, 0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.55],
                                      "res": [0.16, 0.36, 0.56, 0.76, 0.96, 1.16, 1.36, 1.56],
                                      "samp_depth": [2, 2, 2, 2, 2, 2, 2, 2]},
-                                     index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
-                                                    name="Year"))
+                               index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], name="Year"))
     result_df = dpl.chron(input_df, biweight=False, prewhiten=True, plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
-    mock_tbrm.assert_not_called()
-    mock_ar_func.assert_called()
+    # package defaults: YW, ar_max=10, first local AIC min, AIC selection,
+    # dplR-style NaN warm-up (backcast=False)
+    assert calls == [("yw", 10, True, None, False)] * 2
+    calls.clear()
+    with pytest.warns(DeprecationWarning):
+        dpl.chron(input_df, biweight=False, prewhiten=True, plot=False, max_lag=4,
+                  ar_method="Burg", first_aic_min=False, backcast=True, aic=False)
+    assert calls == [("burg", 4, False, 4, True)] * 2
+
+
+def test_chron_keeps_zero_depth_years_as_nan():
+    # A14: a year with no series present stays in the output with std NaN and
+    # samp_depth 0 (as dplR's chron()), so the index always equals the input's
+    idx = pd.Index(range(1900, 1910), name="Year")
+    df = pd.DataFrame({"A": np.linspace(0.9, 1.1, 10), "B": np.linspace(1.1, 0.9, 10)},
+                      index=idx)
+    df.loc[1904:1905, :] = np.nan
+    out = dpl.chron(df, plot=False, prewhiten=True)
+    assert list(out.index) == list(idx)
+    assert out.loc[1904, "samp_depth"] == 0 and np.isnan(out.loc[1904, "std"])
+    assert np.isnan(out.loc[1905, "res"])
+    assert (out.drop([1904, 1905])["samp_depth"] == 2).all()
+    assert np.isfinite(out.drop([1904, 1905])["std"]).all()
+    # chron_stabilized builds on chron and no longer crashes on this input
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cs = dpl.chron_stabilized(df, window_length=6)
+    assert len(cs) == 10 and cs.loc[1904, "samp_depth"] == 0
+
+
+def test_chron_default_ci_replicates_is_100():
+    import inspect
+    assert inspect.signature(dpl.chron).parameters["R"].default == 100
+
+
+def test_chron_carries_attrs_as_crn():
+    rwi = _staggered_rwi()
+    rwi.attrs["site"] = "x"
+    rwi.attrs["dplpy_precision"] = 0.01
+    out = dpl.chron(rwi, plot=False)
+    assert out.attrs["kind"] == "crn" and out.attrs["site"] == "x"
+    assert "dplpy_precision" not in out.attrs
+
+
+def test_chron_bad_ar_method_names_parameter():
+    rwi = _staggered_rwi()
+    with pytest.raises(ValueError, match="ar_method"):
+        dpl.chron(rwi, plot=False, prewhiten=True, ar_method="nope")
+
 
 def test_chron_plot():
     # headless smoke test: chron(plot=True) draws a figure without error
@@ -94,11 +135,6 @@ def test_chron_plot():
 
 # --- stabilize= convenience flag -------------------------------------------
 # see dev/variance_stabilization_design_2026-09-10.md
-import warnings
-
-import numpy as np
-
-
 def _staggered_rwi(n_years=200, n_series=12, seed=0):
     """years x series RWI-like frame with staggered starts (depth rises)."""
     rng = np.random.default_rng(seed)
@@ -138,6 +174,23 @@ def test_chron_stabilize_no_res_vsc_without_prewhiten():
     rwi = _staggered_rwi()
     out = dpl.chron(rwi, prewhiten=False, plot=False, stabilize="rbar")
     assert list(out.columns) == ["std", "std_vsc", "samp_depth"]
+
+
+def test_chron_stabilize_with_ci_and_prewhiten_column_order():
+    # B2: stabilize= and ci=True used to raise KeyError together; one final
+    # column order keeps every CI / vsc column beside its base chronology
+    rwi = _staggered_rwi()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = dpl.chron(rwi, plot=False, stabilize="rbar", ci=True, R=50, seed=0)
+        both = dpl.chron(rwi, plot=False, prewhiten=True, stabilize="rbar", ci=True,
+                         R=50, seed=0)
+    assert list(out.columns) == ["std", "lower_ci", "upper_ci", "std_vsc", "samp_depth"]
+    assert list(both.columns) == ["std", "lower_ci", "upper_ci", "std_vsc", "res",
+                                  "res_vsc", "samp_depth"]
+    w = both[both["samp_depth"] >= 2]
+    assert (w["lower_ci"] <= w["std"] + 1e-9).all()
+    assert np.isfinite(both["std_vsc"]).any() and np.isfinite(both["res_vsc"]).any()
 
 
 def test_chron_std_vsc_matches_direct_stabilize_chron():

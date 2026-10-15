@@ -27,8 +27,6 @@ __license__ = "GNU GPLv3"
 # Description: This file contains helper functions which find tukey's biweight robust mean of
 #              an array like object.
 
-import warnings
-
 import numpy as np
 
 def tbrm(data, c=9):

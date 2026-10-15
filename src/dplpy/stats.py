@@ -26,7 +26,7 @@ __license__ = "GNU GPLv3"
 # Title: stats.py
 # Description: Generates summary statistics for Tucson format and CSV format files
 # example usage:
-# >>> import dplpy as dpl 
+# >>> import dplpy as dpl
 # >>> data = dpl.readers("../tests/data/csv/file.csv")
 # >>> dpl.stats(data)
 #
@@ -40,23 +40,27 @@ __license__ = "GNU GPLv3"
 # get_ar1 below), following dplR's definition.
 
 import pandas as pd
-from ._validate import _coerce_to_frame
+from ._validate import _coerce_to_frame, _drop_allnan_columns
 import numpy as np
 
 def stats(inp: pd.DataFrame | str):
     """Summary statistics for each series in a ring-width dataset.
 
     Reports, for each series, the columns 'first', 'last', 'year', 'mean', 'median',
-    'stdev', 'skew', 'kurtosis', 'gini', and 'ar1'.
+    'stdev', 'skew', 'kurtosis', 'gini', and 'ar1' (dplR's rwl.stats()).
 
     Parameters
     ----------
     inp : str or pandas dataframe
         a data file (.CSV or .RWL) or a pandas dataframe imported from dpl.readers().
+        Series with no measured values are dropped with a warning.
 
     Returns
     -------
     data : pandas dataframe
+        one row per series. 'year' is the SPAN first..last in years (as dplR's
+        rwl.stats), not the number of measured rings; the two differ for a
+        series with interior gaps (see dpl.samp_stats() 'seg' for ring counts).
 
     Examples
     --------
@@ -64,11 +68,10 @@ def stats(inp: pd.DataFrame | str):
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#stats
+    .. [1] https://opendendro.github.io/dplPy/reference/statistics/#stats
     """
-    series_data = _coerce_to_frame(inp)
+    series_data = _drop_allnan_columns(_coerce_to_frame(inp), "inp")
 
-        
     stats = {"series":[], "first":[], "last":[], "year": [], "mean": [], "median":[], "stdev":[], "skew":[], "kurtosis":[], "gini":[], "ar1":[]}
 
     for series_name, data in series_data.items():

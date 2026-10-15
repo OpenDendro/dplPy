@@ -38,14 +38,16 @@ def get_param(amp, period):
     spline_param = 1/(((cos(2 * pi * freq) + 2) * (1 - amp)/(12 * amp * (cos(2 * pi * freq) - 1) ** 2))+ 1)
     return spline_param
 
-def get_period(period, n):
+def get_period(period, n, default=0.67):
     # Resolve the requested spline wavelength (in years) from `period` and the
-    # series length `n`. Four conventions are supported:
-    #   * None      -> the default "n-year spline" wavelength floor(0.67 * n),
+    # series length `n`. The single home for this rule (detrend, rcs, ssf and
+    # the stabilizers all resolve through here). Four conventions are supported:
+    #   * None      -> the default "n-year spline" wavelength floor(default * n),
     #                  matching dplR's detrend.series (nyrs = floor(nY2 * 0.67)).
     #                  (Flooring matters: an unfloored 0.67 * n left dplPy's
     #                  spline ~3e-5 off dplR's, the source of an early crossdating
-    #                  gap.)
+    #                  gap.) dplR's ssf() uses 0.6667 instead of 0.67, so ssf
+    #                  passes default=0.6667 to stay on dplR's numbers.
     #   * period < 0 -> a "percent spline" (ARSTAN convention): the absolute
     #                  value is read as a percentage of the series length, so
     #                  period=-10 gives a 10%-of-length wavelength (n * 10/100).
@@ -57,7 +59,7 @@ def get_period(period, n):
     #                  period=0.1 gives a 10%-of-length wavelength.
     #   * period > 1 -> a fixed wavelength in years, used as given.
     if period is None:
-        return floor(n * 0.67)
+        return floor(n * default)
     elif period < 0:
         return n * abs(period)/100
     elif period <= 1:
@@ -65,13 +67,28 @@ def get_period(period, n):
     else:
         return period
 
-# The one csaps smoothing-spline call, shared by spline() and rcs's caps(): fit
-# at x with an f-amplitude cutoff at the already-resolved wavelength `nyrs`, and
+# The one csaps smoothing-spline call, shared by spline() and caps(): fit at x
+# with an f-amplitude cutoff at the already-resolved wavelength `nyrs`, and
 # evaluate back at x. Callers resolve `nyrs` themselves -- spline() via
-# get_period, rcs's caps via integer truncation -- so this only centralizes the
+# get_period, caps via integer truncation -- so this only centralizes the
 # csaps/get_param wiring, leaving each caller's wavelength convention intact.
+# A wavelength below 2 years is degenerate (get_param divides by zero at 1), so
+# it is clamped to 2 -- the shortest resolvable wavelength -- rather than crash
+# on a very short series (audit B9).
+_MIN_NYRS = 2
+
+
 def _smooth_csaps(x, y, nyrs, f):
-    return csaps(x, y, x, smooth=get_param(f, nyrs))
+    return csaps(x, y, x, smooth=get_param(f, max(nyrs, _MIN_NYRS)))
+
+
+def _caps(y, nyrs, f=0.5):
+    """dplR's caps(): a cubic smoothing spline over ring position 1..n with an
+    ``f`` (default 0.5) amplitude cutoff at wavelength ``nyrs``. dplR truncates
+    nyrs to an integer (caps.R: as.integer(nyrs)), so we do too. Shared by rcs()
+    (regional curve) and ssf() (per-series signal-free curves)."""
+    x = np.arange(1, len(y) + 1)
+    return np.asarray(_smooth_csaps(x, y, int(nyrs), f))
 
 # Fits a curve to the series given as input and returns the y-values of the curve.
 # `f` is the spline's frequency-response amplitude at the `period` wavelength
@@ -94,7 +111,7 @@ def variance_stabilize_spline(x, period=None, f=0.5, clip_negative=False, ok=Non
     x : array-like
         the series to stabilize (no interior NaNs).
     period : int or float or None
-        spline wavelength passed to :func:`spline`, resolved by :func:`get_period`.
+        spline wavelength passed to `spline()`, resolved by `get_period()`.
         An int > 1 is a fixed wavelength in years; a float in (0, 1) is a fraction of
         the series length; ``None`` uses the default 67% spline. Note that ``period``
         sets the wavelength while ``f`` independently sets the frequency response at

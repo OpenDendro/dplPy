@@ -1,118 +1,137 @@
-# dplPy Developer Instructions (in progress)
+# dplPy Developer Instructions
 
-Welcome to the dplPy developer manual. We welcome all code contributions, bug reports, bug fixes, documentation improvements, and suggestions.
+Welcome to the dplPy developer manual. We welcome all code contributions, bug
+reports, bug fixes, documentation improvements, and suggestions.
 
 ## Index
 - [Environment setup](#environment-setup)
-- [Making changes and submitting PRs](#making-changes-and-submitting-a-pull-request)
-- [API Reference]()
+- [Repository layout](#repository-layout)
+- [Running the tests](#running-the-tests)
+- [Building the documentation](#building-the-documentation)
+- [Coding conventions](#coding-conventions)
+- [Making changes and submitting a pull request](#making-changes-and-submitting-a-pull-request)
+- [Releasing](#releasing)
+- [Versioned documentation with mike (option, pre-1.0)](#versioned-documentation-with-mike-option-pre-10)
 
+The user-facing API reference is generated from the docstrings and published at
+<https://opendendro.github.io/dplPy/reference/io/>; it is not duplicated here.
 
 ## Environment setup
+
 ### 1. GitHub setup
 
-#### 1.1 Create dplPy fork in github
+#### 1.1 Create a dplPy fork on GitHub
 
-You will need your own copy of dplpy to work on the code. Go to the dplPy github page and click the fork button. Make sure the option to copy only the main branch is unchecked.
+You will need your own copy of dplPy to work on the code. Go to the
+[dplPy GitHub page](https://github.com/OpenDendro/dplPy) and click the fork
+button. Make sure the option to copy only the main branch is unchecked.
 
+#### 1.2 Create a local repository
 
-#### 1.2 Create local repository
-In your local terminal, clone the fork to your computer using the commands shown below. Replace {your-user} with your github username.
+In your local terminal, clone the fork to your computer using the commands shown
+below. Replace `{your-user}` with your GitHub username.
+
 ```
-$ git clone https://github.com/{your-user}/OpenDendro/dplPy.git dplpy-{your-user}
+$ git clone https://github.com/{your-user}/dplPy.git dplpy-{your-user}
 $ cd dplpy-{your-user}
-git remote add upstream https://github.com/OpenDendro/dplPy.git
-git fetch upstream
+$ git remote add upstream https://github.com/OpenDendro/dplPy.git
+$ git fetch upstream
 ```
 
-This creates a github repository in dplPy-{your-user} on your computer and connects the repository to your fork, which is now connected to the main dplPy repository.
+This creates a local repository in `dplpy-{your-user}` connected to your fork
+(`origin`) and to the main dplPy repository (`upstream`).
 
-#### 1.3 Create feature branch
+#### 1.3 Create a feature branch
 
-First, ensure that the main branch of your fork is up-to-date with the main dplpy repository:
+First, ensure that the main branch of your fork is up to date with the main
+dplPy repository:
 
 ```
 git checkout main
 git pull upstream main --ff-only
 ```
 
-Then, create a new branch for making your changes, with the command below (Replace {feature_name} with the name of your feature or preferred branch name).
+Then create a new branch for your changes (replace `{feature_name}` with the
+name of your feature or preferred branch name):
 
 ```
 git checkout -b {feature_name}
 ```
 
-### 2. Conda environment
+### 2. Python environment
 
-The packages required to run dplPy are all specified in environment.yml, which can be used to install them in Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html)) or [Mamba](https://mamba.readthedocs.io/en/latest/installation.html) environments.
+dplPy uses a `src/` layout (the package lives in `src/dplpy/`), so the working
+copy must be installed in *editable* mode, or `src` put on the path, for
+`import dplpy` to pick up your changes. Either of the following works.
 
-#### 2.1\. Create your environment with the required packages installed.
+#### 2.1 Option A: conda / mamba
 
-If you're using conda, run
-
-```
-$ conda env create -f environment.yml 
-```
-
-If you're using mamba, run
-
-```
-$ mamba env create -f environment.yml
-```
-
-If prompted for permission to install requred packages, select y.
-
-#### 2.2\. Activate your environment. 
-You will need to have the conda environment activated anytime you want to run or test code from the package.
+The packages required to develop dplPy are specified in `environment.yml`,
+which installs the scientific dependencies from conda-forge and then
+`pip install -e .` (editable install of the working copy) plus `pytest`,
+`pytest-cov`, `ruff` and the Jupyter tooling for the notebooks. Create the
+environment with [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
+or [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html):
 
 ```
-conda activate dplpy
+$ conda env create -f environment.yml      # or: mamba env create -f environment.yml
+$ conda activate dplpy
 ```
 
-After running this command, you should see (dplpy) on the left of each new line in the terminal.
+If prompted for permission to install required packages, select `y`. You will
+need to have the environment activated whenever you run or test code from the
+package; `(dplpy)` appears at the left of the prompt when it is active.
 
-#### 2.3\. Run unit and integration tests to ensure that installation was successful.
-
-With the conda environment activated, run `pytest` in the project's home directory to run all tests. 
-
-To run only the unit tests, specify to run tests in the unit tests folder as shown below
+#### 2.2 Option B: pip and a virtual environment
 
 ```
-pytest tests/unit --cov=dplpy
+$ python -m venv .venv
+$ source .venv/bin/activate                 # Windows: .venv\Scripts\activate
+$ pip install -e ".[lipd]" pytest pytest-cov ruff
 ```
-Note: The --cov option displays coverage information for all code files
 
-To run the integration tests, run `pytest` while specifying that only tests from the integ tests folder should be run. Run pytest with -r set to A to include a summary of all tests run at the end, which can be useful for quickly pointing out issues for further analysis.
+The `[lipd]` extra installs `pylipd` so the LiPD tests run instead of skipping;
+it is optional.
 
+#### 2.3 Check the installation
 
 ```
-pytest tests/integs -rA
+$ python -c "import dplpy; print(dplpy.__version__, dplpy.__file__)"
+$ python -m dplpy --version
 ```
+
+The printed path should be inside your working copy (`.../src/dplpy/__init__.py`).
 
 ### 3. IDE setup
 
-We recommend using VSCode for development. The following instructions show how to set up VSCode to recognize the conda environment and debug tests.
+We recommend using VSCode for development. The following shows how to set up
+VSCode to recognize the environment and debug tests.
 
-#### 3.1\. Open the dplpy folder in VScode
-In VSCode, open the folder containing your local dplpy repository. If you followed the instructions above, this should be a folder named `dplpy-{your-github-username}`. Then, open the file `src/dplpy.py`.
+#### 3.1 Open the dplPy folder in VSCode
 
-#### 3.2\. Change the python interpreter to use the conda environment's interpreter
-In the bottom corner of your IDE display, select the language interpreter.
+In VSCode, open the folder containing your local dplPy repository (named
+`dplpy-{your-github-username}` if you followed the instructions above). The
+package source is under `src/dplpy/`, one module per public function
+(e.g. `src/dplpy/detrend.py`); `src/dplpy/__init__.py` imports every public name.
 
-Choose the interpreter `Python 3.x ('dplpy')`, with a path that ends with `/envs/dplpy/python`.
+#### 3.2 Select the environment's Python interpreter
 
-Now you should be able to run any python files within the currently open folder with the run button in VSCode, instead of running them through the terminal. 
+In the bottom corner of the VSCode window, select the language interpreter.
+Choose the interpreter `Python 3.x ('dplpy')`, with a path that ends in
+`/envs/dplpy/python` (conda) or `.venv/bin/python` (venv). You can then run any
+Python file in the folder with the run button instead of through the terminal.
 
-Note: If the terminal is opened after the interpreter has been set to use the conda environment, conda activate dplpy will automatically be run and does not need to be run again.
+Note: if the terminal is opened after the interpreter has been set, the
+environment is activated automatically in that terminal.
 
-#### 3.3\. Set up testing tools
+#### 3.3 Set up the test explorer
 
-Go to the testing tab (on the left side of the VSCode display). With your environment set. If the tests are not automatically discovered, open `.vscode/settings.json` and add the following lines inside the curly braces, so that your file looks like this:
+Go to the testing tab (on the left side of the VSCode window). If the tests are
+not discovered automatically, open `.vscode/settings.json` (create it if it does
+not exist) and add:
 
 ```
 {
-    // any pre-existing configurations (DO NOT ADD THIS, THIS REPRESENTS ANYTHING ALREADY IN THE FILE)
-
     "python.testing.pytestArgs": [
         "./tests"
     ],
@@ -121,27 +140,128 @@ Go to the testing tab (on the left side of the VSCode display). With your enviro
 }
 ```
 
-If `.vscode/settings.json` has not been created, create it and add the lines shown above.
+Go back to the testing tab and verify that the dplPy tests are listed. Run them
+with the play button to the right of `tests`.
 
-Go back to the testing tab and verify that the dplpy unit tests are showing.
+#### 3.4 Keep your fork up to date
 
-Run the tests by clicking the play button to the right of `tests`.
-
-#### 3.4\. Updating dev environment with changes from main dplpy repository
-It is important to frequently update your local `main` with any changes to the remote dplpy `main` repository. To do this, run the following commands:
+Frequently update your local `main` with any changes to the upstream dplPy
+`main`:
 
 ```
 git checkout main
-git merge upstream/main
+git pull upstream main --ff-only
 ```
 
+## Repository layout
 
-## Making Changes and Submitting a Pull Request
-### 1. Commit and Push Changes to Feature Branch
+```
+src/dplpy/            the package: one module per public function
+src/dplpy/_validate.py shared input validation / warning / option helpers
+src/dplpy/cli.py      the `dplpy` console command and dpl.help()/dpl.readme()
+tests/unit/           unit tests, one file per module (test_<module>.py)
+tests/integs/         integration tests across modules (test_integ_*.py)
+tests/data/           test datasets (see tests/data/README.md for provenance)
+tests/conftest.py     shared fixtures: ca533_rwl, ca533_rwi, co021_rwl, DATA
+docs/                 the mkdocs site (guides and the generated API reference)
+notebooks/            example notebooks (copied into docs/examples at build)
+CHANGELOG.md          keep-a-changelog format; add an entry with every PR
+```
+
+## Running the tests
+
+`pytest` is configured in `pyproject.toml` (`[tool.pytest.ini_options]`): `src`
+is put on `sys.path`, so the suite runs from a plain checkout even without an
+editable install, and a bare `pytest` finds the `tests/` tree. Run everything
+from the repository root:
+
+```
+pytest                              # all tests (about 3-5 minutes)
+pytest tests/unit --cov=dplpy       # unit tests with coverage
+pytest tests/integs -rA             # integration tests, with a summary of every test
+pytest tests/unit/test_detrend.py -q  # one module
+```
+
+`--cov` needs `pytest-cov` (installed by `environment.yml`); `-rA` prints a
+summary of all tests at the end, which is useful for quickly spotting issues.
+
+Shared fixtures live in `tests/conftest.py`: `ca533_rwl`, `ca533_rwi` (spline
+detrended) and `co021_rwl` each return a fresh copy of a dataset read once per
+session, and `DATA` is the `tests/data` path, so tests do not depend on the
+current working directory. Prefer these over re-reading files in each test.
+
+Tests should run headless: `conftest.py` sets the `Agg` matplotlib backend, and
+tests that draw figures pass `plot=False`/`show=False` or close their figures.
+
+### Linting
+
+CI runs `ruff check` with the rules in `[tool.ruff]` in `pyproject.toml`
+(pyflakes + pycodestyle errors/warnings; `E402` and `E501` are ignored because of
+the license header before imports and the wide docstrings). Findings are
+currently reported but do not fail the build (`continue-on-error`). Run it
+locally before pushing:
+
+```
+ruff check .
+```
+
+## Building the documentation
+
+The documentation site is built with [MkDocs](https://www.mkdocs.org/) and the
+Material theme; the API reference pages (`docs/reference/*.md`) are generated
+from the numpy-style docstrings by mkdocstrings, so **the docstring is the
+documentation**. Install the docs dependencies and build strictly (the deploy
+workflow uses `--strict`, so a broken link or a reference to a missing function
+must fail locally too):
+
+```
+pip install -r docs/requirements.txt
+mkdocs build --strict
+mkdocs serve                       # live preview at http://127.0.0.1:8000
+```
+
+`mkdocs_hooks.py` copies the example notebooks from `notebooks/` into
+`docs/examples/` (gitignored) at build time. When you add a public function:
+add it to `src/dplpy/__init__.py` (import and `__all__`), add a `## name` /
+`::: dplpy.module.name` entry to the right `docs/reference/*.md` page, mention
+it in the relevant guide, and add a CHANGELOG entry.
+
+The site deploys from `main` on every push (`publish-docs.yml`), so it can be
+ahead of the released PyPI version; the index page says so in a banner.
+
+## Coding conventions
+
+- Every module starts with the GPL `__copyright__`/`__license__` header, then
+  its imports (hence `E402` is ignored in ruff).
+- One public function per module, imported in `src/dplpy/__init__.py` and
+  listed in `__all__`. Numpy-style docstrings with `Parameters`, `Returns`,
+  `Examples`, and a `References` section citing the method (dplR, ARSTAN,
+  COFECHA, or the paper). Refer to other functions as `` `name()` `` in plain
+  backticks.
+- Functions never modify their input DataFrame: copy first, return new
+  objects (`tests/unit/test_no_mutation.py` checks this for every transform).
+- Use the shared helpers in `_validate.py` for argument checking: `_warn()` for
+  warnings that should point at the caller, `_normalize_choice()` for
+  case-insensitive option strings, and the frame coercion helpers.
+- Keyword names and defaults follow the package-wide vocabulary: `plot=False`
+  for figures, `verbose=` for console output, `window_length=` for moving
+  windows, `spline_period=` for spline stiffness, `ar_max=` for the AR order
+  cap, `lag=` for a crossdating lag search, `fit=`/`method=` for the curve and
+  the ratio/difference arithmetic. When a name changes, keep the old one as a
+  deprecated keyword alias (with a `DeprecationWarning`) for one release.
+- Plotting goes through `_plot_style.py` helpers and never changes global
+  matplotlib state; plotting functions return their `Figure`/`Axes`.
+- Add or extend a unit test in `tests/unit/test_<module>.py` with every change,
+  and a line under `[Unreleased]` in `CHANGELOG.md`.
+
+## Making changes and submitting a pull request
+
+### 1. Commit and push changes to your feature branch
+
 #### 1.1 View and stage changes
-Run `git status` in the terminal to view all your uncommitted changes.
 
-Stage changes for commit by running `git add` as shown below:
+Run `git status` in the terminal to view all your uncommitted changes. Stage
+changes for commit with `git add`:
 
 ```
 # to add all files in current directory
@@ -152,330 +272,119 @@ git add {folder_name}
 ```
 
 #### 1.2 Commit and push changes
-Note: Make sure to test your changes before commiting them.
 
-When you're ready, commit your staged changes as shown below. You must add a commit message.
+Note: make sure to test your changes (`pytest`, `ruff check .`, and
+`mkdocs build --strict` if you touched docstrings or docs) before committing.
+
+When you're ready, commit your staged changes. You must add a commit message.
+
 ```
 git commit -m "Your commit message goes here"
 ```
 
-You can push your commits to your forked repository's remote branch by running
+Push your commits to your fork's remote branch:
 
 ```
 git push origin {branch_name}
 ```
 
-Your code is now on GitHub, but for it to be part of the main dplpy repository, you need to create a pull request. 
+Your code is now on GitHub, but for it to be part of the main dplPy repository
+you need to create a pull request.
 
-Note: Before creating a pull request, wait for your changes to be tested by our workflow that runs unit and integ tests in all supported versions of python. You can check on the status of the all workflows by navigating to the Github page of your remote branch, and clicking the status indicator to the right of the most recent commit message. This shows a check mark if all workflows ran successfully, an X if any of them failed, and an orange dot if workflows are still running.
+Note: before creating a pull request, wait for your changes to be tested by the
+workflow that runs the unit and integration tests on all supported Python
+versions (3.11-3.15). You can check the status of the workflows on the GitHub
+page of your branch by clicking the status indicator to the right of the most
+recent commit message: a check mark if all workflows ran successfully, an X if
+any failed, and an orange dot if workflows are still running.
 
-### 2. Creating and Submitting a Pull Request
+### 2. Creating and submitting a pull request
 
-#### 2.1 Create pull request
-Navigate to your forked dplpy repository on Github, and in the pull requests tab, create a new pull request.
+#### 2.1 Create the pull request
 
-Note: If you recently pushed changes to a branch other than main, you will sometimes be shown the option to immediately compare and make a pull request to main. This works too.
+Navigate to your forked dplPy repository on GitHub, and in the pull requests
+tab create a new pull request against `OpenDendro/dplPy:main`.
 
-#### 2.2 Review Changes and Submit PR
-Pull requests allow you to view a side-by-side diff comparison of all changed files. Review all changes to ensure correctness.
+Note: if you recently pushed changes to a branch other than main, GitHub will
+sometimes offer to compare and make a pull request immediately. This works too.
 
-If you are satisfied with your changes, give the PR a descriptive title, and specify in the description what changes were made and what (if any) issues were addressed. Then, submit the pull request.
+#### 2.2 Review changes and submit the PR
 
-Your request will be reviewed by the repository maintainers.
+Pull requests allow you to view a side-by-side diff of all changed files.
+Review all changes to ensure correctness.
 
-## API Reference
+If you are satisfied with your changes, give the PR a descriptive title, and
+specify in the description what changes were made and what (if any) issues were
+addressed. Then submit the pull request. It will be reviewed by the repository
+maintainers.
 
-Here is a list of functions (in alphabetical order) with descriptions:
+## Releasing
 
-| Function | Description |
-| --- | --- |
-| [`ar_func`](#ar_funcdata-max_lag5-source) | Fits series or dataframe to autoregressive (AR) models and performs other operations on data with best model fit. |
-| [`autoreg`](#autoregdata-max_lag5-source) | Fits series to autoregressive (AR) models and returns parameters of best model fit. |
-| [`chron`](#chronrwi_data-biweighttrue-prewhitenfalse-plottrue-source) | Creates a mean value chronology for a dataset, typically the ring width indices of a detrended series |
-| [`detrend`](#detrend) | Detrends a given series or data frame, first by fitting data to curve(s), with spline(s) as the default, and then by calculating residuals or differences compared to the original data. |
-| [`help`](#help) | Displays help (alpha). |
-| [`plot`](#plot) | Generates line, spaghetti or segment plots.|
-| [`rbar`](#rbar) | Finds best interval of overlapping series over a  period of years, and calculating rbar constant for a dataset over period of overlap. |
-| [`readers`](#readers) | Reads data from supported file types (*.CSV and *.RWL) and stores them in dataframe. |
-| [`readme`](#readme) | Goes to this website. |
-| [`report`](#report) | Generates a report about absent rings in the data set. |
-| [`series_corr`](#series_corr) |  Crossdating function that focuses on the comparison of one series to the master chronology. |
-| [`stats`](#stats) | Generates summary statistics for RWL and CSV format files. |
-| [`summary`](#summary) | Generates a summary for RWL and CSV format files. |
-| [`xdate`](#xdate) | Crossdating function for dplPy loaded datasets. |
+Releases are made by the maintainers from `main` by creating a `vX.Y.Z` branch;
+the workflow builds, publishes to PyPI, and creates the GitHub release and
+Zenodo archive. The step-by-step procedure, including the CHANGELOG and
+`CITATION.cff` updates, is in `release-instructions.md`.
 
+## Versioned documentation with mike (option, pre-1.0)
 
-### `ar_func(data, max_lag=5)` [[source]](https://github.com/OpenDendro/dplPy/blob/480973dc5f09f748271fb62a5ebd8ff5c88ac2dd/dplpy/autoreg.py#L36)
+Today `publish-docs.yml` runs `mkdocs gh-deploy` on every push to `main`, so the
+live site always documents the development branch; the index page carries a
+banner saying so. Before v1.0.0 it is worth considering publishing versioned
+docs with [`mike`](https://github.com/jimporter/mike), the version manager
+designed for mkdocs-material, so that <https://opendendro.github.io/dplPy/>
+shows the released API by default and the development docs under a separate
+label. This section describes how that would work; it is **not** implemented.
 
-Fits a given data to an the best-fit autoregressive model, then returns the residuals of AR fit relative to the original data + the mean of the original data.
-- **Required Parameters**:
-    - **data**  :   ***pandas.DataFrame or pandas.Series***, a pandas dataframe imported from dpl.readers() or a series extracted from such a dataframe.
-- **Optional Parameters**:
-    - **lag   :   _int_ default 5**, max lag to consider when selecting the best-fit AR model.
-- **Returns:**
-    -  **pandas.DataFrame or pandas.Series**, dataframe or series of AR-modeled data, depending on which was given as input.
-- **Usage Examples:**
-    ```
-    # ar_func with series
-    >>> dpl.ar_func(ca533["CAM191"], 10)
-    Year
-    1190    0.711307
-    1191   -0.232047
-    1192    0.521210
-    1193    0.575975
-    1194    0.901084
-            ...   
-    1966    0.296554
-    1967    0.384609
-    1968    0.397742
-    1969    0.427618
-    1970    0.383847
-    Name: CAM191, Length: 781, dtype: float64
+**How mike works.** `mike deploy <version> [alias]` builds the site and commits
+it into a *subdirectory* of the `gh-pages` branch (`/0.9.0/`, `/dev/`, ...),
+leaving the other versions in place, and maintains a `versions.json` at the
+root that mkdocs-material's version selector reads. `mike set-default latest`
+writes a root `index.html` that redirects to the `latest` alias. The `gh-pages`
+branch therefore holds every published version side by side, and a deploy only
+rewrites one directory.
 
-    # ar_func with dataframe
-    >>> dpl.ar_func(ca533, 10)
-            CAM011    CAM021    CAM031    CAM032    CAM041    CAM042    CAM051    CAM061    CAM062  ...  CAM152  CAM161  CAM162  CAM171  CAM172  CAM181  CAM191  CAM201  CAM211
-    Year                                                                                            ...                                                                        
-    626        NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    627        NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    628        NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    629        NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    630        NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    ...        ...       ...       ...       ...       ...       ...       ...       ...       ...  ...     ...     ...     ...     ...     ...     ...     ...     ...     ...
-    1979  0.424423  0.404787  0.142900  0.378733  0.640022  0.369773  0.369770  0.347996  0.535881  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    1980  0.486215  0.614051  0.658424  0.408298  0.898555  0.568861  0.440974  0.693782  0.661847  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    1981  0.498586  0.505126  0.436690  0.260786  0.419491  0.438934  0.345517  0.544592  0.382856  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    1982  0.455773  0.414212  0.485516  0.448526  0.792929  0.443559  0.261443  0.560291  0.510274  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
-    1983  0.666578  0.520679  0.223995  0.277267  0.755711  0.456165  0.252873  0.583766  0.320921  ...     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN
+**Configuration.** In `mkdocs.yml`:
 
-    [1358 rows x 34 columns]
-    ```
+```yaml
+extra:
+  version:
+    provider: mike
+    default: latest
+```
 
+and add `mike` to `docs/requirements.txt`. The theme then shows a version
+drop-down in the header populated from `versions.json`.
 
-### `autoreg(data, max_lag=5)` [[source]](https://github.com/OpenDendro/dplPy/blob/480973dc5f09f748271fb62a5ebd8ff5c88ac2dd/dplpy/autoreg.py#L103)
+**Two deploy paths in `publish-docs.yml`:**
 
-Selects the best AR model with a specified maximum order for the given data, and returns the parameters for the model. The best model is selected based on the AIC value.
-- **Required Parameters**:
-    - **data**  :   ***pandas.Series***, a pandas series extracted from a pandas dataframe containing tree ring widths (presumably imported from [`readers`]())
-- **Optional Parameters**:
-    - **lag   :   _int_ default 5**, max lag to consider when selecting the best-fit AR model.
-- **Returns:**
-    - **array** containing the parameters of best-fit AR model in order.
-- **Usage Examples:**
-    ```
-    >>> dpl.autoreg(ca533["CAM191"], 10)
-    const         0.022210
-    CAM191.L1     0.503373
-    CAM191.L2     0.087230
-    CAM191.L3     0.143716
-    CAM191.L4     0.020119
-    CAM191.L5    -0.027769
-    CAM191.L6    -0.010029
-    CAM191.L7     0.001373
-    CAM191.L8     0.025588
-    CAM191.L9     0.042340
-    CAM191.L10    0.136916
-    dtype: float64
-    ```
+- On every push to `main` (today's trigger): build the development docs under
+  the `dev` label:
 
-### `chron(rwi_data, biweight=True, prewhiten=False, plot=True)` [[source]](https://github.com/OpenDendro/dplPy/blob/480973dc5f09f748271fb62a5ebd8ff5c88ac2dd/dplpy/chron.py#L44)
+  ```
+  mike deploy --push --update-aliases dev
+  ```
 
-Creates a mean value chronology for a dataset, typically the ring width indices of **a detrended series**.
+  (`mkdocs build --strict` first, so a broken reference still fails the job.)
 
-- **Required Parameters**:
-    - **rwi_data**  :   ***pandas.Dataframe***, a pandas dataframe containing (expected to be already detrended) tree ring widths.
-- **Optional Parameters**:
-    - **biweight   :   _int_ default True**; when `True`, means will be calculated using Tukey's biweight robust mean.
-    - **prewhiten   :   _int_ default False**; when `True`, data is prewhitened by fitting to an AR model.
-    - **plot   :   _int_ default True**; when `True`, results are plotted.
-- **Returns:**
-    - **pandas.Dataframe** of years, mean RWIs and sample depths for each year.
-- **Usage Examples:**
-    ```
-    >>> dpl.chron(ca533, plot=False)
-          Mean RWI  Sample depth
-    Year                        
-    626   0.170000             1
-    627   0.130000             1
-    628   0.140000             1
-    629   0.190000             1
-    630   0.220000             1
-    ...        ...           ...
-    1979  0.510581            21
-    1980  0.722784            21
-    1981  0.568495            21
-    1982  0.674211            21
-    1983  0.638166            21
+- On a release (the `v*` tag created by `pypi_release.yml`, or
+  `on: release: types: [published]`): deploy the tagged commit's docs under the
+  version number and move the `latest` alias to it:
 
-    [1358 rows x 2 columns]
-    ```
+  ```
+  mike deploy --push --update-aliases 0.9.0 latest
+  mike set-default --push latest
+  ```
 
+  Only the latest release needs the `latest` alias; older versions remain
+  browsable under their numbers. Patch releases can reuse a `0.9` label
+  (`mike deploy 0.9 latest`) so the list does not grow with every patch.
 
-
-
-
-
-### Loading data using  `readers`
-
-- Description: reads data from supported file types (`csv` and `rwl`) and stores them in a dataframe.
-- Options: 
-    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
-- Usage examples:
-    ```
-    >>> data = dpl.readers("/path/to/file.csv")
-    # or
-    >>> data = dpl.readers("/path/to/file.rwl", header=True)
-    ```
-
-### Loading data from online sources using  `readers_url`
-**Note: This function is still in development and has only been tested so far with `rwl` raw data files from the [NCEI website](https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/)**
-
-- Description: reads `rwl` formatted data directly from online sources.
-- Options: 
-    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
-- Usage examples:
-    ```
-    >>> data = dpl.readers_url("http://link/to/file.rwl")
-    >>> data = dpl.readers_url("http://link/to/file.rwl", header=True)
-    ```
-
-### Data Summary from `summary`
-
-- Description: generates a summary of each series recorded in `rwl`  and `csv` format files
-- Usage examples:
-    ```
-    >>> dpl.summary("/path/to/file.rwl")
-    # or
-    >>> dpl.summary(data)
-    ```
-
-### Data Stastics from `stats`
-
-- Description: generates summary statistics for `rwl`  and `csv` format files
-- Usage Example:
-    ```
-    >>> dpl.stats("/path/to/file.rwl")
-    # or
-    >>> dpl.stats(data)
-    ```
-
-### Data Report from `report`
-
-- Description: generates a report about ring measurements and absent rings in the data set
-- Usage Example:
-    ```
-    >>> dpl.report("/path/to/file.rwl")
-    # or
-    >>> dpl.report(data)
-    ```
-
-### Plotting raw data with `plot`
-
-- Description: generates plots of tree ring with data from dataframes. Currently capable of generating `line`, `spag` (spaghetti) and `seg` (segment, default) plots.
-- Options:
-    - `type="line"`: creates a line plot (default)
-    - `type="spag"`: creates a spaghetti plot
-    - `type="seg"`: creates a segment plot
-- Usage Example:
-    ```
-    >>> dpl.report("/path/to/file.rwl")
-    # or 
-    >>> dpl.plot(data)
-
-    # User is able to select specific series of interests.
-    # In the example below, the user selects SERIES_1, SERIES_2, SERIES_3 
-    # from the "data" dataset and generates a spaghetti plot
-    >>> dpl.plot(data[[SERIES_1, SERIES_2, SERIES_3]], type="spag")
-    ```
-
-### Detrending using `detrend`
- 
-- Description: Detrends a given series or data frame, first by fitting data to curve(s), and then by calculating residuals or differences compared to the original data.
-- Options:
-    - `fit="spline"`: default detrending method.
-    - `fit="ModNegEx"`: detrending using negative exponent method.
-    - `fit="Hugershoff"`: detrending using the Hugenshoff method.
-    - `fit="linear"`: detrending using the linear method.
-    - `fit="horizontal"`: detrending using the horizontal method.
-    - `method="residual"`: calculates residuals vs original data (default).
-    - `method="difference"`: calculates differences vs original data.
-    - `plot=True|False`: whether or not to plot results, default is `True`.
-- Usage Example:
-    ```
-    # detrend with default options
-    >>> dpl.detrend(data)
-    
-    # specify fit to hugershoff curve and detrend with difference
-    >>> dpl.detrend(data, fit="Hugershoff", method="difference")
-
-    # detrend only SERIES_1, SERIES_2 and SERIES_3
-    >>> dpl.detrend(data[[SERIES_1, SERIES_2, SERIES_3]], fit="Hugershoff", method="difference")
-    ```
-
-
-
-
-
-
-### Build a variance stabilized chronology with `chron_stabilized`
-
-- Description: Builds a variance stabilized mean-value chronology for a dataset of **detrended** ring width indices, by multiplying the chronology with the square root of the effective independent sample size, $ Neff $.
-
-    Note: where n(t) is the number of series at time t, and rbar is the running interseries correlation, 
-
-    $$ Neff = { n(t) \over 1+(n(t)-1)rbar(t) } $$
-
-- Options:
-    - `win_length`: an integer for specifying the window lengths where interseries correlations will be calculated (default `50`). Should not be greater than the number of years in the dataset, recommended to be between 30% and 50% of the number of years.
-    - `min_seg_ratio`: the minimum ratio of non-NA values to the window length for a series to be considered in an Neff calculation (default `0.33`).
-    - `biweight`: boolean indicating whether or not to use Tukey's bi-weight robust mean when calculating the mean-value chronology; default `True`.
-    - `running_rbar`: boolean indicating whether or not to return the running interseries correlations as part of chronology output; default `False`.
-- Usage Example:
-    ```
-    # Detrend data first!
-    >>> rwi_data = dpl.detrend(data)
-
-    # Perform chronology with default args
-    >>> dpl.chron_stabilized(rwi_data)
-
-    # Specify win_length, min_seg_ratio and running_rbar
-    >>> dpl.chron_stabilized(rwi_data, win_length=60, min_seg_ratio=0.5, running_rbar=True)
-    ```
-
-### Crossdate with `xdate`
-- Description: This function calculates correlation serially between each tree-ring series and a master chronology built from all the other series in the dataset (leave-one-out principle).
-- Options:
-    - `prewhiten`: default `True`, determines whether or not to prewhiten series using AR modeling
-    - `corr`: default `'Spearman'`, the type of correlation to use. Can be `'Pearson'` or `'Spearman'`.
-    - `slide_period`: default `50`, the number of years to compare to the master chronology at a time.
-    - `bin_floor`: default `100`, determines the minimum bin year. The minimum bin year is calculated as $ \lceil (min\_yr/bin\_floor)\rceil*bin.floor $ where `min_yr` is the first year in the dataset.
-    - `p_val`: default `0.05`, determines the critical value below which interseries correlations are flagged.
-    - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
-- Usage examples:
-    ```
-    >>> ca533_rwi = dpl.detrend(ca533, plot=False)
-
-    # Crossdating of detrended data with default args
-    >>> dpl.xdate(ca533_rwi)
-
-    # Crossdating with Pearson correlation and show flags 
-    # (other options set to defaults when not specified).
-    >>> dpl.xdate(ca533_rwi, corr="Pearson" show_flags=True)
-    ```
-
-### Output data to files using  `writers`
-
-- Description: writes data from dataframe to supported file types (`csv`, `rwl`, `crn`, `txt`).
-- Required parameters: 
-    - `data`: dataframe with ring widths (presumably one read from `readers` or `readers_url`)
-    - `label`: name (can include file path) to give to the created file. **should not include file extension**
-    - `format`: extension for file to be created. Can be `'csv'`, `'rwl'`, `'crn'` or `'txt'`.
-
-- Usage examples:
-    ```
-    # Write data to file_name.csv in current working directory.
-    >>> dpl.writers(data, "file_name", "csv")
-
-    # Write data to file_name.csv in ./path/to/ directory.
-    >>> dpl.writers(data, "./path/to/file_name", "csv")
-    ```
+**Operational notes.** `mike` needs the full `gh-pages` history
+(`actions/checkout@v4` with `fetch-depth: 0`) and a git identity in the job; the
+existing `permissions: contents: write` is sufficient. The first adoption step
+is a one-off `mike deploy 0.8.0 latest` from the `v0.8.0` tag so the default
+view matches PyPI, after which the `main` banner can be reduced to the version
+selector plus a short "development version" note that mkdocs-material shows
+automatically for non-default versions (`version.default` + the
+`outdated`/`development` banner in Material >= 9.5). The docs index banner
+should then read the version from the selector rather than from `pyproject.toml`.

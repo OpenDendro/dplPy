@@ -26,7 +26,7 @@ result["flags"]        # A/B flags per series
 - **Spearman** correlation (`corr="spearman"`).
 - A **biweight leave-one-out master** — each series is compared against the mean
   of the *others*, so a misdated series cannot prop up its own correlation.
-- Overlapping **segments** of `slide_period` years (default 50), stepped by half
+- Overlapping **segments** of `window_length` years (default 50), stepped by half
   that, with bins floored to `bin_floor` (default 100).
 
 ### The summary header
@@ -105,7 +105,7 @@ report = dpl.xdate_report("ca533.rwl", preset="COFECHA")
 
 It accepts a `.rwl` path, a list of them, or an already-loaded ring-width
 `DataFrame` (pass `name=` to label an in-memory frame); takes the same
-`slide_period` / `bin_floor` / `p_val` settings as `xdate`; and offers both a
+`window_length` / `bin_floor` / `p_val` settings as `xdate`; and offers both a
 dplR-faithful and a `preset="COFECHA"` mode. The `output=` argument controls where
 the report goes — `"screen"` prints it, `"file"` writes a `<name>.txt`, and
 `"both"` (the default) does both — and the report text is always returned in the
@@ -116,12 +116,21 @@ result dictionary.
 `series_corr` reports the correlation of a single named series against the master
 segment by segment (useful when `xdate` flags a series and you want to see
 where), and `interseries_corr` returns the overall interseries correlation of the
-collection — the same headline number COFECHA reports.
+collection — the same headline number COFECHA reports — as a dict with the
+`"mean"` and the per-series `"table"`.
 
 ```python
 dpl.series_corr(rwl, series_name="CAM011")
-dpl.interseries_corr(rwl)
+rbar = dpl.interseries_corr(rwl)
+rbar["mean"]        # the headline mean interseries correlation
+rbar["table"]       # per-series correlation with the leave-one-out master
 ```
+
+`series_corr` shares `xdate`'s vocabulary (`window_length`, `bin_floor`, `p_val`,
+`lag` for the cross-correlation lag search) and draws its two diagnostic panels
+by default. Its `series_x` switch (default `False`, dplR's stock `series.x=FALSE`)
+sets the lag convention of the dplR-style `ccf` panel so that a *negative* lag
+marks a missing ring in the series, consistent with the COFECHA-style lag table.
 
 ## Dating a floating series
 

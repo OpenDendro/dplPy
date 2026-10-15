@@ -38,6 +38,7 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
     - [Build an AR-based chronology with `chron_ars`](#build-an-ar-based-chronology-with-chron_ars)
     - [Crossdate with `xdate`](#crossdate-with-xdate)
     - [Date a floating series with `xdate_floater`](#date-a-floating-series-with-xdate_floater)
+    - [Date undated series against each other with `xdate_undated`](#date-undated-series-against-each-other-with-xdate_undated)
     - [Regional Curve Standardization with `rcs`](#regional-curve-standardization-with-rcs)
     - [Read chronology files with `read_crn`](#read-chronology-files-with-read_crn)
     - [Agreement statistics: `glk` and `sgc`](#agreement-statistics-glk-and-sgc)
@@ -56,13 +57,13 @@ The Dendrochronology Program Library (DPL) in Python has its roots in both the [
 - Python (>=3.11)
 - Conda ([Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Miniconda](https://docs.conda.io/projects/continuumio-conda/en/latest/user-guide/install/index.html)), or [Pip](https://pip.pypa.io/en/stable/installation/)
 
-Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`. LiPD import/export (`to_lipd`/`from_lipd`) additionally requires the optional [`pylipd`](https://pypi.org/project/pylipd/) package (`pip install pylipd`); it is not needed for any other functionality.
+Under the hood, dplPy uses `numpy`, `pandas`, `matplotlib`, `statsmodels`, `scipy`, and `csaps`. LiPD import/export (`to_lipd`/`from_lipd`) additionally requires the optional [`pylipd`](https://pypi.org/project/pylipd/) package, installed with the `lipd` extra (`pip install "dplpy[lipd]"`); it is not needed for any other functionality.
 
 dplPy has been successfully tested thus far on Ubuntu 20, Ubuntu 22, macOS (Intel and M2). Other operating systems may experience unexpected errors or conflicts.  Please let the developers know. 
 
 ## Current Version
 
-dplPy is currently at version `v0.8.0` - The project uses a unusual development structure where all development will be on `main` (and therefore main is unstable) and then pre/releases and updates to [Pypi](https://pypi.org/project/dplpy/) are first branched to a version number branch and then deployed (an action that is triggered by the creation of the branch).
+dplPy is currently at version `v0.8.0` - The project uses a unusual development structure where all development will be on `main` (and therefore main is unstable) and then pre/releases and updates to [Pypi](https://pypi.org/project/dplpy/) are first branched to a version number branch and then deployed (an action that is triggered by the creation of the branch). The full documentation, including the user guide and the API reference, is at **[opendendro.github.io/dplPy](https://opendendro.github.io/dplPy/)**; it is built from `main`, so it may describe functions not yet in the PyPI release (see [CHANGELOG.md](CHANGELOG.md)). In Python, `dpl.help()` lists every function and `dpl.help("readers")` shows one function's signature and documentation.
 
 ## Installation
 
@@ -156,15 +157,13 @@ This will load the package and its functions, allowing them to be accessed with 
     ```
 
 ### Loading data from online sources using  `readers_url`
-**Note: This function is still in development and has only been tested so far with `rwl` raw data files from the [NCEI website](https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/)**
 
-- Description: reads `rwl` formatted data directly from online sources.
-- Options: 
-    - `header`: rwl input files often have a header present; Default is `False`, use `True` if input has a header.
+- Description: `readers()` accepts an `http(s)` URL in place of a file path, so a Tucson `rwl` file can be read directly from an online source such as the [NCEI/ITRDB archive](https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/). `readers_url` is a thin wrapper kept for backward compatibility that forwards to `readers`.
+- Options: as for `readers` (`header`, `skip_lines`, `strict`).
 - Usage examples:
     ```
-    >>> data = dpl.readers_url("http://link/to/file.rwl")
-    >>> data = dpl.readers_url("http://link/to/file.rwl", header=True)
+    >>> data = dpl.readers("https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/northamerica/usa/ca533.rwl")
+    >>> data = dpl.readers_url("http://link/to/file.rwl", header=True)   # same thing
     ```
 
 ### Data Summary from `summary`
@@ -235,7 +234,8 @@ This will load the package and its functions, allowing them to be accessed with 
         - `fit` may also be a **list** of curves (e.g. `["Spline", "ModNegExp"]`) to compare them.
     - `method="ratio"`: ring-width index = data ÷ curve (default; `"division"` is a synonym)
     - `method="difference"`: ring-width index = data − curve
-    - `plot=True|False`: whether to plot results, default `True`.
+    - `spline_period=`: stiffness of the `"Spline"` fit (dplR's `nyrs`); default is a 67%-of-length spline, a negative value is an ARSTAN percent-of-length spline.
+    - `plot=True|False`: whether to plot results, default `False` (`plot="sequential"` steps through the series one figure at a time).
 - Usage Example:
     ```
     # detrend with default options (Spline fit, ratio index)
@@ -253,15 +253,17 @@ This will load the package and its functions, allowing them to be accessed with 
 
 - Description: Contains methods that fit series to autoregressive models and perform functions related to AR modeling.
 - Functions:
-    - `autoreg(data['Name of series'], max_lag)`: returns parameters of best fit AR model with maxlag of 5 (default) or other specified number
-    - `ar_func(data['Name of series'], max_lag)`: returns residuals plus mean of best fit from AR models with max lag of either 5 (default) or specified number
+    - `autoreg(data['Name of series'], ar_max=10)`: returns the parameters of the best-fit AR model of order up to `ar_max`
+    - `ar_func(data['Name of series'], ar_max=10)`: returns the residuals plus mean of the best-fit AR model (the prewhitened series); accepts a whole dataframe too
 - Options:
-    - `max_lag`: default 5, can be specified to user's needs.
+    - `ar_max`: maximum AR order considered, default 10 (the ARSTAN/COFECHA cap).
+    - `method`: the AR estimator, `"yw"` (Yule-Walker, default, as in R's `ar()`), `"burg"` or `"ols"`.
+    - `first_aic_min`: default `True` selects the order at the first local AIC minimum (the ARSTAN/COFECHA rule); `False` takes the global minimum, as R's `ar()` does.
 - Usage Example:
     ```
     >>> dpl.autoreg(data[SERIES_1])
     # or
-    >>> dpl.ar_func(data[SERIES_2], max_lag=7)
+    >>> dpl.ar_func(data[SERIES_2], ar_max=7)
     ```
 
 ### Build a chronology with `chron`
@@ -269,8 +271,9 @@ This will load the package and its functions, allowing them to be accessed with 
 - Description: creates a mean value chronology for a dataset, typically the ring width indices of a detrended series. **Note: input data has to be detrended first.**
 - Options:
     - `biweight`: find means using Tukey's biweight robust mean; default `True`.
-    - `prewhiten`: prewhitens data by fitting to an AR model; default `False`.
+    - `prewhiten`: also return a residual (prewhitened) chronology; default `False`. The AR fit is controlled by `ar_max` (default 10), `ar_method` (default `"yw"`) and `first_aic_min` (default `True`).
     - `plot`: plots results; default `True`.
+    - `ci`: also return bootstrap confidence limits on the mean (`conf=0.95`, `R=100` resamples); default `False`.
 - Usage Example:
     ```
     # Detrend data first!
@@ -289,7 +292,8 @@ This will load the package and its functions, allowing them to be accessed with 
     $$ Neff = { n(t) \over 1+(n(t)-1)rbar(t) } $$
 
 - Options:
-    - `win_length`: an integer for specifying the window lengths where interseries correlations will be calculated (default `50`). Should not be greater than the number of years in the dataset, recommended to be between 30% and 50% of the number of years.
+    - `window_length`: an integer for specifying the window lengths where interseries correlations will be calculated (default `50`). Should not be greater than the number of years in the dataset, recommended to be between 30% and 50% of the number of years.
+    - `spline_period`: for `method="spline"`/`"both"`, the stiffness of the variance-stabilizing spline; default is a 67%-of-length spline (ARSTAN's choice).
     - `min_seg_ratio`: the minimum ratio of non-NA values to the window length for a series to be considered in an Neff calculation (default `0.33`).
     - `biweight`: boolean indicating whether or not to use Tukey's bi-weight robust mean when calculating the mean-value chronology; default `True`.
     - `running_rbar`: boolean indicating whether or not to return the running interseries correlations as part of chronology output; default `False`.
@@ -301,8 +305,8 @@ This will load the package and its functions, allowing them to be accessed with 
     # Perform chronology with default args
     >>> dpl.chron_stabilized(rwi_data)
 
-    # Specify win_length, min_seg_ratio and running_rbar
-    >>> dpl.chron_stabilized(rwi_data, win_length=60, min_seg_ratio=0.5, running_rbar=True)
+    # Specify window_length, min_seg_ratio and running_rbar
+    >>> dpl.chron_stabilized(rwi_data, window_length=60, min_seg_ratio=0.5, running_rbar=True)
     ```
 
 ### Crossdate with `xdate`
@@ -310,7 +314,8 @@ This will load the package and its functions, allowing them to be accessed with 
 - Options:
     - `prewhiten`: default `True`, determines whether or not to prewhiten series using AR modeling
     - `corr`: default `'Spearman'`, the type of correlation to use. Can be `'Pearson'` or `'Spearman'`.
-    - `slide_period`: default `50`, the number of years to compare to the master chronology at a time.
+    - `window_length`: default `50`, the number of years to compare to the master chronology at a time (dplR's `seg.length`).
+    - `lag`: default `10`, the lag range searched for a better match (dplR's `lag.max`).
     - `bin_floor`: default `100`, determines the minimum bin year. The minimum bin year is calculated as $ \lceil (min\_yr/bin\_floor)\rceil*bin.floor $ where `min_yr` is the first year in the dataset.
     - `p_val`: default `0.05`, determines the critical value below which interseries correlations are flagged.
     - `show_flags`: default `True`, determines whether to show flags in the function output to the console.
@@ -326,7 +331,7 @@ This will load the package and its functions, allowing them to be accessed with 
     # (other options set to defaults when not specified).
     >>> dpl.xdate(ca533_rwi, corr="Pearson", plot=True)
     ```
-- Related: `dpl.xdate_plot(rwi)` draws the crossdating overview on its own; `dpl.series_corr(rwi, "SERIES_1")` gives the per-series moving-correlation and cross-correlation diagnostics; `dpl.interseries_corr(rwi)` returns the mean interseries correlation.
+- Related: `dpl.xdate_plot(rwi)` draws the crossdating overview on its own; `dpl.series_corr(rwi, "SERIES_1")` gives the per-series moving-correlation and cross-correlation diagnostics (same `window_length`/`lag` vocabulary as `xdate`); `dpl.interseries_corr(rwi)` returns a dict with the mean interseries correlation (`"mean"`) and the per-series table (`"table"`).
 
 ### Build an AR-based chronology with `chron_ars`
 
@@ -348,15 +353,26 @@ This will load the package and its functions, allowing them to be accessed with 
     >>> result["best"]["max_year"], result["best"]["t"]   # best end year and its t-value
     ```
 
+### Date undated series against each other with `xdate_undated`
+
+- Description: when there is **no dated reference** but a set of undated samples overlap one another in time (sub-fossil wood, timbers from one structure), `xdate_undated` crossdates the series against each other and assembles a single relatively-dated floating chronology, in the manner of COFECHA's UFLOAT routine. Each series joins the running mean only if its best t-value reaches `crit_t` (default `4.0`); every placement is then re-checked leave-one-out and flagged for review if ambiguous. The result can be dated absolutely afterwards with `xdate_floater`.
+- Usage Example:
+    ```
+    >>> floating = dpl.xdate_undated(undated_rwl, plot=True)
+    >>> floating["offsets"]       # relative start/end of each series
+    >>> floating["chronology"]    # the mean floating chronology
+    >>> floating["unplaced"]      # series that never reached crit_t
+    ```
+
 ### Regional Curve Standardization with `rcs`
 
 - Description: detrends by the Regional Curve method — aligning all series by cambial age, fitting one common growth curve, and dividing each series by it (preserves low-frequency/long-timescale variance that per-series detrending removes).
-- Options: `po` (a pith-offset table aligning series to cambial age — the offset is the number of rings between the pith and the first measured ring, so `0` means the pith is present; omit `po` to assume `0` for all series), `fit` (the regional-curve type, from the same vocabulary as `detrend` — default `"AgeDepSpline"`, ARSTAN's recommended RCS curve), `method` (`"ratio"` or `"difference"`), `period`/`nyrs0`/`f` (curve stiffness), `pos_slope` (default `False`: a non-increasing old-age end, as in ARSTAN/CRUST), and `plot` (default `True`).
+- Options: `po` (a pith-offset table aligning series to cambial age — the offset is the number of rings between the pith and the first measured ring, so `0` means the pith is present; omit `po` to assume `0` for all series), `fit` (the regional-curve type, from the same vocabulary as `detrend` — default `"AgeDepSpline"`, ARSTAN's recommended RCS curve), `method` (`"ratio"` or `"difference"`), `spline_period`/`nyrs0`/`f` (curve stiffness), `pos_slope` (default `False`: a non-increasing old-age end, as in ARSTAN/CRUST), and `plot` (default `True`).
 - Usage Example:
     ```
     # po: DataFrame of series -> pith offset (0 = pith present)
     >>> rwi = dpl.rcs(data, po=pith_offsets)                           # default: age-dependent spline, ratios
-    >>> rwi = dpl.rcs(data, po=pith_offsets, fit="Spline", period=-10) # fixed 10%-of-length spline
+    >>> rwi = dpl.rcs(data, po=pith_offsets, fit="Spline", spline_period=-10) # fixed 10%-of-length spline
     >>> rwi = dpl.rcs(data, po=pith_offsets, method="difference")      # subtractive index
     ```
 - Related: `dpl.sfrcs(data, po=pith_offsets)` is **signal-free** RCS (a port of CRUST's single-curve algorithm), taking the same `method`/`plot` arguments; `dpl.mrcs(data, po=pith_offsets, n_curves=2)` is **multiple-curve** RCS (CRUST), which sorts trees into growth-rate classes and standardizes each by its own curve; `dpl.sfmrcs(...)` is its signal-free counterpart.
@@ -423,10 +439,12 @@ This will load the package and its functions, allowing them to be accessed with 
     - `label`: name (can include file path) to give to the created file. **should not include file extension**
     - `format`: extension for file to be created. Can be `'csv'`, `'rwl'`, `'crn'` or `'txt'`.
 
+- Returns the path of the file written (and prints nothing).
 - Usage examples:
     ```
     # Write data to file_name.csv in current working directory.
     >>> dpl.writers(data, "file_name", "csv")
+    'file_name.csv'
 
     # Write data to file_name.csv in ./path/to/ directory.
     >>> dpl.writers(data, "./path/to/file_name", "csv")
@@ -434,7 +452,7 @@ This will load the package and its functions, allowing them to be accessed with 
     
 ### Export and import LiPD with `to_lipd` and `from_lipd`
 
-- Description: writes a completed chronology (and, optionally, the underlying ring widths, running statistics, site metadata and publication info) to a LiPD file, and reads dplPy/ITRDB LiPD files back in. Requires the optional `pylipd` dependency (`pip install pylipd`).
+- Description: writes a completed chronology (and, optionally, the underlying ring widths, running statistics, site metadata and publication info) to a LiPD file, and reads dplPy/ITRDB LiPD files back in. Requires the optional `pylipd` dependency (`pip install "dplpy[lipd]"`).
 - Usage Example:
     ```
     >>> rwl = dpl.readers("co021.rwl")
@@ -451,8 +469,9 @@ These are also available; see each function's docstring (`help(dpl.<name>)`) for
 | Function | Purpose |
 |---|---|
 | `series_corr` | per-series crossdating diagnostics (moving correlation + cross-correlation) |
-| `interseries_corr` | mean interseries correlation (rbar) for a dataset |
+| `interseries_corr` | mean interseries correlation (rbar) for a dataset, as `{"mean", "table"}` |
 | `rwi_stats` / `rwi_stats_running` | chronology signal statistics (rbar, EPS, SNR), overall or in a running window |
+| `stabilize_chron` | variance-stabilize an already-built chronology (rbar, spline or both; `return_info=True` returns a dict) |
 | `sss` | subsample signal strength |
 | `samp_stats` | sample-depth statistics through time |
 | `common_interval` | find (and optionally plot) the common overlap interval of a dataset |
@@ -460,6 +479,9 @@ These are also available; see each function's docstring (`help(dpl.<name>)`) for
 | `powt` | power transformation of ring widths (Cook & Peters) |
 | `ads` | standalone age-dependent smoothing spline |
 | `fill_internal` | fill internal missing (NA) values within series |
+| `edit_rwl` | insert, delete or change one ring in a series |
+| `check` | screen a collection for defects (short series, gaps, outliers, dating) |
+| `help` / `readme` | `dpl.help()` lists every function, `dpl.help("name")` documents one; `dpl.readme()` opens the online manual |
 | `read_ids` | parse tree/core IDs from series names |
 | `po_to_wc` / `wc_to_po` | convert between pith offsets and years-to-pith |
 | `SiteMetadata` | container for site metadata (used by the LiPD and `.crn` writers) |

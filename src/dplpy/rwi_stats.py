@@ -27,10 +27,19 @@ __license__ = "GNU GPLv3"
 #              (rbar), the expressed population signal (EPS), and the
 #              signal-to-noise ratio (SNR), computed either over the whole
 #              record (rwi_stats) or as a running series over moving windows
-#              (rwi_stats_running). This is a port of dplR's rwi.stats() and
-#              rwi.stats.running() (Wigley et al. 1984), following that
-#              implementation's outcomes while taking advantage of pandas'
-#              native pairwise-correlation handling.
+#              (rwi_stats_running), after dplR's rwi.stats() and
+#              rwi.stats.running() (Wigley et al. 1984). Whole-record statistics
+#              reproduce dplR. In running windows with tree IDs, the effective
+#              cores-per-tree count (c_eff) is ARSTAN-style -- cores present in
+#              the window, less any core whose within-tree correlations all
+#              fail min_corr_overlap -- which differs from dplR's
+#              back-calculation from the number of valid within-tree
+#              correlations (0.5 + sqrt(0.25 + 2 n_wt)); the two agree when
+#              every within-tree pair is valid and trees have at most two cores.
+#              Window placement starts at the first year and leaves any trailing
+#              remainder uncovered (dplR picks the start maximising coverage),
+#              and period="common" restricts each window to years present in all
+#              of the window's series (dplR's prewhiten/common handling differs).
 #
 #              NOTE ON TERMINOLOGY: the rbar reported here is the mean pairwise
 #              correlation between series (optionally split into within-tree and
@@ -49,19 +58,19 @@ __license__ = "GNU GPLv3"
 # >>> dpl.rwi_stats_running(rwi, ids=ids)
 
 from collections import Counter
-import warnings
-
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe, _normalize_corr
+from ._validate import _require_dataframe, _normalize_corr, _normalize_choice, _warn
 
-from .autoreg import ar_func
+from .autoreg import _prewhiten
+from .rbar import pairwise_corr_matrix
 from .common_interval import apply_common_interval
 
 
-def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
+def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="spearman",
               prewhiten=False, min_corr_overlap=None, zero_is_missing=True,
-              round_decimals=3, common_interval=None):
+              round_decimals=3, common_interval=None, ar_max=10, ar_method="yw",
+              first_aic_min=True):
     """Whole-record chronology signal statistics (rbar, EPS, SNR).
 
     Computes the mean interseries correlation (rbar), expressed population signal
@@ -77,17 +86,23 @@ def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
     ids : dict, pandas dataframe, or None, default None
         tree/core structure; see rwi_stats_running().
     period : str, default "max"
-        "max" (pairwise-complete overlaps) or "common" (complete rows only).
-    corr : str, default "Spearman"
-        correlation type, "Spearman" or "Pearson".
+        "max" (pairwise-complete overlaps) or "common" (complete rows only);
+        case-insensitive.
+    corr : str, default "spearman"
+        correlation type, "spearman" or "pearson" (case-insensitive).
     prewhiten : boolean, default False
-        prewhiten each series with an AR model before computing correlations.
+        prewhiten each series with an AR model before computing correlations
+        (see rwi_stats_running()).
     min_corr_overlap : int or None, default None
         minimum number of overlapping years for a series pair to contribute.
     zero_is_missing : boolean, default True
         treat exact zeros as missing values.
     round_decimals : int or None, default 3
         decimal places to round the statistic columns to.
+    common_interval : str, (int, int), or None, default None
+        restrict to a common interval first (see rwi_stats_running()).
+    ar_max, ar_method, first_aic_min :
+        prewhitening controls (see rwi_stats_running()).
 
     Returns
     -------
@@ -109,27 +124,39 @@ def rwi_stats(rwi_data: pd.DataFrame, ids=None, period="max", corr="Spearman",
                              min_corr_overlap=min_corr_overlap,
                              zero_is_missing=zero_is_missing,
                              round_decimals=round_decimals,
-                             common_interval=common_interval)
+                             common_interval=common_interval, ar_max=ar_max,
+                             ar_method=ar_method, first_aic_min=first_aic_min)
 
 
 def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
-                      corr="Spearman", prewhiten=False, running_window=True,
-                      window_length=None, window_overlap=None,
+                      corr="spearman", prewhiten=False, running_window=True,
+                      window_length=50, window_overlap=None,
                       min_corr_overlap=None, zero_is_missing=True,
-                      round_decimals=3, common_interval=None):
+                      round_decimals=3, common_interval=None, ar_max=10,
+                      ar_method="yw", first_aic_min=True):
     """Running (moving-window) chronology signal statistics (rbar, EPS, SNR).
 
     For each moving window along the chronology, computes the mean interseries
     correlation (rbar) and, from it, the expressed population signal (EPS) and
-    signal-to-noise ratio (SNR) of Wigley et al. (1984). Port of dplR's
+    signal-to-noise ratio (SNR) of Wigley et al. (1984), after dplR's
     rwi.stats.running(); rwi_stats() is the whole-record special case
     (running_window=False).
 
     When tree/core IDs are supplied (see ``ids``), correlations are split into
     within-tree (rbar_wt) and between-tree (rbar_bt) components, and the effective
-    signal rbar_eff accounts for averaging multiple cores per tree (via an effective
-    cores-per-tree factor c_eff). Without IDs, every series is its own tree and
-    rbar_eff == rbar_bt == rbar_tot.
+    signal rbar_eff accounts for averaging multiple cores per tree via an
+    effective cores-per-tree factor c_eff. c_eff is ARSTAN-style running
+    effective replication: the cores of each tree present in the window, not
+    counting a core whose within-tree correlations all fail ``min_corr_overlap``.
+    This differs from dplR's back-calculation of the core count from the number
+    of valid within-tree correlations (``0.5 + sqrt(0.25 + 2 n_wt)``); the two
+    agree for the whole record when every within-tree pair is valid and trees
+    have at most two cores, and can differ inside running windows. Without IDs,
+    every series is its own tree and rbar_eff == rbar_bt == rbar_tot.
+
+    Windows start at the first year and advance by ``window_length -
+    window_overlap``; a trailing remainder shorter than a window is not covered
+    (dplR instead chooses the start that maximises coverage).
 
     EPS = n * rbar_eff / ((n - 1) * rbar_eff + 1) and
     SNR = n * rbar_eff / (1 - rbar_eff), where n is the number of trees contributing
@@ -151,16 +178,21 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
         to treat every series as its own tree (one core per tree).
     period : str, default "max"
         "max" uses each pair's own overlapping years (pairwise-complete); "common"
-        restricts each window to years present in every series.
-    corr : str, default "Spearman"
-        correlation type, "Spearman" or "Pearson".
+        restricts each window to years present in every series that has data in
+        the window (case-insensitive).
+    corr : str, default "spearman"
+        correlation type, "spearman" or "pearson" (case-insensitive).
     prewhiten : boolean, default False
-        prewhiten each series with an AR model before computing correlations.
+        prewhiten each series with an AR model before computing correlations,
+        using the package-standard `autoreg._prewhiten()` (Yule-Walker, order by
+        the first local AIC minimum up to ``ar_max``, ARSTAN backcast initials so
+        no years are lost). NOTE: R's ar() / dplR take the global AIC minimum up
+        to floor(10*log10(n)); pass ``first_aic_min=False`` for that rule.
     running_window : boolean, default True
         if False, a single window spanning the whole record is used (this is what
         rwi_stats() invokes).
-    window_length : int or None, default None
-        length of each moving window in years; defaults to min(50, n_years).
+    window_length : int or None, default 50
+        length of each moving window in years (None: min(50, n_years)).
     window_overlap : int or None, default None
         number of years successive windows overlap; defaults to window_length // 2.
     min_corr_overlap : int or None, default None
@@ -178,6 +210,13 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
         (start_year, end_year) pair restricts to that inclusive span. None (default)
         uses the full record. Recommended for unevenly-distributed data, where
         period='common' on the full record can be empty.
+    ar_max : int, default 10
+        maximum AR order for ``prewhiten=True``.
+    ar_method : {"yw", "burg", "ols"}, default "yw"
+        AR estimator for ``prewhiten=True`` (case-insensitive).
+    first_aic_min : boolean, default True
+        AR order rule for ``prewhiten=True``: first local AIC minimum (True) or
+        global minimum (False, R's ar()).
 
     Returns
     -------
@@ -197,6 +236,7 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     .. [1] https://rdrr.io/cran/dplR/man/rwi.stats.running.html
     .. [2] Wigley, Briffa & Jones (1984), J. Climate Appl. Meteor., 23, 201-213.
     .. [3] Buras (2017), Dendrochronologia, 44, 130-132.
+    .. [4] https://opendendro.github.io/dplPy/reference/statistics/#rwi_stats_running
     """
     _require_dataframe(rwi_data)
 
@@ -206,8 +246,8 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     rwi_data = apply_common_interval(rwi_data, common_interval)
 
     corr_method = _normalize_corr(corr, allowed=("spearman", "pearson"))
-    if period not in ("max", "common"):
-        raise ValueError("period must be either 'max' or 'common', got '" + str(period) + "'.")
+    period = _normalize_choice(period, ("max", "common"), "period")
+    ar_method = _normalize_choice(ar_method, ("yw", "burg", "ols"), "ar_method")
 
     n_years = rwi_data.shape[0]
 
@@ -224,7 +264,7 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
         # dplR recodes exact zeros to NA (a zero RWI is treated as missing).
         data = data.where(data != 0)
     elif bool((data == 0).to_numpy().any()):
-        warnings.warn("There are zeros in the data. Consider zero_is_missing=True.\n")
+        _warn("There are zeros in the data. Consider zero_is_missing=True.\n")
 
     # Guard analogous to dplR's non-positive grand mean check. Unlike dplR we do
     # not divide by the mean (correlations are invariant to a positive rescale),
@@ -233,14 +273,17 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     # which rbar is not meaningful. dplR stops here; we warn and proceed.
     grand_mean = np.nanmean(data.to_numpy(dtype=float))
     if not np.isnan(grand_mean) and grand_mean <= 0:
-        warnings.warn("'rwi_data' has a non-positive grand mean; rbar/EPS/SNR may not "
-                      "be meaningful. This can happen with difference-detrended data.\n")
+        _warn("'rwi_data' has a non-positive grand mean; rbar/EPS/SNR may not "
+              "be meaningful. This can happen with difference-detrended data.\n")
 
     if prewhiten:
         # AR prewhitening DOES change correlations, so (unlike the mean-division
-        # dplR also performs) it must actually be applied. Reuses dplPy's AR
-        # machinery.
-        data = ar_func(data)
+        # dplR also performs) it must actually be applied -- with the one
+        # package-standard prewhitening (audit D1).
+        data = pd.DataFrame(
+            {c: _prewhiten(data[c].to_numpy(dtype=float), estimator=ar_method,
+                           ar_max=ar_max, first_aic_min=first_aic_min)
+             for c in data.columns}, index=data.index)
 
     columns = list(data.columns)
     tree_of = _resolve_tree_mapping(ids, columns)
@@ -277,9 +320,9 @@ def rwi_stats_running(rwi_data: pd.DataFrame, ids=None, period="max",
     # dplR-style heads-up: if nothing was computable (e.g. period="common" on a
     # record with no fully-overlapping interval), rbar is NA everywhere.
     if result["rbar_tot"].isna().all():
-        warnings.warn("Correlations are all NA -- no series pairs met the overlap "
-                      "requirement. With period='common', there may be no interval "
-                      "common to all series.\n")
+        _warn("Correlations are all NA -- no series pairs met the overlap "
+              "requirement. With period='common', there may be no interval "
+              "common to all series.\n")
 
     if round_decimals is not None and round_decimals >= 0:
         stat_cols = ["rbar_tot", "rbar_wt", "rbar_bt", "c_eff", "rbar_eff", "eps", "snr"]
@@ -351,13 +394,12 @@ def _window_stats(window, tree_of, corr_method, min_corr_overlap, period,
     if n_cores < 2:
         return out
 
-    # Pairwise-complete correlation with a minimum-overlap requirement, in one
-    # native pandas call (replaces dplR's cor.with.limit / cor.with.limit.upper
-    # per-pair loops). .to_numpy(copy=True) avoids the read-only-view issue when
-    # writing the NaN diagonal under numpy 2 / pandas copy-on-write.
-    corr_mat = window.corr(method=corr_method, min_periods=min_corr_overlap)
-    corr_arr = corr_mat.to_numpy(copy=True)
-    order = list(corr_mat.columns)
+    # Pairwise-complete correlation with a minimum-overlap requirement (the
+    # shared rbar.pairwise_corr_matrix; replaces dplR's cor.with.limit /
+    # cor.with.limit.upper per-pair loops).
+    corr_arr = pairwise_corr_matrix(window, corr_method, min_overlap=min_corr_overlap,
+                                    strict=False)
+    order = list(window.columns)
     trees = np.array([tree_of[c] for c in order], dtype=object)
 
     n = corr_arr.shape[0]
@@ -387,12 +429,19 @@ def _window_stats(window, tree_of, corr_method, min_corr_overlap, period,
     good_trees = set(tree_i[bt]) | set(tree_j[bt])
     n_good = len(good_trees)
 
-    # effective cores-per-tree correction (direct core count; see module notes)
+    # effective cores-per-tree correction: ARSTAN-style running effective
+    # replication -- the cores of each good tree present in the window, not
+    # counting a core whose within-tree correlations all fail min_corr_overlap
+    # (such a core adds nothing to the within-tree signal; dplR drops it too).
+    # Differs from dplR's back-calculation 0.5 + sqrt(0.25 + 2 n_wt) for trees
+    # with three or more cores (see the module header).
     if n_wt == 0:
         c_eff = 1.0 if n_bt > 0 else 0.0
         rbar_eff = rbar_bt
     else:
-        cores_per_tree = Counter(tree_of[c] for c in present_series)
+        idx_i, idx_j = iu[0][wt], iu[1][wt]
+        has_valid_wt = set(order[k] for k in idx_i) | set(order[k] for k in idx_j)
+        cores_per_tree = Counter(tree_of[c] for c in present_series if c in has_valid_wt)
         nc = np.array([max(cores_per_tree[t], 1) for t in good_trees], dtype=float)
         rproc = float(np.mean(1.0 / nc))
         c_eff = 1.0 / rproc

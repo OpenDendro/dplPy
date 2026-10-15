@@ -1,8 +1,9 @@
 # Crossdating
 
 Statistical crossdating against a master chronology, COFECHA-style batch
-reporting, and floating-series dating. See the
-[Crossdating & COFECHA](../guide/crossdating.md) guide.
+reporting, floating-series dating, and relative dating of undated collections.
+See the [Crossdating & COFECHA](../guide/crossdating.md) and
+[Dating a floating series](../guide/floating-series.md) guides.
 
 ## xdate
 
@@ -19,6 +20,10 @@ reporting, and floating-series dating. See the
 ## xdate_floater
 
 ::: dplpy.xdate_floater.xdate_floater
+
+## xdate_undated
+
+::: dplpy.xdate_undated.xdate_undated
 
 ## series_corr
 

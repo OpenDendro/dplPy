@@ -4,6 +4,15 @@
 
 # dplPy
 
+!!! warning "These docs track the development branch"
+    This site is built from the `main` branch of dplPy on every push, so it may
+    describe functions, arguments, or defaults that are **not yet in the released
+    PyPI version**. The most recent release is **dplPy {{ dplpy_version }}**
+    (see [PyPI](https://pypi.org/project/dplpy/) and the
+    [changelog](https://github.com/OpenDendro/dplPy/blob/main/CHANGELOG.md)).
+    Check what you have installed with `python -c "import dplpy; print(dplpy.__version__)"`
+    and upgrade with `pip install --upgrade dplpy`.
+
 **dplPy** is the Dendrochronology Program Library for Python — an open-source
 toolkit for loading, standardizing, crossdating, and analyzing tree-ring
 width data. It is part of the [OpenDendro](https://opendendro.org) project and
@@ -33,7 +42,8 @@ crn = dpl.chron(rwi)               # average into a site chronology
   (`chron_stabilized`) options.
 - **Crossdating** with a dplR-faithful `xdate`, a COFECHA emulation mode
   (`xdate(preset="COFECHA")`), a COFECHA-style batch report (`xdate_report`),
-  and floating-series dating (`xdate_floater`).
+  floating-series dating (`xdate_floater`), and relative dating of a set of
+  undated series against one another (`xdate_undated`).
 - **Interchange** with ITRDB Tucson `.rwl`/`.crn` files and
   [LiPD](guide/../reference/utilities.md#to_lipd).
 

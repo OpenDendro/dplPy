@@ -78,31 +78,27 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import _normalize_corr, _plot_kwarg
-from .xdate import _corr_pval
-from .xdate_floater import _transform_series
+from ._validate import _normalize_corr, _plot_kwarg, _normalize_choice, _require_year_index
+from .xdate import _fast_corr
+from .xdate_floater import _transform_series, _bp_t, _trim_nan
 
 _TRANSFORMS = ("pw", "fd", "none")
 
 
 def _t_from_r(r, n):
-    """Baillie-Pilcher t from a correlation r over n overlapping rings."""
-    rr = min(max(float(r), -0.999999), 0.999999)
-    return rr * np.sqrt((n - 2) / (1 - rr * rr))
+    """Baillie-Pilcher t from a correlation r over n overlapping rings
+    (`xdate_floater._bp_t()`)."""
+    return float(_bp_t(r, n))
 
 
-def _tr_aligned(raw, transform, ar_max=None, first_aic_min=False):
-    """Transform a series but keep it at RAW ring length, so array index == ring
-    position. Prewhitening/differencing drop the oldest rings (residuals are
-    end-aligned), so pad the front with NaN to keep every series on the same footing.
-    Without this, series with different AR orders would be mis-registered by a few
-    rings."""
-    w = _transform_series(raw, transform, ar_max=ar_max,
-                          first_aic_min=first_aic_min)   # front-trimmed, end-aligned
-    out = np.full(len(raw), np.nan)
-    if len(w):
-        out[len(raw) - len(w):] = w
-    return out
+def _tr_aligned(raw, transform, ar_max=10, first_aic_min=True):
+    """Transform a series keeping it at RAW ring length, so array index == ring
+    position: `xdate_floater._transform_series()` already returns the whitened
+    (or differenced) values at their ring positions, with NaN for the oldest
+    rings an AR model cannot score and for interior unmeasured rings. Without
+    this alignment, series with different AR orders would be mis-registered by a
+    few rings."""
+    return _transform_series(raw, transform, ar_max=ar_max, first_aic_min=first_aic_min)
 
 
 def _best_offset(a, b, method, min_overlap):
@@ -115,11 +111,10 @@ def _best_offset(a, b, method, min_overlap):
         hi = min(na, d + nb)
         aw = a[lo:hi]
         bw = b[lo - d:hi - d]
-        ok = ~np.isnan(aw) & ~np.isnan(bw)
-        n = int(ok.sum())
+        n = int((~np.isnan(aw) & ~np.isnan(bw)).sum())
         if n < min_overlap:
             continue
-        r, _ = _corr_pval(aw[ok], bw[ok], method)
+        r = _fast_corr(aw, bw, method)          # pairwise-complete pairs
         if not np.isfinite(r):
             continue
         t = _t_from_r(r, n)
@@ -129,21 +124,24 @@ def _best_offset(a, b, method, min_overlap):
 
 
 def _coerce_collection(data):
-    """Return an ordered dict {name: 1-D float array of non-NaN ring widths}."""
+    """Return an ordered dict {name: 1-D float array of ring widths, oldest first}.
+    Leading/trailing NaN are stripped; an interior NaN is an unmeasured ring and
+    keeps its position (audit A3: never compress a series)."""
     series = {}
     if isinstance(data, pd.DataFrame):
+        if pd.api.types.is_integer_dtype(data.index) or pd.api.types.is_float_dtype(data.index):
+            data = _require_year_index(data, "data")      # sorted, so rows are in ring order
         for c in data.columns:
-            series[str(c)] = data[c].dropna().to_numpy(dtype=float)
+            series[str(c)] = _trim_nan(data[c].to_numpy(dtype=float))[0]
     elif isinstance(data, dict):
         for k, v in data.items():
-            arr = np.asarray(v, dtype=float)
-            series[str(k)] = arr[~np.isnan(arr)]
+            series[str(k)] = _trim_nan(np.asarray(v, dtype=float))[0]
     elif isinstance(data, (list, tuple)):
         for i, v in enumerate(data, start=1):
-            arr = np.asarray(v, dtype=float)
-            series["S%d" % i] = arr[~np.isnan(arr)]
+            series["S%d" % i] = _trim_nan(np.asarray(v, dtype=float))[0]
     else:
         raise TypeError("`data` must be a DataFrame, dict, or list of series.")
+    series = {k: v for k, v in series.items() if v.size}
     if len(series) < 2:
         raise ValueError("Need at least two undated series to crossdate.")
     return series
@@ -163,11 +161,13 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     Parameters
     ----------
     data : pandas.DataFrame, dict, or list
-        The undated collection. A DataFrame is read as one column per series (the
-        index is ignored); a dict maps names to ring-width arrays; a bare list is
-        auto-named ``S1``, ``S2``, ...
+        The undated collection. A DataFrame is read as one column per series (its
+        index only orders the rings, oldest first); a dict maps names to ring-width
+        arrays; a bare list is auto-named ``S1``, ``S2``, ... An interior NaN is an
+        unmeasured ring and keeps its position.
     transform : {"pw", "fd", "none"}, default "pw"
-        High-pass transform applied before matching: ``pw`` prewhitens (AR), ``fd``
+        High-pass transform applied before matching (case-insensitive): ``pw``
+        prewhitens (AR, via `xdate.normalize_for_crossdating()`), ``fd``
         first-differences, ``none`` uses mean-normalized widths.
     corr : {"spearman", "pearson", "kendall"}, default "spearman"
         Correlation used to score every offset.
@@ -208,11 +208,14 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
         ``verify`` : DataFrame of the leave-one-out check per placed series
             (``loo_best_pos``, ``loo_t``, ``isolation``, ``agrees``, ``review``).
         ``unplaced`` : list of series that never reached ``crit_t``.
+
+    References
+    ----------
+    .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate_undated
     """
     method = _normalize_corr(corr)
     plot = _plot_kwarg(plot, kwargs)
-    if transform not in _TRANSFORMS:
-        raise ValueError("transform must be one of %s" % (_TRANSFORMS,))
+    transform = _normalize_choice(transform, _TRANSFORMS, "transform")
     raw = _coerce_collection(data)
     names = list(raw)
     tr = {nm: _tr_aligned(raw[nm], transform, ar_max=ar_max,
@@ -231,8 +234,10 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
             d, n, r, t = res
             pair_rows.append({"series_i": ni, "series_j": nj, "lag": d,
                               "n": n, "r": r, "t": t})
-            lag_of[(ni, nj)] = d; lag_of[(nj, ni)] = -d
-            t_of[(ni, nj)] = t; t_of[(nj, ni)] = t
+            lag_of[(ni, nj)] = d
+            lag_of[(nj, ni)] = -d
+            t_of[(ni, nj)] = t
+            t_of[(nj, ni)] = t
     if not pair_rows:
         raise ValueError("No pair of series overlaps by at least min_overlap=%d "
                          "rings at any offset; cannot crossdate." % min_overlap)
@@ -242,9 +247,11 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     def running_mean(placed_pos):
         lo = min(placed_pos[nm] for nm in placed_pos)
         hi = max(placed_pos[nm] + len(tr[nm]) for nm in placed_pos)
-        acc = np.zeros(hi - lo); cnt = np.zeros(hi - lo)
+        acc = np.zeros(hi - lo)
+        cnt = np.zeros(hi - lo)
         for nm in placed_pos:
-            s = placed_pos[nm] - lo; seg = tr[nm]
+            s = placed_pos[nm] - lo
+            seg = tr[nm]
             acc[s:s + len(seg)] += np.nan_to_num(seg)
             cnt[s:s + len(seg)] += ~np.isnan(seg)
         with np.errstate(invalid="ignore"):
@@ -254,17 +261,20 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
     def score_at(nm, p, lo, M):
         """(n, r, t) for series nm placed with start at absolute position p vs mean M
         spanning [lo, lo+len(M)), or None if the overlap is too small."""
-        b = tr[nm]; nb = len(b); nM = len(M)
+        b = tr[nm]
+        nb = len(b)
+        nM = len(M)
         d = p - lo
-        clo = max(0, d); chi = min(nM, d + nb)
+        clo = max(0, d)
+        chi = min(nM, d + nb)
         if chi - clo < min_overlap:
             return None
-        mw = M[clo:chi]; bw = b[clo - d:chi - d]
-        ok = ~np.isnan(mw) & ~np.isnan(bw)
-        n = int(ok.sum())
+        mw = M[clo:chi]
+        bw = b[clo - d:chi - d]
+        n = int((~np.isnan(mw) & ~np.isnan(bw)).sum())
         if n < min_overlap:
             return None
-        r, _ = _corr_pval(mw[ok], bw[ok], method)
+        r = _fast_corr(mw, bw, method)          # pairwise-complete pairs
         if not np.isfinite(r):
             return None
         return n, round(float(r), 3), round(float(_t_from_r(r, n)), 2)
@@ -313,7 +323,9 @@ def xdate_undated(data, transform="pw", corr="spearman", min_overlap=50,
         if not others:
             continue
         olo, M = running_mean({o: pos[o] for o in others})
-        b = tr[nm]; nb = len(b); nM = len(M)
+        b = tr[nm]
+        nb = len(b)
+        nM = len(M)
         scan = []
         for d in range(-(nb - min_overlap), (nM - min_overlap) + 1):
             sc = score_at(nm, olo + d, olo, M)
@@ -428,7 +440,8 @@ def _plot_undated(result, anchor_year=1):
     for row, nm in enumerate(offsets.index):
         s, e = offsets.loc[nm, "start_year"], offsets.loc[nm, "end_year"]
         if bool(review.loc[nm]) or not np.isfinite(iso.loc[nm]):
-            color = "0.6"; any_review = True
+            color = "0.6"
+            any_review = True
         else:
             color = cmap(norm(iso.loc[nm]))
         ax.plot([s, e], [row, row], "-", lw=4, color=color, solid_capstyle="butt")
@@ -451,7 +464,8 @@ def _plot_undated(result, anchor_year=1):
     style_axes(axc, xgrid=True, ygrid=True)
 
     # colorbar for the isolation scale (shared across both panels so they stay aligned)
-    sm = ScalarMappable(norm=norm, cmap=cmap); sm.set_array([])
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
     cb = fig.colorbar(sm, ax=[ax, axc], pad=0.02, fraction=0.045)
     cb.set_label("placement isolation\n(t gap to next-best position)", fontsize=8)
     cb.ax.tick_params(labelsize=7)

@@ -120,3 +120,94 @@ def test_ssf_bad_preset():
     data = _read_quiet("tests/data/csv/ca533.csv")
     with pytest.raises(ValueError):
         _ssf_quiet(data, recode_zeros=True, preset="bogus")
+
+
+# --- v0.9.0 audit follow-ups ------------------------------------------------
+
+def test_ssf_recode_zeros_does_not_mutate_input():
+    # A2: ssf(recode_zeros=True) used to write 0.001 into the caller's frame
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    before = data.copy()
+    n_zero = int((data == 0).sum().sum())
+    assert n_zero > 0
+    _ssf_quiet(data, recode_zeros=True)
+    pd.testing.assert_frame_equal(data, before)
+    assert int((data == 0).sum().sum()) == n_zero
+
+
+def test_ssf_fit_and_method_vocabulary():
+    # D5: fit= names the curve (case-insensitive, no silent fallback) and
+    # method= is ratio/difference, as in detrend.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    a = _ssf_quiet(data, fit="Spline", recode_zeros=True)
+    b = _ssf_quiet(data, fit="spline", recode_zeros=True)
+    assert np.allclose(a["sfc"].to_numpy(), b["sfc"].to_numpy())
+    assert np.allclose(a["sfc"].to_numpy()[:5], _DPLR_SSF_CA533, atol=1e-4)
+    with pytest.raises(ValueError, match="fit"):
+        _ssf_quiet(data, fit="bogus", recode_zeros=True)
+    with pytest.raises(ValueError):
+        _ssf_quiet(data, fit="ModNegExp", recode_zeros=True)      # not an ssf curve
+    with pytest.raises(ValueError):
+        _ssf_quiet(data, method="bogus", recode_zeros=True)
+    d = _ssf_quiet(data, method="difference", recode_zeros=True)
+    assert np.all(np.isfinite(d["sfc"].to_numpy()))
+    assert not np.allclose(d["sfc"].to_numpy(), a["sfc"].to_numpy())
+
+
+def test_ssf_deprecated_spellings():
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    ref = _ssf_quiet(data, fit="Spline", recode_zeros=True)
+    buf = io.StringIO()
+    # old method= curve name
+    with pytest.warns(DeprecationWarning, match="method="):
+        with contextlib.redirect_stdout(buf):
+            a = dpl.ssf(data, method="Spline", recode_zeros=True, verbose=False)
+    assert np.allclose(a["sfc"].to_numpy(), ref["sfc"].to_numpy())
+    # old nyrs= -> spline_period=
+    with pytest.warns(DeprecationWarning, match="nyrs="):
+        with contextlib.redirect_stdout(buf):
+            b = dpl.ssf(data, nyrs=0.5, recode_zeros=True, verbose=False)
+    c = _ssf_quiet(data, spline_period=0.5, recode_zeros=True)
+    assert np.allclose(b["sfc"].to_numpy(), c["sfc"].to_numpy())
+    # old mad_threshold= -> tol=
+    with pytest.warns(DeprecationWarning, match="mad_threshold="):
+        with contextlib.redirect_stdout(buf):
+            dpl.ssf(data, mad_threshold=5e-4, recode_zeros=True, verbose=False)
+    # old difference=True -> method="difference"
+    with pytest.warns(DeprecationWarning, match="difference="):
+        with contextlib.redirect_stdout(buf):
+            e = dpl.ssf(data, difference=True, recode_zeros=True, verbose=False)
+    f = _ssf_quiet(data, method="difference", recode_zeros=True)
+    assert np.allclose(e["sfc"].to_numpy(), f["sfc"].to_numpy())
+    with pytest.raises(TypeError):
+        _ssf_quiet(data, bogus=1, recode_zeros=True)
+
+
+def test_ssf_warns_instead_of_printing_and_requires_dataframe():
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    buf = io.StringIO()
+    with pytest.warns(UserWarning, match="max_iterations > 25"):
+        with contextlib.redirect_stdout(buf):
+            dpl.ssf(data, max_iterations=30, recode_zeros=True, verbose=False)
+    assert "Warning" not in buf.getvalue()
+    with pytest.raises(TypeError):
+        _ssf_quiet("tests/data/csv/ca533.csv", recode_zeros=True)
+    # G9/preset: case-insensitive
+    a = _ssf_quiet(data, preset="CRUST", recode_zeros=True)
+    b = _ssf_quiet(data, preset="crust", recode_zeros=True)
+    assert np.allclose(a["sfc"].to_numpy(), b["sfc"].to_numpy())
+
+
+def test_ssf_drops_all_nan_columns():
+    # B1: a year slice leaving all-NaN columns used to raise "[5] series with
+    # all zero values"; the empty series are dropped with a warning instead.
+    data = _read_quiet("tests/data/csv/ca533.csv").loc[1700:1983]
+    assert any(data[c].isna().all() for c in data.columns)
+    with pytest.warns(UserWarning, match="no measured values"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            warnings.filterwarnings("always", message=".*no measured values.*")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                out = dpl.ssf(data, recode_zeros=True, verbose=False)
+    assert np.all(np.isfinite(out["sfc"].to_numpy()))

@@ -102,3 +102,97 @@ def test_rwi_stats_bad_common_interval():
                               fit="spline", plot=False)
     with pytest.raises(ValueError):
         dpl.rwi_stats(rwi, common_interval="nonsense")
+
+
+# --- v0.9.0 audit follow-ups ------------------------------------------------
+
+def _rm_short_reference(notNA, row_idx, flag):
+    """The pre-0.9.0 rm.short (full re-test of every candidate row after each
+    drop, O(nrow x ncol) per step) kept as the reference for F4."""
+    sub = notNA[row_idx, :]
+    m, ncol_full = sub.shape
+    which_good = np.where(sub.any(axis=0))[0]
+    ncol_orig = len(which_good)
+    span_len = np.empty(ncol_orig)
+    for k, c in enumerate(which_good):
+        pos = np.where(sub[:, c])[0]
+        span_len[k] = pos[-1] - pos[0]
+    span_order = which_good[np.argsort(span_len, kind="stable")]
+    keep_col = np.zeros(ncol_full, dtype=bool)
+    keep_col[which_good] = True
+    keep_col_out = keep_col.copy()
+    dontkeep_row = np.ones(m, dtype=bool)
+    keep_row_out = np.zeros(m, dtype=bool)
+    nrow = nrow_out = 0
+    ncol_out = ncol = ncol_orig
+    best = 0
+    for i in range(0, max(0, ncol_orig - 2) + 1):
+        if i > 0:
+            keep_col[span_order[i - 1]] = False
+            ncol -= 1
+            if ncol * m < best:
+                break
+        cand = np.where(dontkeep_row)[0]
+        tmp = (sub[np.ix_(cand, np.where(keep_col)[0])].all(axis=1)
+               if len(cand) else np.zeros(0, dtype=bool))
+        dontkeep_row[cand] = ~tmp
+        nrow += int(tmp.sum())
+        area = ncol * nrow
+        if area > best:
+            best = area
+            keep_col_out = keep_col.copy()
+            keep_row_out = ~dontkeep_row.copy()
+            ncol_out = ncol
+            nrow_out = nrow
+            if flag:
+                break
+    return nrow_out, ncol_out, keep_row_out, keep_col_out
+
+
+def _check_rm_short_equal(notNA):
+    from dplpy.common_interval import _rm_short
+    depth = notNA.sum(axis=1)
+    for i in range(int(depth.max()), 1, -1):
+        rows = np.where(depth >= i)[0]
+        if len(rows) == 0:
+            continue
+        row_idx = np.arange(rows[0], rows[-1] + 1)
+        for flag in (True, False):
+            a = _rm_short(notNA, row_idx, flag)
+            b = _rm_short_reference(notNA, row_idx, flag)
+            assert a[0] == b[0] and a[1] == b[1]
+            assert np.array_equal(a[2], b[2]) and np.array_equal(a[3], b[3])
+
+
+def test_rm_short_running_count_matches_reference_ca533():
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    _check_rm_short_equal(~data.isna().to_numpy())
+
+
+def test_rm_short_running_count_matches_reference_synthetic():
+    rng = np.random.default_rng(7)
+    nrow, ncol = 120, 25
+    notNA = np.zeros((nrow, ncol), dtype=bool)
+    for j in range(ncol):
+        a = rng.integers(0, nrow - 10)
+        b = rng.integers(a + 5, nrow)
+        notNA[a:b, j] = True
+        # a few interior gaps
+        for g in rng.integers(a, b, size=rng.integers(0, 3)):
+            notNA[g, j] = False
+    _check_rm_short_equal(notNA)
+    df = pd.DataFrame(np.where(notNA, 1.0, np.nan), index=pd.Index(range(nrow), name="Year"),
+                      columns=["s%d" % j for j in range(ncol)])
+    for t in ("series", "years", "both"):
+        ci = dpl.common_interval(df, type=t)
+        assert not ci.isna().any().any()                 # a complete rectangle
+
+
+def test_common_interval_type_case_insensitive_and_attrs():
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    data.attrs.update({"dplpy_precision": 0.01, "kind": "rwl", "site": "ca533"})
+    a = dpl.common_interval(data, type="Years")
+    b = dpl.common_interval(data, type="years")
+    pd.testing.assert_frame_equal(a, b)
+    assert a.attrs["kind"] == "rwl" and a.attrs["dplpy_precision"] == 0.01
+    assert a.attrs["site"] == "ca533"

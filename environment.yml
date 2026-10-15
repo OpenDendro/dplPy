@@ -1,3 +1,7 @@
+# Conda environment for developing dplPy (see dev-instructions.md).
+#   conda env create -f environment.yml && conda activate dplpy
+# The package itself is installed in editable mode (`-e .`) so `import dplpy`
+# picks up your working copy under src/ and `pytest` runs against it.
 name: dplpy
 channels:
   - conda-forge
@@ -13,6 +17,9 @@ dependencies:
   - pip
   - pip:
     - csaps
+    - -e .
     - jupyterlab
     - notebook
     - pytest
+    - pytest-cov
+    - ruff

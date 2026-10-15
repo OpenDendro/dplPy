@@ -166,3 +166,89 @@ def test_bad_type():
 def test_negative_insert_value():
     with pytest.raises(ValueError):
         dpl.edit_rwl(_series(), year=2003, action="insert", value=-1.0)
+
+
+# ---- v0.9.0 audit follow-ups (A16) -----------------------------------------
+import warnings
+
+
+def test_insert_fix_length_warns_about_dropped_measurement():
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        dpl.edit_rwl(_series(), year=2003, action="insert", value=99)
+    msgs = [str(m.message) for m in w if "dropped the measured ring" in str(m.message)]
+    assert len(msgs) == 1 and "2000" in msgs[0]
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        dpl.edit_rwl(_series(), year=2003, action="insert", value=99, fix_length=False)
+    assert not any("dropped" in str(m.message) for m in w)
+
+
+def test_dataframe_insert_never_drops_a_measurement():
+    # dplR's rwl method: fix_length is not applied; the collection gains a year.
+    out = dpl.edit_rwl(_frame(), series="A", year=2003, action="insert", value=99)
+    assert list(out.index) == list(range(2000, 2006))
+    _check(out["A"], range(2000, 2006), [10, 20, 30, 99, 40, 50])
+    assert list(out["B"].dropna()) == [1, 2, 3, 4, 5]
+    out2 = dpl.edit_rwl(_frame(), series="A", year=2003, action="insert", value=99,
+                        fix_last=False)
+    assert list(out2.index) == list(range(2001, 2007))
+    _check(out2["A"], range(2001, 2007), [10, 20, 30, 99, 40, 50])
+    with pytest.raises(ValueError):
+        dpl.edit_rwl(_frame(), series="A", year=2003, action="insert", value=99,
+                     fix_length=True)
+
+
+def test_dataframe_delete_trims_vacated_row():
+    # the deleted ring shortens the series by a year; a row left all-NaN at the
+    # inner end is trimmed (dplR), while rows other series still cover are kept.
+    out = dpl.edit_rwl(_frame(), series="A", year=2003, action="delete")
+    assert list(out.index) == list(range(2001, 2006))          # B still covers 2001
+    _check(out["A"], range(2001, 2006), [np.nan, 10, 20, 40, 50])
+    solo = _frame()[["A"]]
+    out = dpl.edit_rwl(solo, series="A", year=2003, action="delete")
+    assert list(out.index) == list(range(2002, 2006))          # all-NaN 2001 trimmed
+    _check(out["A"], range(2002, 2006), [10, 20, 40, 50])
+    out = dpl.edit_rwl(solo, series="A", year=2003, action="delete", fix_last=False)
+    assert list(out.index) == list(range(2001, 2005))
+
+
+def test_series_keeps_leading_and_trailing_nan_rows():
+    s = pd.Series([np.nan, np.nan, 10.0, 20, 30, 40, 50, np.nan],
+                  index=pd.Index(range(1999, 2007), name="Year"), name="S1")
+    out = dpl.edit_rwl(s, year=2003, action="change", value=99)
+    assert list(out.index) == list(range(1999, 2007))
+    _check(out, range(1999, 2007), [np.nan, np.nan, 10, 20, 99, 40, 50, np.nan])
+    out = dpl.edit_rwl(s, year=2003, action="delete", fix_length=False)
+    assert list(out.index) == list(range(1999, 2007))          # input NaN rows kept
+    _check(out, range(1999, 2007), [np.nan, np.nan, np.nan, 10, 20, 40, 50, np.nan])
+
+
+def test_year_validation():
+    with pytest.raises(ValueError, match="whole calendar year"):
+        dpl.edit_rwl(_series(), year=np.nan, action="change", value=1.0)
+    with pytest.raises(ValueError, match="whole calendar year"):
+        dpl.edit_rwl(_series(), year=2003.7, action="change", value=1.0)
+    out = dpl.edit_rwl(_series(), year=2003.0, action="change", value=1.0)   # whole float OK
+    assert out.loc[2003] == 1.0
+
+
+def test_change_rejects_negative_and_nan_values():
+    with pytest.raises(ValueError):
+        dpl.edit_rwl(_series(), year=2003, action="change", value=-1.0)
+    with pytest.raises(ValueError):
+        dpl.edit_rwl(_series(), year=2003, action="change", value=np.nan)
+    assert dpl.edit_rwl(_series(), year=2003, action="CHANGE", value=0.0).loc[2003] == 0.0
+
+
+def test_edit_keeps_attrs_and_sorts_index():
+    df = _frame()
+    df.attrs["dplpy_precision"] = 0.01
+    out = dpl.edit_rwl(df, series="A", year=2003, action="change", value=1.0)
+    assert out.attrs["dplpy_precision"] == 0.01 and out.attrs["kind"] == "rwl"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        shuf = dpl.edit_rwl(df.sample(frac=1.0, random_state=0), series="A", year=2003,
+                            action="change", value=1.0)
+    assert any("not sorted" in str(m.message) for m in w)
+    pd.testing.assert_frame_equal(shuf, out)

@@ -28,41 +28,35 @@ dplPy keeps these strictly separate. `dpl.readers()` reads a true interior gap a
 this, and dplPy never did.) A measured zero is carried through detrending as a
 small positive index; a `NaN` is treated as missing everywhere.
 
-## Why a gap matters for some fits but not others
+## How each fit treats a gap
 
 dplPy fits every detrending curve to the series with its `NaN` years **dropped**,
 so a gap can never corrupt a fit the way a sentinel value (ARSTAN's historic
 `-9.99`) could. What differs between methods is the *axis* the curve is fit
-against.
+against, and since v0.9.0 every axis is the true one:
 
-| Fit | x-axis | Affected by an interior gap? |
+| Fit | x-axis | Effect of an interior gap |
 |---|---|---|
-| `Spline` | the real calendar years | **No** — the smoothing spline spans the gap correctly in time |
-| `Mean` | none (an average) | **No** — order-invariant |
-| `ModNegExp`, `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp` | reconstructed ring position `1…n` | **Yes** — the age axis compresses after the gap |
-| `LinearAny`, `LinearNegative` | reconstructed ring position `1…n` | **Yes** (mildly) |
-| `AgeDepSpline` | reconstructed ring position `1…n` | **Yes** — stiffness tracks ring position |
+| `Spline` | the real calendar years | none beyond the missing points; the smoothing spline spans the gap in time |
+| `Mean` | none (an average) | none; order-invariant |
+| `ModNegExp`, `NegExp`, `ModHugershoff`, `Hugershoff`, `GeneralExp` | true ring position (`year - first_year + 1`) | none beyond the missing points; a gap advances cambial age exactly as the calendar does |
+| `LinearAny`, `LinearNegative` | true ring position | none beyond the missing points |
+| `AgeDepSpline` | true ring position | the gap years are infilled by carrying the last measured value forward so the age-dependent stiffness stays on the true age axis; the curve is read back only at measured rings |
 
-The affected fits reconstruct cambial age by counting the *surviving* rings
-`1, 2, …, n`. When five interior years are missing, every ring after the gap is
-assigned an age five years too young — a ring at true cambial age 50 is fit as
-age 45. Because a growth curve (or an age-dependent spline) is a smooth, monotone
-function of age, this is usually a minor, benign distortion rather than a
-catastrophe. But it is not exact, and for a series with large interior gaps it is
-worth a conscious decision.
+Before v0.9.0 the position-based fits reconstructed cambial age by counting the
+*surviving* rings `1, 2, ..., n`, so every ring after a five-year gap was fit five
+years too young, and `dpl.detrend()` warned about it. That compression is gone:
+a ring at true cambial age 50 is fit at age 50 whether or not there is a gap
+before it, and no warning is needed. The same rule holds in the regional-curve
+functions (`rcs`, `sfrcs`, `mrcs`, `sfmrcs`), where a gap advances cambial age in
+the aligned matrix exactly as CRUST and dplR do, and the gap years come back as
+`NaN` in the indices rather than shifting every later year.
 
-`Spline` is the clean exception: it is a cubic smoothing spline fit over the
-actual calendar years, so an interior gap is simply a stretch with no data points
-and the spline glides across it in real time. `Mean` is an average and so does
-not care about order at all.
+!!! note "dplPy does not fill gaps for you"
 
-!!! note "dplPy warns, it does not fix"
-
-    When you detrend a series that has an interior gap with a position-based fit,
-    `dpl.detrend()` emits a warning naming the series and the fit. That is your
-    cue to decide — switch to `fit="Spline"`, infill the gap deliberately, or
-    accept the small distortion. The warning is the whole intervention; dplPy
-    does not change your data.
+    A gap stays `NaN` in the detrended output. If you want a value there, infill
+    it deliberately with `dpl.fill_internal()` before detrending (see below) so the
+    choice is visible in your workflow. dplPy does not change your data silently.
 
 ## How ARSTAN handled it (and why dplPy does not copy that)
 

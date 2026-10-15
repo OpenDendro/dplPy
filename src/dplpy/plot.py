@@ -43,6 +43,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
@@ -69,6 +70,9 @@ def plot(inp: pd.DataFrame | str, type="seg", ax=None, show=True, **kwargs):
     show : bool, default True
         call ``plt.show()`` after drawing. Set False to keep the figure for
         saving or further editing (the returned figure is still fully drawn).
+        Under a non-interactive backend (scripts, tests, CI) ``plt.show()`` is
+        a no-op, so the figure is closed after showing to avoid accumulating
+        open figures; the returned ``(fig, ax)`` can still be saved.
     **kwargs
         passed through to the underlying plotter (e.g. ``zfac`` and ``color``
         for the spaghetti plot -- ``color`` takes a colormap name like
@@ -88,7 +92,7 @@ def plot(inp: pd.DataFrame | str, type="seg", ax=None, show=True, **kwargs):
 
     References
     ----------
-    .. [1] https:/opendendro.org/dplpy-man/#plot
+    .. [1] https://opendendro.github.io/dplPy/reference/utilities/#plot
     """
     series_data = _coerce_to_frame(inp)
 
@@ -106,6 +110,12 @@ def plot(inp: pd.DataFrame | str, type="seg", ax=None, show=True, **kwargs):
     finalize_font(fig)
     if show:
         plt.show()
+        if not matplotlib.is_interactive():
+            # Non-interactive backend: show() returned without displaying
+            # anything, so release the figure from pyplot's registry rather
+            # than leaking one open figure per call. The Figure object is
+            # still returned and can be saved with fig.savefig().
+            plt.close(fig)
     return fig, ax
 
 

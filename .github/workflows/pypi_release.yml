@@ -1,4 +1,18 @@
-# Build the package and publish it to PyPI after tests pass.
+# Build the package, publish it to PyPI, and create the GitHub release after the
+# tests pass on a release branch.
+#
+# Release flow (see release-instructions.md): bump the version on main, then
+# create a branch named `v` + the version (e.g. `v0.9.0`). Pushing that branch
+# runs `run_tests`; when it succeeds this workflow builds the package, publishes
+# it to PyPI with trusted publishing (no API token secret), and creates the
+# GitHub release and tag named after the branch. Nothing in this file is edited
+# per release: the tag, release name and notes are derived from the triggering
+# branch and CHANGELOG.md.
+#
+# One-time setup: PyPI trusted publishing must be configured for this
+# repository (pypi.org -> project dplpy -> Publishing -> add a GitHub publisher
+# with owner OpenDendro, repository dplPy, workflow pypi_release.yml,
+# environment pypi).
 name: Publish to PyPI
 on:
   workflow_run:
@@ -6,78 +20,73 @@ on:
     types:
       - completed
     branches:
-      - v0.8.0
+      - "v[0-9]*"
+
+permissions:
+  contents: read
 
 jobs:
   publish:
     name: publish
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: pypi
+    permissions:
+      id-token: write      # PyPI trusted publishing (OIDC)
+      contents: write      # create the GitHub release and tag
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          ref: v0.8.0
-      - name: Set up Python 3.11
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Check the release branch matches the package version
+        run: |
+          python - <<'EOF'
+          import os, re, sys, tomllib
+          tag = os.environ["RELEASE_TAG"]
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?", tag):
+              sys.exit(f"branch {tag!r} is not a release branch (expected vX.Y.Z)")
+          if tag != "v" + version:
+              sys.exit(f"branch {tag!r} does not match pyproject version {version!r}")
+          print("releasing", tag)
+          EOF
       - name: Build package
         run: |
           python -m pip install -U pip build
           python -m build
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@v1.5.0
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          python - <<'EOF'
+          import os, re
+          tag = os.environ["RELEASE_TAG"]
+          version = tag[1:]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          # the "## [X.Y.Z] - date" section, up to the next "## " heading
+          m = re.search(r"^## \[%s\][^\n]*\n(.*?)(?=^## |\Z)" % re.escape(version),
+                        text, re.S | re.M)
+          body = m.group(1).strip() if m else ""
+          if not body:
+              body = ("dplPy %s. See CHANGELOG.md for details." % tag)
+          body = "dplPy %s\n\n%s\n\nhttps://pypi.org/project/dplpy/%s/" % (tag, body, version)
+          open("release_notes.md", "w", encoding="utf-8").write(body)
+          print(body)
+          EOF
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          user: __token__
-          password: ${{ secrets.DPLPY_PYPI }}
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name: v0.8.0
-          release_name: v0.8.0
-          body: |
-            dplPy v0.8.0
-
-            v0.8.0 is a breaking release that harmonizes the Regional Curve Standardization
-            API (rcs, sfrcs) with detrend(), redefines the pith offset to a true offset, and
-            standardizes the plotting keyword across the package. dplPy 0.7.0 remains on PyPI
-            for existing code; 0.8.0 is the more consistent and flexible RCS, on the path to
-            1.0.
-
-            Breaking changes:
-            - rcs()/sfrcs() inputs now match detrend(): the regional curve is chosen with
-              fit= (was method="caps"/"ads"), the arithmetic with method="ratio"/"difference"
-              (was the boolean ratios=), and spline stiffness with period= (was nyrs=). The
-              default regional curve is now fit="AgeDepSpline" (ARSTAN's recommended RCS
-              curve, with a non-increasing old-age end; pos_slope defaults to False). Use
-              fit="Spline", period=0.1 to reproduce the previous default exactly.
-            - The pith offset is now a true offset: pith_offset is the number of rings
-              between the pith and the first measured ring, so 0 = pith present (was 1, the
-              cambial age of the first ring, following dplR). This matches ARSTAN's nshft
-              exactly; a dplR po table must have 1 subtracted first. po_to_wc/wc_to_po were
-              updated to match.
-            - The figure keyword is now plot= everywhere (rcs, sfrcs, xdate, series_corr,
-              xdate_floater, xdate_undated, common_interval); make_plot= still works for one
-              release with a DeprecationWarning.
-
-            New:
-            - rcs() can fit the regional curve with any detrend() curve - the two splines,
-              the parametric growth curves (ModNegExp, NegExp, Hugershoff, GeneralExp,
-              LinearAny, LinearNegative, Mean) - or with no smoothing (fit=None, the
-              age-aligned mean itself), mirroring how ARSTAN and CRUST build the RC.
-            - period=-10 gives the ARSTAN percent-of-length spline.
-            - rcs(rescale_difference=True) puts difference indices on the ratio (~1) scale,
-              per series, following ARSTAN's calind.
-            - rcs() warns (rather than halting) when the regional curve goes non-positive.
-            - readers() gains encoding= (latin1 fallback for non-UTF-8 ITRDB files) and
-              records measurement precision; xdate_undated() crossdates floating series into
-              a relatively-dated chronology; xdate_floater() gains a segment-consensus mode.
-
-            Upgrading from 0.7.0: replace rcs/sfrcs ratios=True/False with
-            method="ratio"/"difference", method="caps"/"ads" with fit="Spline"/"AgeDepSpline",
-            nyrs= with period=, and make_plot= with plot=; subtract 1 from any dplR-style
-            pith-offset table. See CHANGELOG.md for the full list.
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          body_path: release_notes.md
+          # a tag with a suffix (v1.0.0-rc1, v1.0.0-beta.2) is a pre-release
+          prerelease: ${{ contains(github.event.workflow_run.head_branch, '-') }}
+          files: dist/*

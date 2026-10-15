@@ -1,6 +1,7 @@
 import warnings
 
 import dplpy as dpl
+import numpy as np
 import pandas as pd
 import pytest
 from unittest.mock import patch, Mock
@@ -19,7 +20,8 @@ _m_detrend = importlib.import_module("dplpy.detrend")
 
 
 def _quiet_read(path):
-    import io, contextlib
+    import io
+    import contextlib
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with contextlib.redirect_stdout(io.StringIO()):
@@ -27,7 +29,8 @@ def _quiet_read(path):
 
 
 def _detrend_quiet(data, **kw):
-    import io, contextlib
+    import io
+    import contextlib
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with contextlib.redirect_stdout(io.StringIO()):
@@ -46,15 +49,15 @@ def test_detrend_with_spline(mock_spline: Mock, mock_linear: Mock, mock_horizont
     mock_spline.side_effect = mock_spline_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
-    
+
     expected_df = pd.DataFrame(data={"SeriesA": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                                     "SeriesB": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, fit="spline", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
@@ -69,8 +72,9 @@ def test_detrend_with_spline(mock_spline: Mock, mock_linear: Mock, mock_horizont
 @patch.object(_m_detrend, 'spline')
 def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    # mod_neg_exp is called as (x, y, pos_slope, name); return y*0.5 -> ratio 2.0
-    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: y * 0.5
+    # every fitter is called with info=True (E22) and returns (curve, info);
+    # return y*0.5 -> ratio 2.0
+    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: (y * 0.5, {"method": "mock"})
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
 
@@ -90,7 +94,7 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_l
     mock_mod_neg_exp.assert_called()
     mock_linear.assert_not_called()
     mock_horizontal.assert_not_called()
-    
+
 
 @patch('dplpy.curvefit.horizontal')
 @patch('dplpy.curvefit.linear')
@@ -99,9 +103,9 @@ def test_detrend_with_modnegex(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_l
 @patch.object(_m_detrend, 'spline')
 def test_detrend_with_hugershoff(mock_spline: Mock, mock_mod_neg_exp: Mock, mock_mod_hugershoff: Mock, mock_linear: Mock, mock_horizontal: Mock):
     mock_spline.side_effect = mock_spline_method
-    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: y * 0.5
-    # mod_hugershoff is called as (x, y, pos_slope, name); return y*0.25 -> ratio 4.0
-    mock_mod_hugershoff.side_effect = lambda x, y, *a, **k: y * 0.25
+    mock_mod_neg_exp.side_effect = lambda x, y, *a, **k: (y * 0.5, {"method": "mock"})
+    # fitters return (curve, info) under info=True; return y*0.25 -> ratio 4.0
+    mock_mod_hugershoff.side_effect = lambda x, y, *a, **k: (y * 0.25, {"method": "mock"})
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
 
@@ -131,15 +135,15 @@ def test_detrend_with_linear(mock_spline: Mock, mock_linear: Mock, mock_horizont
     mock_spline.side_effect = mock_spline_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
-    
+
     expected_df = pd.DataFrame(data={"SeriesA": [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25],
                                     "SeriesB": [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, fit="linear", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
@@ -155,15 +159,15 @@ def test_detrend_with_horizontal(mock_spline: Mock, mock_linear: Mock, mock_hori
     mock_spline.side_effect = mock_spline_method
     mock_linear.side_effect = mock_linear_method
     mock_horizontal.side_effect = mock_horizontal_method
-    
+
     expected_df = pd.DataFrame(data={"SeriesA": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
                                     "SeriesB": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, fit="horizontal", plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
@@ -212,15 +216,15 @@ def test_detrend_residual_deprecated_alias(mock_spline: Mock):
 @patch.object(_m_detrend, 'spline')
 def test_detrend_difference(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
-    
+
     expected_df = pd.DataFrame(data={"SeriesA": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                     "SeriesB": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
-    
+
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     result_df = dpl.detrend(input_df, method='difference', plot=False)
     pd.testing.assert_frame_equal(expected_df, result_df)
@@ -275,7 +279,7 @@ def test_nonpositive_spline_fallback_helper():
 def test_detrend_invalid_fit():
     input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5],
                                     "SeriesB": [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]},
-                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], 
+                                    index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8],
                                                     name="Year"))
     with pytest.raises(ValueError) as errorMsg:
         dpl.detrend(input_df, fit="vertical", plot=False)
@@ -392,7 +396,6 @@ def test_mod_neg_exp_fallback_chain_when_fit_fails():
 
 def test_detrend_spline_f_exposed():
     # D5: f defaults to 0.5 (unchanged) and actually tunes the spline when set.
-    import io, contextlib
     import numpy as np
     data = _quiet_read("tests/data/csv/ca533.csv")
     s = data["CAM011"]
@@ -405,7 +408,8 @@ def test_detrend_spline_f_exposed():
 
 def test_detrend_verbose_prints_per_series():
     # D7: verbose prints one line per series naming the curve and method.
-    import io, contextlib
+    import io
+    import contextlib
     data = _quiet_read("tests/data/csv/ca533.csv")[["CAM011", "CAM021"]]
     buf = io.StringIO()
     with warnings.catch_warnings():
@@ -570,7 +574,6 @@ def test_modhugershoff_warns_on_ill_conditioned_fit():
     # scipy is more robust than dplR's nls and will fit some series dplR rejects.
     # When the Hugershoff fit is badly ill-conditioned we warn so the divergence
     # is never silent; a clean fit (CAM011) does not warn. model_info carries cond.
-    import numpy as np
     data = _quiet_read("tests/data/csv/ca533.csv")
     # CAM021 is a severely ill-conditioned Hugershoff fit (cond ~1e23)
     with pytest.warns(UserWarning, match="poorly constrained"):
@@ -592,7 +595,8 @@ def test_detrend_hugershoff_arstan_deterministic_and_positive():
     # fit='Hugershoff' is Ed Cook's ARSTAN closed-form: always a positive curve,
     # deterministic, no fallback and no warning even on the ill-conditioned series
     # where the nls 'ModHugershoff' warns/diverges.
-    import io, contextlib
+    import io
+    import contextlib
     import numpy as np
     data = _quiet_read("tests/data/csv/ca533.csv")
     # CAM021 is the series where the nls ModHugershoff warns; ARSTAN must not warn
@@ -728,3 +732,129 @@ def test_linearnegative_falls_back_to_mean_on_rising_series():
         neg = cf.linear_neg(x, y, name="rise")
     assert [m for m in w if issubclass(m.category, UserWarning)]       # warned
     assert np.allclose(neg, np.mean(y))                               # flat mean
+
+# --- v0.9.0 audit follow-ups ------------------------------------------------
+
+def _synthetic_gap(fit):
+    """A series generated exactly from the fit's own model on ring positions
+    1..80, with rings 21-30 removed (interior NaN). Returns (series, truth)."""
+    t = np.arange(1.0, 81.0)
+    if fit in ("ModNegExp", "NegExp"):
+        truth = 2.0 * np.exp(-0.03 * t) + 0.4
+    elif fit == "GeneralExp":
+        truth = 0.3 * t * np.exp(-0.05 * t) + 0.0
+    else:                                        # Hugershoff family
+        truth = 0.4 * t ** 0.8 * np.exp(-0.04 * t) + (0.2 if fit == "ModHugershoff" else 0.0)
+    yrs = np.arange(1900, 1980)
+    s = pd.Series(truth, index=pd.Index(yrs, name="Year"), name="S")
+    s.iloc[20:30] = np.nan
+    return s, truth
+
+
+@pytest.mark.parametrize("fit", ["ModNegExp", "NegExp", "GeneralExp", "Hugershoff"])
+def test_detrend_position_fits_use_true_ring_position_across_gap(fit):
+    # A1: the rings after an interior gap keep their true position, so the
+    # fitted curve evaluates to the generating model in the SAME years (a
+    # compacted axis would evaluate it 10 rings too young).
+    s, truth = _synthetic_gap(fit)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        info = dpl.detrend(s, fit=fit, plot=False, return_info=True)
+    curve = info["curves"].to_numpy()
+    ok = ~np.isnan(curve)
+    assert np.isnan(curve[20:30]).all()
+    assert np.allclose(curve[ok], truth[ok], rtol=2e-3, atol=2e-3)
+    assert info["model_info"]["method"] != "Mean"
+
+
+def test_detrend_agedepspline_gap_uses_true_age():
+    # AgeDepSpline carries the previous ring across the gap for its fit, so the
+    # post-gap curve stays close to the gap-free curve in the same years.
+    data = _quiet_read("tests/data/csv/ca533.csv")["CAM011"]
+    g = data.copy()
+    g.loc[1630:1632] = np.nan
+    full = dpl.detrend(data, fit="AgeDepSpline", plot=False, return_info=True)["curves"]
+    gap = dpl.detrend(g, fit="AgeDepSpline", plot=False, return_info=True)["curves"]
+    assert gap.loc[1630:1632].isna().all()
+    post = full.index > 1640
+    rel = np.nanmax(np.abs(full[post] - gap[post]) / full[post])
+    assert rel < 0.02
+
+
+def test_detrend_plot_default_false_and_closes_figures():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from unittest.mock import patch
+    data = _quiet_read("tests/data/csv/ca533.csv").iloc[:, :3]
+    plt.close("all")
+    with patch("matplotlib.pyplot.show") as show:
+        dpl.detrend(data)                                   # default: no figures
+    show.assert_not_called()
+    assert len(plt.get_fignums()) == 0
+    with patch("matplotlib.pyplot.show") as show:
+        dpl.detrend(data, plot=True)
+    assert show.call_count == 3
+    assert len(plt.get_fignums()) == 0                      # closed (Agg)
+    with patch("matplotlib.pyplot.show") as show, \
+            patch("builtins.input", return_value="") as inp:
+        dpl.detrend(data, plot="sequential")
+    assert show.call_count == 3 and inp.call_count == 3
+    assert len(plt.get_fignums()) == 0
+    with pytest.raises(ValueError):
+        dpl.detrend(data, plot="bogus")
+
+
+def test_detrend_drops_all_nan_columns_with_warning():
+    # B1: a year slice leaves all-NaN columns; they are dropped, not crashed on
+    data = _quiet_read("tests/data/csv/ca533.csv")
+    sub = data.loc[1900:1983]
+    empty = [c for c in sub.columns if sub[c].isna().all()]
+    assert len(empty) > 0
+    for fit in ("Spline", "ModNegExp", "AgeDepSpline"):
+        with pytest.warns(UserWarning, match="no measured values"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=UserWarning)
+                warnings.filterwarnings("always", message=".*no measured values.*")
+                rwi = dpl.detrend(sub, fit=fit, plot=False)
+        assert set(rwi.columns) == set(sub.columns) - set(empty)
+    # a lone empty Series returns NaN (model_info None under return_info)
+    with pytest.warns(UserWarning, match="no measured values"):
+        info = dpl.detrend(sub[empty[0]], plot=False, return_info=True)
+    assert info["rwi"].isna().all() and info["model_info"] is None
+    with pytest.warns(UserWarning):
+        assert dpl.detrend(sub[empty[0]], plot=False).isna().all()
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("fit", ["Spline", "AgeDepSpline", "ModNegExp", "NegExp",
+                                 "ModHugershoff", "Hugershoff", "GeneralExp",
+                                 "LinearAny", "LinearNegative", "Mean"])
+def test_detrend_short_series_never_crash(n, fit):
+    # B9: too-short series fall back to the mean ("dirty dog") with a warning
+    from dplpy.detrend import _MIN_N
+    s = pd.Series(np.linspace(1.0, 0.5, n), index=pd.Index(range(2000, 2000 + n),
+                                                            name="Year"), name="s")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        info = dpl.detrend(s, fit=fit, plot=False, return_info=True)
+    assert np.isfinite(info["rwi"].to_numpy()).all()
+    if n < _MIN_N[fit]:
+        assert any("too few" in str(x.message) for x in w)
+        assert info["model_info"]["method"] == "Mean"
+        assert info["dirty_dog"] is (fit != "Mean")
+
+
+def test_detrend_period_alias_and_attrs():
+    data = _quiet_read("tests/data/csv/ca533.csv").iloc[:, :3]
+    data.attrs.update({"dplpy_precision": 0.01, "kind": "rwl", "site": "ca533"})
+    with pytest.warns(DeprecationWarning, match="period="):
+        a = dpl.detrend(data, period=0.5, plot=False)
+    b = dpl.detrend(data, spline_period=0.5, plot=False)
+    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
+    assert b.attrs["kind"] == "rwi" and b.attrs["site"] == "ca533"
+    assert "dplpy_precision" not in b.attrs
+    s = dpl.detrend(data.iloc[:, 0], plot=False)
+    assert s.attrs["kind"] == "rwi"
+    with pytest.raises(TypeError):
+        dpl.detrend(data, bogus=1, plot=False)

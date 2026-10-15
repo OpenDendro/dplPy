@@ -43,8 +43,13 @@ The result has a `std` (standard chronology) column and a `samp_depth`
   than an arithmetic mean, reducing the influence of outlier series.
 - `prewhiten` (default `False`) — also return a residual (prewhitened)
   chronology in a `res` column. When on, the AR model is fit **per series** at
-  each series' own optimal order, controlled by `max_lag`, `aic`, `ar_method`
-  (`"yw"` Yule-Walker, matching dplR's default, or `"ols"`), and `first_aic_min`.
+  each series' own optimal order, controlled by `ar_max` (default 10), `aic`,
+  `ar_method` (`"yw"` Yule-Walker, the package default and R's `ar()` default;
+  `"burg"` or `"ols"`), and `first_aic_min` (default `True`: the order is the
+  **first local** AIC minimum, the ARSTAN/COFECHA rule; R's `ar()` takes the
+  global minimum — pass `first_aic_min=False` to match it).
+- `ci` (default `False`) — also return bootstrap confidence limits on the mean
+  (`conf=0.95`, `R=100` resamples; set `seed=` for reproducibility).
 
 `chron` is deliberately lightweight: it reproduces dplR's `chron` and gives you a
 clean standard (and optional residual) chronology without committing to ARSTAN's
@@ -58,7 +63,7 @@ rather than dplR's `chron` where the two differ. It returns three chronologies
 with unified column names:
 
 ```python
-ars = dpl.chron_ars(rwi, max_lag=10, first_aic_min=True)
+ars = dpl.chron_ars(rwi, ar_max=10, first_aic_min=True)
 list(ars.columns)
 # ['std', 'res', 'ars', 'samp_depth']
 ```
@@ -82,16 +87,23 @@ series and lags (Cook's pooled-AR approach), selected by AIC.
 There are two orders in which the re-reddening and averaging steps can be
 combined, and they do **not** commute when sample depth changes through time:
 
-- **`ars_method="arstan"`** (the default) — `ars = postAR(mean(prewhitened))`:
-  average the prewhitened series first, then re-redden that single mean. This
-  reproduces Ed Cook's ARSTAN Fortran, which re-reddens the residual chronology
-  directly. dplPy defaults to this because `chron_ars` is an ARSTAN emulator.
+- **`ars_method="arstan"`** (the default) — `ars = postAR(res)`: re-redden the
+  **residual chronology** itself, that is the mean of the prewhitened series after
+  it has been prewhitened once more at the pooled order. This is exactly what Ed
+  Cook's ARSTAN Fortran does (`albino1` at the fixed pooled order, then `commie1`
+  with the pooled coefficients), and it is also what the development version of
+  dplR's `chron.ars` has done since October 2026. dplPy defaults to this because
+  `chron_ars` is an ARSTAN emulator.
 - **`ars_method="dplr"`** — `ars = mean(postAR(prewhitened))`: re-redden each
-  series, then average. This matches dplR's `chron.ars`. Use it for exact dplR
-  parity of the `ars` column.
+  prewhitened series, then average. This matches released dplR up to 1.8.0. Use
+  it for parity with results produced by those versions.
 
 The `std` and `res` chronologies, the pooled AR order, and the prewhitening are
-identical either way; only the `ars` column differs.
+identical either way; only the `ars` column differs. On the ca533 example the two
+constructions correlate at 0.99 but differ by up to about 0.25 in individual
+years, so the choice is visible in the numbers. The re-reddening initials follow
+ARSTAN's `bckcst` (backcast from the start of each series), which differs from
+dplR's `postAR` only in the first few years of each series' contribution.
 
 ### `backcast`: keeping the first years
 

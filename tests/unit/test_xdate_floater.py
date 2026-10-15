@@ -382,3 +382,105 @@ def test_series_name_derived_from_series_object():
                   verbose=False)["series_name"] == "MYCORE"
     assert _quiet(dpl.xdate_floater, ref, col.to_numpy(),
                   verbose=False)["series_name"] == "Unknown"
+
+
+# --- v0.9.0 audit follow-ups ---------------------------------------------------
+
+def test_gappy_reference_still_dates_correctly():
+    # A3: years with no measurement in ANY reference series used to be dropped,
+    # compressing the master so an index offset was no longer a calendar offset
+    # (ca533 with 3 all-NaN reference years at 1900-1902 dated CAM011 to
+    # 1533-1986, confidently wrong by the gap length). The master must stay on
+    # the dense year grid with NaN in place and correlate on complete pairs.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna()
+    ref = rwl.drop(columns=["CAM011"]).copy()
+    ref.loc[1900:1902, :] = np.nan
+    res = _quiet(dpl.xdate_floater, ref, truth.to_numpy(), series_name="CAM011",
+                 verbose=False)
+    assert (res["best"]["min_year"], res["best"]["max_year"]) == (1530, 1983)
+    # offsets overlapping the gap simply have fewer complete pairs
+    stats = res["floater_cor_stats"]
+    assert int(stats.loc[stats["max_year"] == 1983, "n"].iloc[0]) < len(truth)
+    # a gappy chronology Series as the reference behaves the same way
+    master = rwl.drop(columns=["CAM011"]).mean(axis=1)
+    master.loc[1900:1902] = np.nan
+    res2 = _quiet(dpl.xdate_floater, master.dropna(), truth.to_numpy(),
+                  series_name="CAM011", verbose=False)
+    assert (res2["best"]["min_year"], res2["best"]["max_year"]) == (1530, 1983)
+
+
+def test_gappy_reference_segment_consensus_stays_on_grid():
+    # A3 (segment consensus): the UDATE-style segments must also see the dense
+    # master, so every segment still implies the true end year across a gap.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna()
+    ref = rwl.drop(columns=["CAM011"]).copy()
+    ref.loc[1700:1702, :] = np.nan
+    res = _quiet(dpl.xdate_floater, ref, truth.to_numpy(), series_name="CAM011",
+                 segmented=True, verbose=False)
+    assert res["internal_error"] is None
+    assert int(res["consensus"].index[0]) == 1983
+
+
+def test_floater_interior_nan_keeps_ring_positions():
+    # A3: an unmeasured ring inside the floater is a ring position, not a value to
+    # compress out. With one interior NaN the placement must stay 1530-1983 and the
+    # placed series must carry the NaN at its year.
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy().copy()
+    truth[200] = np.nan
+    ref = rwl.drop(columns=["CAM011"])
+    res = _quiet(dpl.xdate_floater, ref, truth, series_name="CAM011",
+                 return_rwl=True, verbose=False)
+    assert (res["best"]["min_year"], res["best"]["max_year"]) == (1530, 1983)
+    assert np.isnan(res["placed"].loc[1530 + 200, "CAM011"])
+    assert res["best"]["n"] < len(truth)
+
+
+def test_floater_unsorted_reference_matches_sorted():
+    # A4: a shuffled reference is sorted first (with a warning); same result.
+    import warnings
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy()
+    ref = rwl.drop(columns=["CAM011"])
+    a = _quiet(dpl.xdate_floater, ref, truth, verbose=False)["best"]
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        b = _quiet(dpl.xdate_floater, ref.sample(frac=1.0, random_state=1), truth,
+                   verbose=False)["best"]
+    assert any("not sorted" in str(x.message) for x in w)
+    assert a == b
+
+
+def test_transform_is_case_insensitive():
+    # D11
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy()
+    ref = rwl.drop(columns=["CAM011"])
+    a = _quiet(dpl.xdate_floater, ref, truth, transform="PW", verbose=False)["best"]
+    b = _quiet(dpl.xdate_floater, ref, truth, transform="pw", verbose=False)["best"]
+    assert a == b
+
+
+def test_slide_corr_matches_fast_corr_and_segment_scan_is_fast():
+    # F3: the vectorized segment scan reproduces the per-window correlation exactly
+    # (it is the same rank-Pearson computation) and the segmented run is fast.
+    import time
+    from dplpy.xdate_floater import _slide_corr
+    from dplpy.xdate import _fast_corr
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=400)
+    x[[50, 51, 300]] = np.nan                                 # gappy master
+    seg = rng.normal(size=50)
+    rs = _slide_corr(x, seg, "spearman", 40)
+    for j in (0, 10, 25, 60, 280, 350):
+        ok = ~np.isnan(x[j:j + 50])
+        exp = _fast_corr(x[j:j + 50], seg, "spearman") if ok.sum() >= 40 else np.nan
+        assert np.isnan(rs[j]) if np.isnan(exp) else rs[j] == pytest.approx(exp, abs=1e-12)
+    rwl = _quiet(dpl.readers, "tests/data/rwl/ca533.rwl")
+    truth = rwl["CAM011"].dropna().to_numpy()
+    ref = rwl.drop(columns=["CAM011"])
+    t0 = time.perf_counter()
+    _quiet(dpl.xdate_floater, ref, truth, segmented=True, verbose=False)
+    assert time.perf_counter() - t0 < 8.0                    # was ~16 s before F3

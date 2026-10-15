@@ -31,15 +31,19 @@ def test_xdate_diff_bins():
     for bf in (0, 10, 100):
         res = _xdate(ca533, bin_floor=bf)
         _assert_shape(res, 15)
-    # overall rho is a whole-series correlation, independent of bin_floor:
-    # pin CAM011 (well-dated) against the current dplR-validated value.
-    assert res["overall"].loc["CAM011", "rho"] == pytest.approx(0.5146, abs=1e-3)
+    # overall rho is a whole-series correlation, independent of bin_floor: pin
+    # CAM011 (well-dated) against the dplR-validated value under dplR's own
+    # prewhitening settings (the package default, ar_max=10 / first local AIC
+    # minimum, is a documented difference and lands close by).
+    dplr = _xdate(ca533, bin_floor=100, ar_max=None, first_aic_min=False)
+    assert dplr["overall"].loc["CAM011", "rho"] == pytest.approx(0.5146, abs=1e-3)
+    assert res["overall"].loc["CAM011", "rho"] == pytest.approx(0.5146, abs=0.05)
 
 
-def test_xdate_diff_slide_periods():
+def test_xdate_diff_window_lengths():
     ca533 = dpl.readers("./tests/data/csv/ca533.csv").iloc[:, :15]
-    for sp in (30, 50, 80):
-        _assert_shape(_xdate(ca533, slide_period=sp), 15)
+    for wl in (30, 50, 80):
+        _assert_shape(_xdate(ca533, window_length=wl), 15)
 
 
 def test_xdate_diff_corrs():

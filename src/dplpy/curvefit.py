@@ -28,10 +28,10 @@ __license__ = "GNU GPLv3"
 #              from a series to curves. The curves included are hugershoff,
 #              modified negative exponential, linear and horizontal.
 
-import warnings
-
 import numpy as np
 from scipy.optimize import curve_fit
+
+from ._validate import _warn
 
 
 def _mean_curve(y):
@@ -49,6 +49,35 @@ def _line_info(x, yl):
             "coefs": {"intercept": float(yl[0] - slope * x[0]), "slope": float(slope)}}
 
 
+def _age_axis(y, t=None):
+    """Ring-position axis for the position-based fitters: 1..n unless the caller
+    supplies the TRUE cambial-age / ring-position axis ``t`` (so an interior gap
+    of unmeasured rings advances age instead of compressing the axis)."""
+    n = len(y)
+    if t is None:
+        return np.arange(1.0, n + 1)
+    t = np.asarray(t, dtype=float)
+    if t.shape != (n,):
+        raise ValueError("t must have the same length as y.")
+    return t
+
+
+def _line_or_mean(x, y, pos_slope, name, label, info):
+    """The line -> mean fallback chain shared by ModNegExp, NegExp and
+    ModHugershoff: a straight line is accepted when its slope is <= 0 (or
+    ``pos_slope``) and it is positive everywhere; otherwise the series mean
+    (dplR's "dirty dog"). Returns (curve, meta) or just the curve."""
+    yl = linear(x, y)
+    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
+        _warn(label + " could not fit " + str(name)
+              + "; using a linear fit instead.", stacklevel=6)
+        return (yl, _line_info(x, yl)) if info else yl
+    _warn(label + " and the linear fallback are unsuitable for " + str(name)
+          + "; detrending by the series mean instead.", stacklevel=6)
+    curve, meta = _mean_curve(y)
+    return (curve, meta) if info else curve
+
+
 # Modified hugershoff function
 def hugershoff_function(x, a, b, c, d):
     return a*(x**b)*np.exp(c*x) + d
@@ -64,12 +93,11 @@ def hugershoff_function(x, a, b, c, d):
 # data-space error, so it gives a different (not merely better/worse-converged)
 # curve. Cook deliberately does not reject m<=0 (that check is commented out in
 # hughdi), so on monotonically declining data it returns a power-law decline.
-def hugershoff_arstan(x, y, name="", info=False):
+def hugershoff_arstan(x, y, name="", info=False, t=None):
     def out(curve, meta):
         return (curve, meta) if info else curve
     y = np.asarray(y, dtype=float)
-    n = len(y)
-    t = np.arange(1.0, n + 1)
+    t = _age_axis(y, t)
     ok = (y > 0) & (t > 0)                       # ln needs positive rings
     tk, yk = t[ok], y[ok]
     xl, yl = np.log(tk), np.log(yk)
@@ -83,8 +111,8 @@ def hugershoff_arstan(x, y, name="", info=False):
     rn3 = sumx * sumxt - sumt * sumx2
     rn = nred * rn1 + sumx * rn2 + sumt * rn3
     if not np.isfinite(rn) or abs(rn) < 1e-300 or nred < 3:
-        warnings.warn("Hugershoff (ARSTAN) regression is singular for "
-                      + str(name) + "; detrending by the series mean instead.\n")
+        _warn("Hugershoff (ARSTAN) regression is singular for "
+              + str(name) + "; detrending by the series mean instead.", stacklevel=5)
         return out(*_mean_curve(y))
     a_ = (sumy * rn1 + sumxy * rn2 + sumyt * rn3) / rn                 # ln(a)
     rz2 = sumx * sumt - nred * sumxt
@@ -108,11 +136,12 @@ def hugershoff_arstan(x, y, name="", info=False):
 # non-positive tail). On rejection, fall back to a straight line -- accepted only
 # when its slope is <= 0 (or pos_slope) AND all its values are positive -- and
 # finally to the series mean, exactly as ModNegExp does.
-def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
+def mod_hugershoff(x, y, pos_slope=False, name="", info=False, t=None):
     def out(curve, meta):
         return (curve, meta) if info else curve
+    y = np.asarray(y, dtype=float)
     nY = len(y)
-    t = np.arange(1, nY + 1)
+    t = _age_axis(y, t)
     # dplR default constrain.nls="never": unconstrained nls with start values
     # a = d = mean of the last 10%, b = 1, g = 0.1 (so c = -g = -0.1). Reject on
     # a<=0, b<=0, or a non-positive tail, as dplR's hug.func does.
@@ -131,29 +160,20 @@ def mod_hugershoff(x, y, pos_slope=False, name="", info=False):
             # reject this fit -- so a divergence is never silent.
             cond = np.linalg.cond(pcov) if np.all(np.isfinite(pcov)) else np.inf
             if cond > 1e12:
-                warnings.warn(
+                _warn(
                     "ModHugershoff fit for " + str(name) + " is poorly "
                     "constrained (covariance condition number "
                     + ("%.1e" % cond) + "); the 4-parameter Hugershoff can be "
                     "unstable and other implementations (e.g. dplR) may reject it "
                     "and fall back to a line/mean. Inspect the curve, or prefer "
-                    "fit='Spline' or fit='ModNegExp'.\n")
+                    "fit='Spline' or fit='ModNegExp'.", stacklevel=5)
             return out(fit, {"method": "Hugershoff",
                              "coefs": {"a": float(a), "b": float(b),
                                        "c": float(c), "d": float(d)},
                              "cond": float(cond)})
-    except (RuntimeError, ValueError):
+    except (RuntimeError, ValueError, TypeError):
         pass
-    # straight-line fallback
-    yl = linear(x, y)
-    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
-        warnings.warn("ModHugershoff could not fit " + str(name)
-                      + "; using a linear fit instead.\n")
-        return out(yl, _line_info(x, yl))
-    # final fallback: the series mean
-    warnings.warn("ModHugershoff and the linear fallback are unsuitable for "
-                  + str(name) + "; detrending by the series mean instead.\n")
-    return out(*_mean_curve(y))
+    return _line_or_mean(x, y, pos_slope, name, "ModHugershoff", info)
 
 
 # Modified negative exponential function
@@ -167,14 +187,15 @@ def negex_function(x, a, b, k):
 # is <= 0 (or pos_slope is True) AND all its fitted values are positive; otherwise
 # fall back to the series mean (dplR's "dirty dog" case). This keeps a whole
 # collection from aborting on one series the neg-exp can't fit.
-def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
+def mod_neg_exp(x, y, pos_slope=False, name="", info=False, t=None):
     # With info=True return (curve, model_info); otherwise just the curve, so
     # existing callers are unaffected. model_info mirrors dplR's method labels:
     # "NegativeExponential" (the nls fit), "Line" (linear fallback), or "Mean".
     def out(curve, meta):
         return (curve, meta) if info else curve
+    y = np.asarray(y, dtype=float)
     nY = len(y)
-    t = np.arange(1, nY + 1)
+    t = _age_axis(y, t)
     # 1. unconstrained negative-exponential fit with dplR's start values
     #    (dplR default constrain.nls="never"): a = mean of the first 10%,
     #    b = -0.01, k = mean of the last 10%. Reject on a<=0, b>=0, or a
@@ -189,18 +210,10 @@ def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
         if a > 0 and b < 0 and fit[-1] > 0 and np.all(np.isfinite(fit)):
             return out(fit, {"method": "NegativeExponential",
                              "coefs": {"a": float(a), "b": float(b), "k": float(k)}})
-    except (RuntimeError, ValueError):
+    except (RuntimeError, ValueError, TypeError):
         pass
-    # 2. straight-line fallback
-    yl = linear(x, y)
-    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
-        warnings.warn("ModNegExp could not fit " + str(name)
-                      + "; using a linear fit instead.\n")
-        return out(yl, _line_info(x, yl))
-    # 3. final fallback: the series mean
-    warnings.warn("ModNegExp and the linear fallback are unsuitable for "
-                  + str(name) + "; detrending by the series mean instead.\n")
-    return out(*_mean_curve(y))
+    # 2./3. straight-line fallback, then the series mean
+    return _line_or_mean(x, y, pos_slope, name, "ModNegExp", info)
 
 # --- ARSTAN deterministic negative exponential (subroutine `curve`) ----------
 # Ed Cook / R.L. Holmes' deterministic neg-exp fit: model f(i) = ah*exp(-b*i) + eh
@@ -215,11 +228,11 @@ def mod_neg_exp(x, y, pos_slope=False, name="", info=False):
 # returns a fit on series where the nls diverges and ModNegExp falls back to a
 # line or the mean. It is the neg-exp counterpart of hugershoff_arstan only in
 # spirit (an ARSTAN deterministic port beside a dplR nls fit).
-def _neg_exp_profile(y, b):
+def _neg_exp_profile(y, b, idx):
     """Closed-form (ah, eh, rss) for a fixed decay rate b (ARSTAN curve inner
-    solve): least-squares fit of y = eh + ah*exp(-b*i). Returns None if degenerate."""
+    solve): least-squares fit of y = eh + ah*exp(-b*idx) on the ring-position
+    axis ``idx``. Returns None if degenerate."""
     n = len(y)
-    idx = np.arange(1.0, n + 1)
     if np.any(np.abs(b) * idx > 112.8):        # exp overflow guard (as in curve)
         return None
     f = np.exp(-b * idx)
@@ -236,7 +249,7 @@ def _neg_exp_profile(y, b):
     return ah, eh, rss
 
 
-def _neg_exp_curve(y):
+def _neg_exp_curve(y, t=None):
     """ARSTAN `curve`: deterministic search for the neg-exp decay rate b, with
     (ah, eh) profiled out. Returns (ah, b, eh) or None on failure (n<20, overflow,
     or a rejected fit: b<=0 or eh<0), mirroring the routine's flag-and-fall-back."""
@@ -244,6 +257,7 @@ def _neg_exp_curve(y):
     n = len(y)
     if n < 20:
         return None
+    t = _age_axis(y, t)
     yf = float(y[:10].mean())
     yl = float(y[-10:].mean())
     if yf <= 0 or yl <= 0:
@@ -253,7 +267,7 @@ def _neg_exp_curve(y):
         b = 1e-8
     dlt = 0.0005
     dinc = 5e-7
-    mid = _neg_exp_profile(y, b)
+    mid = _neg_exp_profile(y, b, t)
     if mid is None:
         return None
     ah, eh, rss_mid = mid
@@ -266,7 +280,7 @@ def _neg_exp_curve(y):
     for _ in range(34):
         improved = False
         for bk in (b - dlt, b + dlt):
-            r = _neg_exp_profile(y, bk)         # arg-overflow -> ARSTAN's goto 99
+            r = _neg_exp_profile(y, bk, t)      # arg-overflow -> ARSTAN's goto 99
             if r is None:
                 return None
             if r[2] < rss_mid:                  # sequential/greedy, as in curve
@@ -287,34 +301,27 @@ def _neg_exp_curve(y):
     return ah, b, eh
 
 
-def neg_exp_arstan(x, y, pos_slope=False, name="", info=False):
+def neg_exp_arstan(x, y, pos_slope=False, name="", info=False, t=None):
     """Deterministic negative-exponential detrend, with the same line->mean fallback
     chain as ModNegExp.
 
     Fits the same model as ModNegExp -- f = a*exp(-b*t) + k (a>0, b>0, k>=0) --
-    deterministically rather than by nonlinear least squares.
+    deterministically rather than by nonlinear least squares. ``t`` is the true
+    ring-position axis (default 1..n).
     """
     def out(curve, meta):
         return (curve, meta) if info else curve
     y = np.asarray(y, dtype=float)
-    n = len(y)
-    sol = _neg_exp_curve(y)
+    t = _age_axis(y, t)
+    sol = _neg_exp_curve(y, t)
     if sol is not None:
         ah, b, eh = sol
-        t = np.arange(1.0, n + 1)
         fit = ah * np.exp(-b * t) + eh
         if np.all(fit > 0) and np.all(np.isfinite(fit)):
             return out(fit, {"method": "NegativeExponential",
                              "coefs": {"a": float(ah), "b": float(-b), "k": float(eh)}})
     # straight-line fallback (slope <= 0 unless pos_slope), then the mean
-    yl = linear(x, y)
-    if (yl[-1] - yl[0] <= 0 or pos_slope) and np.all(yl > 0):
-        warnings.warn("NegExp (deterministic) could not fit " + str(name)
-                      + "; using a linear fit instead.\n")
-        return out(yl, _line_info(x, yl))
-    warnings.warn("NegExp (deterministic) and the linear fallback are unsuitable for "
-                  + str(name) + "; detrending by the series mean instead.\n")
-    return out(*_mean_curve(y))
+    return _line_or_mean(x, y, pos_slope, name, "NegExp (deterministic)", info)
 
 
 # --- ARSTAN general exponential (subroutine `gexp`, menu option 8) ------------
@@ -323,30 +330,29 @@ def neg_exp_arstan(x, y, pos_slope=False, name="", info=False):
 # ordinary least-squares line of ln(y/t) on t over the positive rings -- so it is
 # closed-form and never fails to converge. A gentler rise-then-decline curve than
 # the full 4-parameter Hugershoff; ARSTAN's gexp carries no intercept term.
-def general_exp(x, y, name="", info=False):
+def general_exp(x, y, name="", info=False, t=None):
     def out(curve, meta):
         return (curve, meta) if info else curve
     y = np.asarray(y, dtype=float)
-    n = len(y)
-    t = np.arange(1.0, n + 1)
+    t = _age_axis(y, t)
     ok = (y > 0) & (t > 0)
     tk = t[ok]
     if tk.size < 3:
-        warnings.warn("GeneralExp needs >=3 positive rings for " + str(name)
-                      + "; detrending by the series mean instead.\n")
+        _warn("GeneralExp needs >=3 positive rings for " + str(name)
+              + "; detrending by the series mean instead.", stacklevel=5)
         return out(*_mean_curve(y))
     z = np.log(y[ok]) - np.log(tk)             # ln(y/t)
     sxx = float(np.sum((tk - tk.mean()) ** 2))
     if sxx == 0:
-        warnings.warn("GeneralExp has no spread in ring position for " + str(name)
-                      + "; detrending by the series mean instead.\n")
+        _warn("GeneralExp has no spread in ring position for " + str(name)
+              + "; detrending by the series mean instead.", stacklevel=5)
         return out(*_mean_curve(y))
     b = float(np.sum((tk - tk.mean()) * (z - z.mean())) / sxx)   # OLS slope
     a = float(np.exp(z.mean() - b * tk.mean()))                  # ln-intercept -> a
     fit = a * t * np.exp(b * t)
     if not (np.all(fit > 0) and np.all(np.isfinite(fit))):
-        warnings.warn("GeneralExp fit is not all positive for " + str(name)
-                      + "; detrending by the series mean instead.\n")
+        _warn("GeneralExp fit is not all positive for " + str(name)
+              + "; detrending by the series mean instead.", stacklevel=5)
         return out(*_mean_curve(y))
     return out(fit, {"method": "GeneralExponential",
                      "coefs": {"a": a, "b": b}})
@@ -356,20 +362,15 @@ def general_exp(x, y, name="", info=False):
 def horizontal(x, y):
     yi = np.asarray([np.mean(y)] * len(x))
     return yi
-    
+
 # Equation of a straight line
 def line_function(x, m, c):
     return (m * x) + c
 
-# Fit a line to the series
-def linear(x, y, bounds=False):
-    if bounds is False:
-        pars, unk = curve_fit(line_function, x, y)
-    else:
-        # Currently unused: every caller invokes linear() with the default
-        # bounds=False. This branch constrains the slope to <= 0 (an upper bound
-        # of 0) and is kept only for a possible future constrained-fit option.
-        pars, unk = curve_fit(line_function, x, y, bounds=([-np.inf, -np.inf], [0, np.inf]))
+# Fit a line to the series (any slope; ARSTAN opt 4 / LinearAny)
+def linear(x, y):
+    x = np.asarray(x, dtype=float)
+    pars, unk = curve_fit(line_function, x, y)
     m, c = pars
     yi = line_function(x, m, c)
     return yi
@@ -384,7 +385,7 @@ def linear_neg(x, y, name="", info=False):
     yl = linear(x, y)
     if (yl[-1] - yl[0]) <= 0 and np.all(yl > 0):
         return out(yl, _line_info(x, yl))
-    warnings.warn("LinearNegative: the best-fit slope is positive (or the line is "
-                  "non-positive) for " + str(name)
-                  + "; detrending by the series mean instead.\n")
+    _warn("LinearNegative: the best-fit slope is positive (or the line is "
+          "non-positive) for " + str(name)
+          + "; detrending by the series mean instead.", stacklevel=5)
     return out(*_mean_curve(y))

@@ -97,7 +97,7 @@ def sens1(data):
     ----------
     .. [1] Biondi, F. and Qeadan, F. (2008) Inequality in paleorecords.
            Ecology 89, 1056-1067.
-    .. [2] https:/opendendro.org/dplpy-man/#sens1
+    .. [2] https://opendendro.github.io/dplPy/reference/statistics/#sens1
     """
     return _apply(data, _sens1_value, "sens1")
 
@@ -106,11 +106,13 @@ def sens2(data):
     """Mean sensitivity for a series with a trend (dplR ``sens2``).
 
     Eq. 2 of Biondi and Qeadan (2008): the local two-year denominator of
-    :func:`sens1` is replaced by the series mean, so a growth trend does not
+    `sens1()` is replaced by the series mean, so a growth trend does not
     inflate the statistic. For a single series of ``n`` (non-missing) values,
 
         sens2 = sum_i |x_{i+1} - x_i| / (sum(x) - sum(x)/n)
               = sum_i |x_{i+1} - x_i| / ((n - 1) * mean(x))
+
+    A series whose values sum to zero has no defined sens2 and yields ``NaN``.
 
     Parameters
     ----------
@@ -133,7 +135,7 @@ def sens2(data):
     ----------
     .. [1] Biondi, F. and Qeadan, F. (2008) Inequality in paleorecords.
            Ecology 89, 1056-1067.
-    .. [2] https:/opendendro.org/dplpy-man/#sens2
+    .. [2] https://opendendro.github.io/dplPy/reference/statistics/#sens2
     """
     return _apply(data, _sens2_value, "sens2")
 
@@ -171,7 +173,10 @@ def _sens2_value(x):
         return float("nan")
     sum1 = math.fsum(np.abs(np.diff(x)))         # sum of absolute first differences
     sum2 = math.fsum(x)                          # sum of the series
-    return sum1 / (sum2 - sum2 / n)              # dplR: sum1/(sum2 - sum2/n)
+    den = sum2 - sum2 / n                        # dplR: sum1/(sum2 - sum2/n)
+    if den == 0:                                 # zero-sum series: undefined (B11)
+        return float("nan")
+    return sum1 / den
 
 
 # --- input dispatch ---------------------------------------------------------

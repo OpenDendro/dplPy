@@ -72,6 +72,14 @@ def test_fewer_than_two_values_is_nan():
     assert math.isnan(dpl.sens1(pd.Series([np.nan, np.nan, 3.0])))
 
 
+def test_sens2_zero_sum_series_is_nan():
+    # B11: a series whose values sum to zero has no defined sens2 (0 denominator)
+    assert math.isnan(_sens2_value([1.0, -1.0, 1.0, -1.0]))
+    assert math.isnan(dpl.sens2(pd.Series([2.0, -2.0])))
+    assert math.isnan(dpl.sens2(pd.DataFrame({"Z": [1.0, -1.0, 0.0]}))["Z"])
+    assert np.isfinite(_sens2_value([1.0, -1.0, 1.0]))     # nonzero sum is fine
+
+
 def test_na_values_are_dropped():
     # NaNs removed first, so these two are identical series
     a = _sens1_value([1, 2, np.nan, 3, 4])

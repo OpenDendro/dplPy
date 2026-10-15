@@ -35,6 +35,7 @@ __license__ = "GNU GPLv3"
 
 import os
 import glob
+import re
 import warnings
 from datetime import date
 from typing import Optional
@@ -42,8 +43,21 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from ._validate import _require_dataframe
-from .rcs import _caps
+from ._validate import (_require_dataframe, _require_year_index, _alias_kwarg,
+                        _reject_kwargs)
+from .smoothingspline import _caps
+from .xdate import _lag_table
+
+# Reader diagnostics that check() re-reports as provenance/structure findings
+# (RWL_SALVAGED, RWL_ID_RENAMED, RWL_ENCODING_ASSUMED, RWL_INTERNAL_NA, ...).
+# Only these messages are silenced while reading; anything else still surfaces
+# (audit G3: no blanket warnings.simplefilter("ignore")).
+_READER_NOISE = re.compile(
+    r".*(?:Salvaged|duplicate ID|case-variant|letter case|latin1|stop marker|interior gap"
+    r"|beyond the last data column|not recognized; inferred|could not be parsed"
+    r"|misaligned row|non-integer value|gap sentinel|anomalous negative"
+    r"|missing line break|fixed-width parse|formatting problems"
+    r"|identical duplicate|header=True but no header|returning None)", re.I)
 
 _FINDING_COLS = ["file", "check", "severity", "group", "series",
                  "year_from", "year_to", "n", "value", "message"]
@@ -327,33 +341,20 @@ def _high_pass(col, nyrs):
     return out
 
 
-def _corr(a, b):
-    if a.size < 3 or np.std(a) == 0 or np.std(b) == 0:
-        return np.nan
-    return float(np.corrcoef(a, b)[0, 1])
-
-
-def _ccf_best(series, master, lag_max, min_pairs):
-    """Best lag of cor(master[t+k], series[t]) over k in [-lag_max, lag_max].
-    dplR convention: a negative best lag means a missing ring in the series."""
-    n = len(series)
-    best_lag, best_r, r0 = 0, -np.inf, np.nan
-    for k in range(-lag_max, lag_max + 1):
-        if k >= 0:
-            a, b = master[k:], series[:n - k]
-        else:
-            a, b = master[:n + k], series[-k:]
-        ok = np.isfinite(a) & np.isfinite(b)
-        if ok.sum() < min_pairs:
-            continue
-        r = _corr(a[ok], b[ok])
-        if np.isnan(r):
-            continue
-        if k == 0:
-            r0 = r
-        if r > best_r:
-            best_r, best_lag = r, k
-    return best_lag, best_r, r0
+def _ccf_best(series, master, years, lag, min_pairs):
+    """Best lag of the whole-series correlation with the master over -lag..+lag,
+    via `xdate._lag_table()`: the series stays fixed and the MASTER slides, so a
+    NEGATIVE best lag means a MISSING ring in the series (COFECHA / dplR
+    convention, the same as xdate and series_corr). Each shifted window is
+    correlated (Pearson) over its pairwise-complete pairs, needing at least
+    ``min_pairs``. Returns (best_lag, best_r, r_at_lag0)."""
+    fin = np.flatnonzero(np.isfinite(series))
+    if fin.size == 0:
+        return 0, np.nan, np.nan
+    lo, hi = int(years[fin[0]]), int(years[fin[-1]])
+    corrs, best_lag, best_r = _lag_table(series, master, years, lo, hi, None,
+                                         "pearson", lag, min_overlap=min_pairs)
+    return best_lag, best_r, float(corrs[lag])
 
 
 def _check_crossdating(M, years, cols, ctl):
@@ -362,13 +363,22 @@ def _check_crossdating(M, years, cols, ctl):
     if ns < 3:
         return [_f("RWL_SHORT_OVERLAP",
                    "only %d series; too few to build a master to date against" % ns)]
-    HP = np.column_stack([_high_pass(M[:, j], ctl["spline_nyrs"]) for j in range(ns)])
+    # the lag scan needs a dense one-year grid (a year gap in the index would
+    # otherwise shift every later ring by one position)
+    yrs_d = np.arange(int(years.min()), int(years.max()) + 1)
+    if yrs_d.size != years.size:
+        pos = (years - yrs_d[0]).astype(int)
+        Md = np.full((yrs_d.size, ns), np.nan)
+        Md[pos] = M
+        M, years = Md, yrs_d.astype(float)
+    HP = np.column_stack([_high_pass(M[:, j], ctl["spline_period"]) for j in range(ns)])
     r0 = np.full(ns, np.nan)
     for i in range(ns):
         s = cols[i]
         others = HP[:, [j for j in range(ns) if j != i]]
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+            warnings.filterwarnings("ignore", message="Mean of empty slice",
+                                    category=RuntimeWarning)
             master = np.nanmean(others, axis=1)
         ser = HP[:, i]
         ok = np.isfinite(ser) & np.isfinite(master)
@@ -385,7 +395,8 @@ def _check_crossdating(M, years, cols, ctl):
                               "overlaps the rest of the collection by %d rings, fewer than %d"
                               % (int(ok.sum()), ctl["min_overlap"]), series=s, n=int(ok.sum())))
             continue
-        lag, r, rz = _ccf_best(ser, master, ctl["lag_max"], max(10, ctl["min_overlap"] // 2))
+        lag, r, rz = _ccf_best(ser, master, years, ctl["lag"],
+                               max(10, ctl["min_overlap"] // 2))
         r0[i] = rz
         if lag != 0 and np.isfinite(r) and np.isfinite(rz) and r >= ctl["r_dating"] and (r - rz) >= ctl["r_margin"]:
             cause = "most likely a missing ring" if lag < 0 else "most likely a false ring or a ring measured twice"
@@ -451,11 +462,12 @@ def _check_file(fname, M, years, cols, ctl):
 
 
 def _itrdb_span(txt):
-    import re
+    """(first, last) year declared on the second ITRDB header line, or None.
+    Years may be negative (BC) and short (audit G7: ``-136 2004``)."""
     hdr = [ln for ln in txt[:6] if re.search(r"[A-Za-z]", ln[8:72] if len(ln) > 8 else "")]
     if len(hdr) < 2:
         return None
-    m = re.search(r"([0-9]{3,4})\s+([0-9]{3,4})\s*$", hdr[1])
+    m = re.search(r"(-?[0-9]{1,4})\s+(-?[0-9]{1,4})\s*$", hdr[1])
     if not m:
         return None
     y1, y2 = int(m.group(1)), int(m.group(2))
@@ -492,9 +504,11 @@ def _check_provenance(attrs, cols, ctl):
                       'df.attrs["dplpy_salvage"]' % count(sal), n=count(sal)))
     beyond = attrs.get("dplpy_beyond_column")
     if beyond:
+        # the reader caps the stored list; the exact total is kept alongside
+        n_beyond = int(attrs.get("dplpy_beyond_column_n", count(beyond)))
         out.append(_f("RWL_SALVAGED",
-                      "%d line(s) carried characters beyond the last data column" % count(beyond),
-                      n=count(beyond)))
+                      "%d line(s) carried characters beyond the last data column" % n_beyond,
+                      n=n_beyond))
     return out
 
 
@@ -512,11 +526,17 @@ def _check_one(x, file, checks, ctl):
         from .readers import readers
         try:
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                import io, contextlib
+                # silence only the reader diagnostics check() re-reports as findings
+                # (a warnings filter regex must match from the START of the message)
+                warnings.filterwarnings("ignore", message=_READER_NOISE.pattern,
+                                        category=UserWarning)
+                import io
+                import contextlib
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
                     rwl = readers(x, strict=False)
+            if rwl is None:
+                raise ValueError("no usable data could be read")
             attrs = dict(getattr(rwl, "attrs", {}))
         except Exception as e:
             read_error = str(e)
@@ -526,11 +546,15 @@ def _check_one(x, file, checks, ctl):
         attrs = dict(getattr(rwl, "attrs", {}))
         if file is None:
             file = "<dataframe>"
+    if rwl is not None:
+        rwl = _require_year_index(rwl, "x")
 
     rows = []
     if read_error is not None:
         rows.append(_f("RWL_CHECK_ERROR", "the file could not be read: " + read_error))
-        M = np.empty((0, 0)); years = np.array([]); cols = []
+        M = np.empty((0, 0))
+        years = np.array([])
+        cols = []
     else:
         cols = list(rwl.columns)
         M = rwl.to_numpy(dtype=float)
@@ -565,19 +589,23 @@ def _check_one(x, file, checks, ctl):
 
 
 def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
-          min_length: int = 30, run_min: int = 6, lag_max: int = 5,
-          min_overlap: int = 50, spline_nyrs: int = 32, r_dating: float = 0.35,
+          min_length: int = 30, run_min: int = 6, lag: int = 10,
+          min_overlap: int = 50, spline_period: int = 32, r_dating: float = 0.35,
           r_margin: float = 0.05, outlier_mad: float = 4.0, outlier_gap: float = 0.2,
           r_cohesion: float = 0.35, plausible_mean: tuple = (0.05, 10.0),
           small_thresh: Optional[float] = None, big_thresh: Optional[float] = None,
-          max_year: Optional[int] = None, summary: bool = False):
+          max_year: Optional[int] = None, summary: bool = False, **kwargs):
     """Check a ring-width collection for defects, reported as a table of findings.
 
-    The data counterpart to :func:`report`: ``report`` prints what a file looks
+    The data counterpart to `report()`: ``report`` prints what a file looks
     like, ``check`` returns what is wrong with it, one row per finding. Every
     finding carries a stable ``check`` id and a ``severity`` ("error", "warning",
-    "note"), and a check that fails becomes a ``RWL_CHECK_ERROR`` finding rather
-    than stopping the run. Analog of dplR 1.8.0's ``rwl.check``.
+    "note"). Analog of dplR 1.8.0's ``rwl.check``.
+
+    The crossdating group slides the leave-one-out master past each series over
+    ``-lag..+lag`` (`xdate._lag_table()`), so a ``RWL_DATING_LAG`` with a
+    NEGATIVE lag means a MISSING ring in the series, as in COFECHA, ``xdate`` and
+    ``series_corr``.
 
     Parameters
     ----------
@@ -592,10 +620,13 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
     summary : bool, default False
         if True, return one row per file (counts per check and per severity) instead
         of the findings. ``pd.concat`` these over an archive to rank it.
-    min_depth, depth_run, min_length, run_min, lag_max, min_overlap, spline_nyrs,
+    min_depth, depth_run, min_length, run_min, lag, min_overlap, spline_period,
     r_dating, r_margin, outlier_mad, outlier_gap, r_cohesion, plausible_mean,
     small_thresh, big_thresh, max_year :
-        tunables; defaults follow dplR's ``rwl.check.control``.
+        tunables; defaults follow dplR's ``rwl.check.control`` except ``lag`` (10,
+        dplPy's package-wide lag search) and ``spline_period`` (32, the high-pass
+        spline). ``lag_max=`` and ``spline_nyrs=`` are accepted as deprecated
+        aliases.
 
     Returns
     -------
@@ -603,10 +634,24 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
         the findings (columns ``file, check, severity, group, series, year_from,
         year_to, n, value, message``), or, with ``summary=True``, one row per file.
 
+    Notes
+    -----
+    Every check group runs inside a guard: an exception inside a group (or in
+    reading the file) is converted to a ``RWL_CHECK_ERROR`` finding carrying the
+    error text, so one failing check never hides the others' findings and a sweep
+    over an archive never stops on one bad file (audit G4). Check the ``engine``
+    group of the result to see whether anything failed to run. A misdated series
+    may draw both ``RWL_DATING_LAG`` and ``RWL_SERIES_OUTLIER`` (its lag-0
+    correlation is low because of the lag); both are kept.
+
     References
     ----------
     .. [1] Bunn, A. G. (2026) dplR 1.8.0, ``rwl.check``.
     """
+    lag = _alias_kwarg(kwargs, "lag_max", "lag", lag, "check")
+    spline_period = _alias_kwarg(kwargs, "spline_nyrs", "spline_period", spline_period,
+                                 "check")
+    _reject_kwargs(kwargs)
     if max_year is None:
         max_year = date.today().year
     all_groups = ["structure", "series", "values", "zeros", "crossdating",
@@ -618,8 +663,8 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
         if bad:
             raise ValueError("unknown check group(s): " + ", ".join(bad))
     ctl = dict(min_depth=min_depth, depth_run=depth_run, min_length=min_length,
-               run_min=run_min, lag_max=lag_max, min_overlap=min_overlap,
-               spline_nyrs=int(spline_nyrs), r_dating=r_dating, r_margin=r_margin,
+               run_min=run_min, lag=int(lag), min_overlap=min_overlap,
+               spline_period=int(spline_period), r_dating=r_dating, r_margin=r_margin,
                outlier_mad=outlier_mad, outlier_gap=outlier_gap, r_cohesion=r_cohesion,
                plausible_mean=plausible_mean, small_thresh=small_thresh,
                big_thresh=big_thresh, max_year=int(max_year))
@@ -632,7 +677,7 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
     if isinstance(x, (list, tuple)):
         parts = [check(xi, checks=checks, summary=summary, min_depth=min_depth,
                        depth_run=depth_run, min_length=min_length, run_min=run_min,
-                       lag_max=lag_max, min_overlap=min_overlap, spline_nyrs=spline_nyrs,
+                       lag=lag, min_overlap=min_overlap, spline_period=spline_period,
                        r_dating=r_dating, r_margin=r_margin, outlier_mad=outlier_mad,
                        outlier_gap=outlier_gap, r_cohesion=r_cohesion,
                        plausible_mean=plausible_mean, small_thresh=small_thresh,

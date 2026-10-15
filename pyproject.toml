@@ -1,8 +1,7 @@
 [build-system]
-requires = [
-    "setuptools",
-    "wheel"
-]
+# setuptools >= 77 is needed for the SPDX `license` string and `license-files`
+# (PEP 639) used below. `wheel` is pulled in by setuptools itself.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,7 +14,8 @@ authors=[
     {name='Ifeoluwa Ale', email='ifeoluwaale@arizona.edu'},
     {name='Kevin Anchukaitis', email='kanchukaitis@arizona.edu'},
 ]
-license={file='LICENSE'}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = '>=3.11'
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -40,6 +40,13 @@ dependencies=[
     "scipy>=1.13.0"
 ]
 
+[project.urls]
+Homepage = "https://opendendro.github.io/dplPy"
+Documentation = "https://opendendro.github.io/dplPy"
+Repository = "https://github.com/OpenDendro/dplPy"
+Changelog = "https://github.com/OpenDendro/dplPy/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OpenDendro/dplPy/issues"
+
 # Optional extras. LiPD import/export is built on `pylipd`, which most dplPy
 # users don't need, so it is not a core dependency. Install it with:
 #     pip install "dplpy[lipd]"
@@ -55,3 +62,30 @@ dplpy = "dplpy.cli:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["dplpy"]
+
+# `pytest` works from a plain checkout: `pythonpath` puts src/ on sys.path so
+# dplpy is importable without `pip install -e .`, and `testpaths` lets a bare
+# `pytest` find the suite. The filterwarnings entries silence warnings that are
+# known to be benign and not under dplPy's control (anything else still shows).
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = [
+    # statsmodels (>=0.15) announces a future change to yule_walker's return type
+    "ignore:yule_walker currently returns a plain tuple:FutureWarning",
+    # matplotlib warns when many figures are open; plotting tests close theirs
+    "ignore:More than 20 figures have been opened:RuntimeWarning",
+]
+
+# Lint configuration for `ruff check` (run in CI; see run_tests.yml).
+# E402 (imports not at top) is ignored because every module carries the GPL
+# header assignments before its imports; E501 (line length) is ignored because
+# the docstrings and tables are deliberately wide.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["docs/examples", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E402", "E501"]

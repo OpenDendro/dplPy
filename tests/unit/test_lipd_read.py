@@ -102,3 +102,18 @@ def test_from_lipd_finds_chronology_in_a_model_summary(tmp_path):
 
 def test_read_exports_present():
     assert hasattr(dpl, "from_lipd") and hasattr(dpl, "lipd_metadata")
+
+
+def test_from_lipd_recovers_single_series_rwl(tmp_path):
+    # C9: a raw-width table with ONE ringWidth variable (a single-series rwl) used
+    # to be silently dropped; one or more series is a raw-width table.
+    rwl = pd.DataFrame({"ONLY1": np.linspace(0.3, 1.2, 40)},
+                       index=pd.Index(range(1960, 2000), name="Year"))
+    crn = pd.DataFrame({"std": np.linspace(0.8, 1.2, 40), "samp_depth": [1] * 40},
+                       index=pd.Index(range(1960, 2000), name="Year"))
+    out = _quiet(dpl.to_lipd, crn, str(tmp_path / "single"), rwl=rwl,
+                 metadata={"site_name": "One tree"})
+    r = _quiet(dpl.from_lipd, out)
+    assert r["rwl"] is not None
+    assert list(r["rwl"].columns) == ["ONLY1"]
+    np.testing.assert_allclose(r["rwl"]["ONLY1"].to_numpy(), rwl["ONLY1"].to_numpy())
