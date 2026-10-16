@@ -107,6 +107,16 @@ Zenodo reads the deposit metadata from `.zenodo.json`.
 Note: Zenodo only archives releases created **after** the hook was enabled;
 earlier releases are not retroactively archived.
 
+**If no Zenodo record appears within about an hour**, the webhook delivery
+probably timed out (Zenodo's receiver downloads and processes the repo tarball
+synchronously and sometimes does not answer inside GitHub's delivery window, and
+this hook gives up after one attempt). Fix it without cutting a new release:
+GitHub -> repo *Settings -> Webhooks ->* the `zenodo.org` hook *-> Recent
+Deliveries*, open the failed `release` delivery whose payload `"action"` is
+`"published"` (ignore the `release.edited` ones, which only update an existing
+deposit), and click **Redeliver**. Confirm Zenodo is reachable first; redeliver
+when it is. This happened for v0.9.0 (record 23422091).
+
 After Zenodo has minted the version DOI (a few minutes after the release):
 
 1. On Zenodo, copy the **version DOI** for the new release.
