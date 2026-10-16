@@ -3,7 +3,7 @@
 
 # dplPy -the Dendrochronology Program Library in Python
 
-[![DOI](https://zenodo.org/badge/385244315.svg)](https://doi.org/10.5281/zenodo.22695105)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22695105.svg)](https://doi.org/10.5281/zenodo.22695105)
 
 [![PyPI Version](https://img.shields.io/pypi/v/dplpy?cacheSeconds=3600)](https://pypi.org/project/dplpy/)
 
