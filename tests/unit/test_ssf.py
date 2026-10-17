@@ -71,29 +71,91 @@ def test_ssf_all_zero_row_rejected():
         _ssf_quiet(data, method="Spline", recode_zeros=False)
 
 
-def test_ssf_negative_curve_error_is_informative():
+def test_ssf_negative_curve_error_points_to_crust():
     # co021 (many absent rings) drives the chronology near zero, which blows up
-    # the signal-free measurements and makes a refitted curve go <= 0. Both dplR
-    # and dplPy stop here; dplPy's message should name the offending series and
-    # the near-zero chronology year so the cause is clear.
+    # the signal-free measurements and makes refitted curves go <= 0. The basic
+    # method stops (as dplR does) with a message that names the pointer-year cause
+    # and the offending series and directs the user to preset="crust" rather than
+    # recode_zeros (which does not help a low-but-positive chronology).
     data = _read_quiet("tests/data/csv/co021.csv")
     with pytest.raises(ValueError) as e:
         _ssf_quiet(data, method="Spline", recode_zeros=True)
     msg = str(e.value)
-    assert "X642244" in msg               # the series whose curve dipped <= 0
+    assert "went <= 0 for series" in msg
     assert "1455" in msg                  # the near-zero chronology year
-    assert "recode_zeros" in msg          # actionable remedy
+    assert "crust" in msg                 # the actionable remedy for this data
+    assert "literal zero" in msg          # recode_zeros named only as the caveat
 
 
 def test_ssf_crust_preset_rescues_co021():
     # co021 defeats the basic method (curve <= 0), but CRUST's guards -- the
-    # near-zero division guard and the 0.02 curve floor -- let it standardise.
+    # near-zero division guard and the 0.02 curve floor -- let it standardise,
+    # keeping every series (nothing set aside).
     data = _read_quiet("tests/data/csv/co021.csv")
     with pytest.raises(ValueError):
         _ssf_quiet(data, recode_zeros=True)                    # basic: fails
     out = _ssf_quiet(data, preset="crust", recode_zeros=True)  # crust: succeeds
     assert list(out.columns) == ["sfc", "samp_depth"]
     assert np.all(np.isfinite(out["sfc"].to_numpy()))
+    # crust keeps every series (it floors the curve rather than dropping): the
+    # chronology spans the full record, deeply replicated at its core.
+    assert out["samp_depth"].max() >= data.shape[1] - 2
+
+
+def test_ssf_crust_survives_interior_absent_ring():
+    # Regression: the crust path turned a legitimate interior absent (zero-width)
+    # ring into an illegal interior NaN and raised "'NA's are not allowed in the
+    # middle of the series". A single interior zero must not break it now.
+    rng = np.random.default_rng(1)
+    years = np.arange(1900, 1981)
+    n = len(years)
+    cols = {}
+    for s in range(12):
+        age = np.arange(1, n + 1)
+        curve = 0.8 * np.exp(-age / 50) + 0.2
+        cols[f"T{s:02d}a"] = np.clip(curve * (1 + 0.2 * rng.standard_normal(n)), 0.01, None)
+    rwl = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
+    rwl.loc[1940, "T00a"] = 0.0           # one interior absent ring
+    out = _ssf_quiet(rwl, preset="crust")
+    assert np.all(np.isfinite(out["sfc"].to_numpy()))
+
+
+def test_ssf_negative_curve_names_offending_series():
+    # A series whose fitted curve goes <= 0 (here an isolated spike on a flat-tiny
+    # series) stops the run with a clear error that names it and points to crust.
+    # ssf does not drop series -- "a few" is arbitrary and dropping can cascade.
+    rng = np.random.default_rng(2)
+    years = np.arange(1900, 2001)
+    n = len(years)
+    cols = {}
+    for s in range(8):
+        age = np.arange(1, n + 1)
+        cols[f"C{s:02d}a"] = (0.5 * np.exp(-age / 60) + 0.4) * (1 + 0.08 * rng.standard_normal(n))
+    victim = np.full(n, 0.05)
+    victim[50] = 9.0
+    cols["V00a"] = victim
+    rwl = pd.DataFrame(cols, index=pd.Index(years, name="Year"))
+
+    with pytest.raises(ValueError) as e:
+        _ssf_quiet(rwl, spline_period=10)
+    assert "V00a" in str(e.value)
+    assert "crust" in str(e.value)
+    with pytest.raises(ValueError) as e2:
+        _ssf_quiet(rwl, spline_period=10, preset="crust")
+    assert "V00a" in str(e2.value)
+    assert "dividing" not in str(e2.value)  # raw-curve case, not a division cause
+
+
+def test_ssf_difference_message_wording():
+    # the non-positive-curve explanation must not talk about division in
+    # difference mode (which subtracts), and must in ratio mode.
+    from dplpy.simplesignalfree import _curve_cause
+    chron = np.array([1.0, 0.9, 0.02, 1.1])
+    years = np.array([1948, 1949, 1950, 1951])
+    ratio = _curve_cause(chron, years, difference=False)
+    diff = _curve_cause(chron, years, difference=True)
+    assert "dividing by it" in ratio and "1950" in ratio
+    assert "dividing" not in diff and "difference mode" in diff and "1950" in diff
 
 
 def test_ssf_crust_rescale_is_multiplicative():

@@ -10,6 +10,31 @@ and commit log.
 
 ## [Unreleased]
 
+### Fixed
+- **`ssf(preset="crust")` no longer breaks on interior absent rings.** A single
+  interior zero-width ring could raise `'NA's are not allowed in the middle of
+  the series`, because a legitimate absent ring was being turned into an illegal
+  interior `NaN` during the signal-free rescale. CRUST now keeps absent rings
+  (the curve fit recodes them to a small positive width), so it standardises the
+  sensitive, many-absent-ring collections it is meant for (e.g. co021) with every
+  series retained. Reported by B. Negmetzhanov.
+- **`ssf` messages are honest about the method and the remedy.** In
+  `method="difference"` mode the non-positive-curve message no longer talks about
+  "dividing by" a near-zero chronology (difference subtracts, and the value quoted
+  could be negative); it now describes the additive case. The guidance points to
+  `preset="crust"` for data with many absent rings and only suggests
+  `recode_zeros` for literal zero rings, which it recodes -- `recode_zeros` does
+  not help a chronology that is low but positive in a severe pointer year.
+
+- **`ssf`'s non-positive-curve error names the cause and the remedy.** When a
+  signal-free curve goes to zero or below, ssf still stops (as dplR does), but the
+  message now names the offending series and the near-zero pointer-year chronology
+  driving it, and directs the user to `preset="crust"` (which floors the curve and
+  standardises such data with every series kept). This replaces dropping series:
+  the condition reflects the whole collection at a severe pointer year rather than
+  a few anomalies (on co021, dropping would cascade to nearly all series), so no
+  arbitrary set-aside threshold is applied.
+
 ## [0.9.0] - 2026-10-15
 
 This release is the result of a pre-release audit of the whole library (about

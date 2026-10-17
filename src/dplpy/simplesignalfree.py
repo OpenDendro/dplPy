@@ -48,32 +48,59 @@ from .detrend import _normalize_fit, _normalize_method, _FIT_CANON
 # both resolve through smoothingspline.get_period (audit E20).
 _SSF_DEFAULT_FRACTION = 0.6667
 
+# the basic method sets aside at most this fraction of the collection when the
+def _bad_curve_cols(curves, columns):
+    """Column labels whose fitted curve dips to <= 0 (ignoring all-NaN columns)."""
+    bad = []
+    with np.errstate(invalid="ignore"):
+        for j in range(curves.shape[1]):
+            col = curves[:, j]
+            if np.any(np.isfinite(col)) and np.nanmin(col) <= 0:
+                bad.append(columns[j])
+    return bad
 
-def _neg_curve_message(curves, series_names, chron=None, years=None):
-    """Build an informative error for the non-positive signal-free curve guard.
 
-    Reports which series' fitted curve dipped to <= 0 and, when the driving
-    chronology is supplied, the near-zero chronology value and year that is the
-    usual root cause (a year dominated by absent, zero-width rings inflates the
-    signal-free measurements once every series is divided by that near-zero
-    chronology).
-    """
-    bad = [str(series_names[j]) for j in range(curves.shape[1])
-           if np.nanmin(curves[:, j]) <= 0]
-    msg = ("[1] The signal-free detrending curve went <= 0 for series: "
-           + ", ".join(bad) + ".")
-    if chron is not None and years is not None and np.isfinite(np.nanmin(chron)):
+def _curve_cause(chron, years, difference):
+    """The explanatory clause for a non-positive-curve message: the pointer-year
+    value of the driving chronology, worded for the ratio or the difference
+    method (difference does not divide, so it must not say "dividing by it")."""
+    if chron is None or years is None:
+        return ""
+    with np.errstate(invalid="ignore"):
+        if not np.any(np.isfinite(chron)):
+            return ""
         ci = int(np.nanargmin(chron))
-        msg += (" This usually means the chronology is near zero in a year "
-                "dominated by absent (zero-width) rings -- here it reaches "
-                + format(float(np.nanmin(chron)), ".4g")
-                + " at year " + str(int(years[ci]))
-                + ", so dividing by it inflates the signal-free measurements and "
-                "the refitted spline dips below zero. Consider a larger "
-                "recode_zeros value, or a more robust signal-free approach for "
-                "data with many absent rings.")
-    msg += " See help(dplpy.ssf)."
-    return msg
+        val = float(np.nanmin(chron))
+    yr = int(years[ci])
+    if difference:
+        return (" The signal-free chronology falls to " + format(val, ".4g")
+                + " at year " + str(yr) + "; in difference mode the fitted curve "
+                "can reach zero or below where the chronology exceeds growth in a "
+                "year dominated by absent (zero-width) rings.")
+    return (" This usually means the chronology is near zero in a year dominated "
+            "by absent (zero-width) rings -- here it reaches " + format(val, ".4g")
+            + " at year " + str(yr) + ", so dividing by it inflates the signal-free "
+            "measurements and the refitted spline dips below zero.")
+
+
+def _neg_curve_error(bad, chron, years, difference, crust):
+    """The full error when a fitted signal-free curve goes <= 0: the offending
+    series, the pointer-year cause, and the remedy. Like dplR, ssf stops here --
+    a non-positive curve is driven by a near-zero chronology in a severe pointer
+    year, which (as co021 shows) afflicts the whole collection rather than a few
+    series, so dropping series would cascade. recode_zeros is suggested only for
+    literal zero rings; preset='crust' (which floors the curve) is the route for
+    data with many absent rings."""
+    msg = ("[1] The signal-free detrending curve went <= 0 for series: "
+           + ", ".join(str(b) for b in bad) + "."
+           + _curve_cause(chron, years, difference))
+    if crust:
+        return msg + (" preset='crust' already floors the signal-free curve, so this "
+                      "is an initial raw-data curve that cannot be fit for the series "
+                      "above. See help(dplpy.ssf).")
+    return msg + (" Use preset='crust', which floors the curve and keeps every series, "
+                  "for data with many absent rings; recode_zeros helps only when the "
+                  "series contain literal zero-width rings. See help(dplpy.ssf).")
 
 
 def _sf_measurements(dat_vals, chron, difference, crust):
@@ -124,7 +151,8 @@ def ssf(rwl,
     re-detrend the resulting signal-free measurements, and build a new chronology,
     repeating until the high-frequency chronology stops changing (the sample-depth-
     weighted median absolute difference falls below ``tol``) or ``max_iterations``
-    is reached. Reproduces dplR's ssf().
+    is reached. Reproduces dplR's ssf(); for data with many absent rings that the
+    basic method cannot standardise, use ``preset="crust"`` (see the note below).
 
     Parameters
     ----------
@@ -159,12 +187,15 @@ def ssf(rwl,
         ``mad.threshold``; the former name ``mad_threshold=`` is accepted with a
         DeprecationWarning).
     recode_zeros : bool, default False
-        recode zero ring-widths to 0.001 before processing (avoids div-by-zero).
-        The input frame is not modified.
+        recode zero ring-widths to 0.001 before processing (avoids div-by-zero
+        from literal zero rings). The input frame is not modified. Note this does
+        not help a chronology that is low but positive in a severe pointer year
+        (the usual cause of a non-positive signal-free curve); use ``preset="crust"``
+        for that.
     return_info : bool, default False
         if True, return a dict of the full iteration history (chronologies,
-        signal-free measurements and curves, MAD vector, ...) instead of just
-        the final chronology.
+        signal-free measurements and curves, MAD vector, ...) instead of just the
+        final chronology.
     verbose : bool, default True
         print progress and the per-iteration convergence diagnostics.
     preset : {None, "crust"}, default None
@@ -174,7 +205,8 @@ def ssf(rwl,
         measurement kept in any year where the chronology is near zero (< 0.01),
         the fitted curves floored at 0.02 mm, and up to 40 iterations. These make
         ssf robust to sensitive sites with many absent rings (e.g. co021) that the
-        basic method cannot standardise. Case-insensitive.
+        basic method cannot standardise, and keep every series in the chronology.
+        Case-insensitive.
 
     Returns
     -------
@@ -182,6 +214,19 @@ def ssf(rwl,
         the signal-free chronology with columns ``sfc`` and ``samp_depth``,
         indexed by year. If ``return_info`` is True, a dict of intermediates is
         returned instead (see above).
+
+    Notes
+    -----
+    The basic method stops with an error when a signal-free curve goes to zero or
+    below -- typically in a year dominated by absent (zero-width) rings, which
+    drives the chronology near zero so that dividing by it inflates the signal-free
+    measurements and the refitted spline dips below zero. This afflicts the whole
+    collection at that pointer year rather than a few individual series (on co021,
+    for example, trying to drop the offending series would cascade to nearly all of
+    them), so ssf does not drop series; it reports the cause and directs you to
+    ``preset="crust"``, which floors the curve and standardises such data with
+    every series retained. dplPy's error is more specific than dplR's but stops in
+    the same place.
 
     References
     ----------
@@ -218,6 +263,7 @@ def ssf(rwl,
     crust = preset == "crust"
     nyrs = spline_period
     mad_threshold = float(tol)
+    method2 = fit  # the curve name, as the iteration history reports it
 
     if max_iterations > 25:
         _warn("Having to set max_iterations > 25 may indicate non-ideal data for "
@@ -231,16 +277,11 @@ def ssf(rwl,
         # co021) can need a few more than the basic default of 25 to converge.
         max_iterations = max(max_iterations, 40)
 
-    # error msgs for later
-
+    # error messages for the input-validation and convergence guards
     maxIterMsg = "[2] Reached maximum iterations and stopping criteria are not satisfied. See help (?ssf)."
-
     crn0Msg = "[3] The initial chronology contains at least one row (year) with a zero, creating div0 problems. See help (?ssf)."
-
     input0Msg = "[4] Input data contain at least one row (year) with all zero values, creating div0 problems. See help (?ssf)."
-
     zeroColMsg = "[5] Input data contain at least one series with all zero values. See help (?ssf)."
-
     inputNAmsg = "[6] Input data contain at least one row (year) with all NA values, creating div0 problems. See help (?ssf)."
 
     # work on a copy so the caller's frame is never modified (audit A2)
@@ -251,286 +292,204 @@ def ssf(rwl,
     if recode_zeros:
         dat[dat == 0] = 0.001
 
-    # Look for any rows where all the values are NA -- unconnected floaters
+    # Input validation (once, on the full collection).
     if dat.isna().all(axis=1).any():
-        raise ValueError(inputNAmsg)
+        raise ValueError(inputNAmsg)   # unconnected floaters
+    if dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1).any():
+        raise ValueError(input0Msg)    # an all-zero year -> chron can be zero -> div0
+    if dat.apply(lambda x: x.sum(skipna=True) == 0, axis=0).any():
+        raise ValueError(zeroColMsg)   # an all-zero series
 
-    # Can't have all zeros across the board for a year. This is
-    # a conservative check but if there are zeros for a year, the chron can eval to zero
-    # which causes headaches with div0.
-    zeroRowCheck = dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1)
-    if zeroRowCheck.any():
-        raise ValueError(input0Msg)
-
-    # Heck, look for zeros in series too. Never know what kind of silliness users come up with.
-    zeroColCheck = dat.apply(lambda x: x.sum(skipna=True) == 0, axis=0)
-    if zeroColCheck.any():
-        raise ValueError(zeroColMsg)
-
-    # the curve name, as the iteration history reports it
-    method2 = fit
-
-    # useful vars
-    nSeries = dat.shape[1]
-    nYrs = dat.shape[0]
-    medianAbsDiff = 1
-    datSummary = stats(dat)
-    medianSegLength = datSummary['year'].median()
-
-    # Make some storage objects
-    # These are arrays of [nYrs,nSeries,max_iterations]
-    # Array to hold the SF measurements
-    sfRW_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
-    # Array to hold the rescaled SF measurements
-
-    sfRWRescaled_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
-    # Array to hold the rescaled SF curves
-
-    sfRWRescaledCurves_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
-    # Array to hold the SF RWI
-
-    sfRWI_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
-    # Array (2d though) to hold the SF Crn
-
-    sfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
-    # Array (2d though) to hold the HF Crn
-
-    hfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
-    # Vector for storing median absolute difference (mad)
-
-    MAD_Vec = np.zeros(max_iterations - 1)
-    # Array (2d though) to hold the differences between the kth
-    # and the kth-1 high freq chronology residuals
-    hfCrnResids_Mat = np.full((nYrs, max_iterations - 1), np.nan)
-
-    # Let's do it. First, here is a simplish detrending function modified from
-    # detrend.series(). The issue with using detrend() is that negative values are
-    # not allowed for the detrend funcs. Maybe they should be (e.g., z-scored
-    # data) but they aren't as of right now. So here is a simplified detrend function.
-    def getCurve(y, method=method2,
-                 nyrs=None,
-                 posSlope=True):
-
-        ## Remove NA from the data (they will be reinserted later)
-        good_y = np.where(~np.isnan(y))[0]
-
+    # A simplish detrending function modified from detrend.series(). detrend()
+    # itself disallows negative values, so this is a trimmed-down version.
+    def getCurve(y, method=method2, nyrs=None, posSlope=True):
+        good_y = np.where(~np.isnan(y))[0]           # NAs are reinserted later
         if len(good_y) == 0:
             raise ValueError("All values are 'NA'")
         elif any(np.diff(good_y) != 1):
             raise ValueError("'NA's are not allowed in the middle of the series")
-        if isinstance(y, (pd.Series, pd.DataFrame)):
-            y2 = y.iloc[good_y]
-        else:
-            y2 = y[good_y]
-
-
-        ## Recode any zero values to 0.001 to avoid div0
-        y2[y2 == 0] = 0.001
+        y2 = y.iloc[good_y] if isinstance(y, (pd.Series, pd.DataFrame)) else y[good_y]
+        y2[y2 == 0] = 0.001                          # recode zero rings to avoid div0
 
         if method == "Spline":
             # the spline wavelength resolves through get_period (E20) with dplR
-            # ssf's 0.6667-of-length default; caps() truncates it to an integer
-            # (caps.R: "stiffness = as.integer(nyrs)"), as _caps does.
+            # ssf's 0.6667-of-length default; caps() truncates it to an integer.
             nyrs2 = get_period(nyrs, len(y2), default=_SSF_DEFAULT_FRACTION)
             Curve = _caps(np.asarray(y2, dtype=float), nyrs2)
-            # Put NA back in
-            Curve2 = np.full_like(y, np.nan)
-            Curve2[good_y] = Curve
-
         else:   # AgeDepSpline: spline_period is the initial stiffness nyrs0
             nyrs2 = 50 if nyrs is None else nyrs
             Curve = ads(y=y2, nyrs0=nyrs2, pos_slope=True)
-            Curve2 = np.full_like(y, np.nan)
-            Curve2[good_y] = Curve
-
+        Curve2 = np.full_like(y, np.nan, dtype=float)
+        Curve2[good_y] = Curve
         return Curve2
 
+    def _ssf_once(dat):
+        """One full signal-free run over the collection. Raises a clear ValueError
+        when a fitted curve goes <= 0 (a near-zero pointer-year chronology), as
+        well as for the validation/convergence guards."""
+        na_mask = np.isnan(dat.values)
+        nSeries = dat.shape[1]
+        nYrs = dat.shape[0]
+        medianAbsDiff = 1
+        datSummary = stats(dat)
+        medianSegLength = datSummary['year'].median()
 
-    def apply_getCurve(dat, method, nyrs=None):
-        n_rows, n_cols = dat.shape
-        datCurves = np.full_like(dat, np.nan)
+        # storage: [nYrs, nSeries, max_iterations]
+        sfRW_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
+        sfRWRescaled_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
+        sfRWRescaledCurves_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
+        sfRWI_Array = np.full((nYrs, nSeries, max_iterations), np.nan)
+        sfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
+        hfCrn_Mat = np.full((nYrs, max_iterations), np.nan)
+        MAD_Vec = np.zeros(max_iterations - 1)
+        hfCrnResids_Mat = np.full((nYrs, max_iterations - 1), np.nan)
 
-        for i in range(n_cols):
-            if isinstance(dat, (pd.Series, pd.DataFrame)):
-                y = dat.iloc[:, i]
-            else:
-                y = dat[:, i]
+        def apply_getCurve(arr, method, nyrs=None):
+            out = np.full_like(arr, np.nan, dtype=float)
+            for i in range(arr.shape[1]):
+                col = arr.iloc[:, i] if isinstance(arr, (pd.Series, pd.DataFrame)) else arr[:, i]
+                out[:, i] = getCurve(col, method=method, nyrs=nyrs)
+            return out
 
+        def _rescale_step(sf):
+            """STEP 3+4: rescale to the original mean, put sample-depth==1 rows
+            back to the raw measurements, and restore ONLY the structural gaps
+            (cells outside each series' span). A legitimate interior absent
+            (zero-width) ring is kept -- getCurve recodes it to a small positive
+            -- rather than being turned into an illegal interior NaN, which was
+            the bug that broke the crust path on any absent ring."""
+            tmp = _sf_rescale(sf, dat.values, crust, difference)
+            tmp[datSampDepth == 1, :] = dat.values[datSampDepth == 1, :]
+            tmp[na_mask] = np.nan
+            stray = np.isnan(tmp) & ~na_mask
+            tmp[stray] = dat.values[stray]
+            return tmp
 
-            datCurves[:, i] = getCurve(y, method=method, nyrs=nyrs)
+        # STEP 1 - initial chronology
+        datCurves = apply_getCurve(dat, method=method2, nyrs=nyrs)
+        bad = _bad_curve_cols(datCurves, dat.columns)
+        if bad:                                      # raw series cannot be fit positive
+            raise ValueError(_neg_curve_error(bad, None, None, difference, crust))
 
-        return datCurves
+        datRWI = (dat.values - datCurves) if difference else (dat.values / datCurves)
+        datRWI = pd.DataFrame(datRWI)
+        datRWI.insert(0, "Years", dat.index)
+        datRWI.set_index("Years", inplace=True)
 
-    # STEP 1 - GET AN INITIAL CHRONOLOGY
-    # fit curves
-    datCurves = apply_getCurve(dat,
-                               method=method2,
-                               nyrs=nyrs)
+        iter0Crn = chron(datRWI, biweight=True, plot=False)
+        # Zeros in a biweight chron (very sensitive sites) cause div0 later; fall
+        # back to the straight mean, then error if zeros persist (bunk data).
+        if any((iter0Crn.iloc[:, 0]) == 0):
+            iter0Crn = chron(datRWI, biweight=False, plot=False)
+        if any((iter0Crn.iloc[:, 0]) == 0):
+            raise ValueError(crn0Msg)
 
-    if np.any(datCurves[~np.isnan(datCurves)] <= 0):
-        raise ValueError(_neg_curve_message(datCurves, dat.columns))
+        datSampDepth = iter0Crn.iloc[:, 1]
+        normalizedSampleDepth = np.sqrt(datSampDepth - 1) / np.sqrt(np.max(datSampDepth) - 1)
+        iter0Crn_col0 = iter0Crn.iloc[:, 0].values
 
-    # get RWI
-    if difference:
-        datRWI = dat.values - datCurves
-    else:
-        datRWI = dat.values / datCurves
+        # STEP 2 - signal-free measurements
+        sfRW_Array[:, :, 0] = _sf_measurements(dat.values, iter0Crn_col0, difference, crust)
+        # STEP 3+4 - rescale, sample-depth==1, restore structural gaps
+        sfRWRescaled_Array[:, :, 0] = _rescale_step(sfRW_Array[:, :, 0])
+        # STEP 5 - fit curves to the signal-free measurements
+        sfRWRescaledCurves_Array[:, :, 0] = apply_getCurve(
+            pd.DataFrame(sfRWRescaled_Array[:, :, 0]), method=method2, nyrs=nyrs)
+        if crust:                                    # CRUST: floor the curve at 1 ring
+            sfRWRescaledCurves_Array[:, :, 0] = np.maximum(sfRWRescaledCurves_Array[:, :, 0], 0.02)
+        bad = _bad_curve_cols(sfRWRescaledCurves_Array[:, :, 0], dat.columns)
+        if bad:
+            raise ValueError(_neg_curve_error(bad, iter0Crn_col0, dat.index.to_numpy(),
+                                              difference, crust))
 
-    datRWI= pd.DataFrame(datRWI)
-    datRWI.insert(0, "Years", dat.index)
-    datRWI.set_index("Years", inplace=True)
-
-    # and initial chron at iter0
-    iter0Crn = chron(datRWI, biweight=True,plot=False)
-    # Check for zeros in the chronology. This can happen in VERY sensitive
-    # chrons with years that mostly zeros if the chron is built with tukey's
-    # biweight robust mean (e.g., co021). This causes problems with div0 later on
-    # so if there are any zeros in the chron, switch straight mean which should
-    # head off any zeros in the chron unless the data themseleves are bunk.
-    # e.g., UT024.
-    if any((iter0Crn.iloc[:,0]) == 0):
-        iter0Crn = chron(datRWI, biweight=False,plot=False)
-
-    # Additional check. If there are still zeros it should mean that the OG data were passed in with zeros.
-    if any((iter0Crn.iloc[:, 0]) == 0):
-        raise ValueError(crn0Msg)
-
-    datSampDepth = iter0Crn.iloc[:,1] # for later
-    normalizedSampleDepth = np.sqrt(datSampDepth - 1) / np.sqrt(np.max(datSampDepth)-1) # for later
-    iter0Crn_col0 = iter0Crn.iloc[:, 0].values # just keep the chron
-
-    # STEP 2 - Divide each series of measurements by the chronology
-    # NB: This can produce some very very funky values when iter0Crn is near zero.
-    # E.g., in co021 row 615 has a tbrm RWI of 0.0044 which makes for some huge SF
-    sfRW_Array[:, :, 0] = _sf_measurements(dat.values, iter0Crn_col0, difference, crust)
-
-    # STEP 3 - Rescale to the original mean (additive; multiplicative for crust)
-    sfRWRescaled_Array[:, :, 0] = _sf_rescale(sfRW_Array[:, :, 0], dat.values, crust, difference)
-
-    # STEP 4 - Replace signal-free measurements with original measurements when samp depth is 1
-    sfRWRescaled_Array[datSampDepth == 1, :, 0] = dat.values[datSampDepth == 1, :] # can this break if there is no sampDepth==1?
-
-    # STEP 5 - Fit curves to signal free measurements
-    sfRWRescaledCurves_Array[:, :, 0] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, 0], method=method2, nyrs=nyrs)
-    if crust:                                  # CRUST: floor the curve at 1 ring (0.02 mm)
-        sfRWRescaledCurves_Array[:, :, 0] = np.maximum(sfRWRescaledCurves_Array[:, :, 0], 0.02)
-
-    if np.any(sfRWRescaledCurves_Array[:, :, 0] <= 0):
-        raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, 0],
-                                            dat.columns, iter0Crn_col0, dat.index.to_numpy()))
-
-    # STEP 6 - divide original measurements by curve obtained from signal free measurements fitting
-    if difference:
-        sfRWI_Array[:, :, 0] = dat.values - sfRWRescaledCurves_Array[:, :, 0]
-    else:
-        sfRWI_Array[:, :, 0] = dat.values / sfRWRescaledCurves_Array[:, :, 0]
-
-    # STEP 7 - create 1st signal-free chronology (the biweight mean per year;
-    # tbrm_rows is chron(biweight=True)'s std column, vectorized without the
-    # per-iteration dict rebuild).
-    sfCrn_Mat[:, 0] = tbrm_rows(sfRWI_Array[:, :, 0])
-    # Check for zeros in the chronology. This can happen in VERY sensitive
-    # chrons with years that mostly zeros if the chron is built with tukey's
-    # biweight robust mean (e.g., co021). This causes problems with div0 later on
-    # so if there are any zeros in the chron, switch straight mean which should
-    # head off any zeros in the chron unless the data themseleves are bunk
-    if any(sfCrn_Mat[:, 0] == 0):
-        sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False,plot=False).iloc[:, 0]
-
-    # And calc the high freq crn that will be used to determine MAD stopping crit
-    hfCrn_Mat[:, 0] = sfCrn_Mat[:, 0] - spline(y=sfCrn_Mat[:, 0], x=np.arange(1, len(sfCrn_Mat[:, 0]) + 1), period=int(np.floor(medianSegLength)))
-
-    # STEP 8 - Repeat (2) through (7) until the MAD threshold
-    # is reached or we hit maxIter
-    if verbose:
-        print("Data read. First iteration done.")
-
-    iterationNumber = 1 # Start on 2 b/c we did one above
-
-    while medianAbsDiff > mad_threshold:
-        k = iterationNumber
-
-        # STEP 2 - Divide each series of measurements by the last SF chronology
-        sfRW_Array[:, :, k] = _sf_measurements(dat.values, sfCrn_Mat[:, k - 1], difference, crust)
-
-        # STEP 3 - Rescale to the original mean (additive; multiplicative for crust)
-        tmp = _sf_rescale(sfRW_Array[:, :, k], dat.values, crust, difference)
-
-        # can get a nan if unlucky. set to? zero?
-        tmp[np.isnan(tmp)] = 0
-        sfRWRescaled_Array[:, :, k] = tmp
-        # STEP 4 - Replace signal-free measurements with original measurements when sample depth is one
-        sfRWRescaled_Array[datSampDepth == 1, :, k] = dat.values[datSampDepth == 1, :]
-
-        #add this line bc of python/R matrix difference
-        sfRWRescaled_Array[:, :, k] = np.where(sfRWRescaled_Array[:, :, k] == 0, np.nan, sfRWRescaled_Array[:, :, k])
-
-        # STEP 5 - fit curves to signal free measurements
-        sfRWRescaledCurves_Array[:, :, k] = np.apply_along_axis(getCurve, axis=0, arr=sfRWRescaled_Array[:, :, k], method=method2, nyrs=nyrs)
-        if crust:                              # CRUST: floor the curve at 1 ring (0.02 mm)
-            sfRWRescaledCurves_Array[:, :, k] = np.maximum(sfRWRescaledCurves_Array[:, :, k], 0.02)
-
-        if np.any(sfRWRescaledCurves_Array[:, :, k] <= 0):
-            raise ValueError(_neg_curve_message(sfRWRescaledCurves_Array[:, :, k],
-                                                dat.columns, sfCrn_Mat[:, k - 1],
-                                                dat.index.to_numpy()))
-
-        # STEP 6 - divide original measurements by curve obtained from signal free curves
+        # STEP 6 - indices from the signal-free curves
         if difference:
-            sfRWI_Array[:, :, k] = dat.values - sfRWRescaledCurves_Array[:, :, k]
+            sfRWI_Array[:, :, 0] = dat.values - sfRWRescaledCurves_Array[:, :, 0]
         else:
-            sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
+            sfRWI_Array[:, :, 0] = dat.values / sfRWRescaledCurves_Array[:, :, 0]
 
-        # STEP 7 - create kth signal-free chronology (biweight mean per year;
-        # see the iter-0 note -- tbrm_rows replaces the per-iteration chron rebuild)
-        sfCrn_Mat[:, k] = tbrm_rows(sfRWI_Array[:, :, k])
-        # Check for zeros in the chronology. This can happen in VERY sensitive
-        # chrons with years that mostly zeros if the chron is built with tukey's
-        # biweight robust mean (e.g., co021). This causes problems with div0 later on
-        # so if there are any zeros in the chron, switch straight mean which should
-        # head off any zeros in the chron unless the data themseleves are bunk
-        if any(sfCrn_Mat[:, k] == 0):
-            sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
+        # STEP 7 - first signal-free chronology (biweight mean per year)
+        sfCrn_Mat[:, 0] = tbrm_rows(sfRWI_Array[:, :, 0])
+        if any(sfCrn_Mat[:, 0] == 0):
+            sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False, plot=False).iloc[:, 0]
 
-        # Now look at diffs in fit using median abs diff in the high freq resids
-        # This is the (high freq) resids from the current iter minus the resids from prior iter
-        hfCrn_Mat[:, k] = sfCrn_Mat[:, k] - spline(y=sfCrn_Mat[:, k], x=np.arange(1, len(sfCrn_Mat[:, k]) + 1), period=int(np.floor(medianSegLength)))
-
-        hfCrnResids_Mat[:, k - 1] = hfCrn_Mat[:, k] - hfCrn_Mat[:, k - 1]
-        # calculate the median absolute differences weighted by the normalized sample depth
-        medianAbsDiff = np.median(np.abs(hfCrn_Mat[:, k] * normalizedSampleDepth - hfCrn_Mat[:, k - 1] * normalizedSampleDepth))
-
-        MAD_Vec[k - 1] = medianAbsDiff
+        hfCrn_Mat[:, 0] = sfCrn_Mat[:, 0] - spline(
+            y=sfCrn_Mat[:, 0], x=np.arange(1, len(sfCrn_Mat[:, 0]) + 1),
+            period=int(np.floor(medianSegLength)))
 
         if verbose:
-            print(f"Iteration: {k+1}  Median Abs Diff: {round(medianAbsDiff, 5)}  ({round(mad_threshold / medianAbsDiff * 100, 5)}% of threshold)")
+            print("Data read. First iteration done.")
 
-        if k == (max_iterations-1) and medianAbsDiff > mad_threshold:
-            raise ValueError(maxIterMsg)
-        iterationNumber += 1
-    # Remove empty NAs from output that aren't needed anymore. `k` is the
-    # 0-based index of the LAST computed iteration, so keep columns 0..k
-    # (slice :k+1) -- slicing :k would drop the final chronology.
-    # Trim the SF measurements
-    sfRW_Array = sfRW_Array[:, :, :k + 1]
-    # Trim the rescaled SF measurements
-    sfRWRescaled_Array = sfRWRescaled_Array[:, :, :k + 1]
-    # Trim the rescaled SF curves
-    sfRWRescaledCurves_Array = sfRWRescaledCurves_Array[:, :, :k + 1]
-    # Trim the SF RWI
-    sfRWI_Array = sfRWI_Array[:, :, :k + 1]
-    # Trim the SF crn
-    sfCrn_Mat = sfCrn_Mat[:, :k + 1]
-    # Trim the differences
-    MAD_Vec = MAD_Vec[:k]
-    hfCrnResids_Mat = hfCrnResids_Mat[:, :k]
+        # STEP 8 - iterate (2)-(7) to the MAD threshold or max_iterations
+        iterationNumber = 1
+        while medianAbsDiff > mad_threshold:
+            k = iterationNumber
+            sfRW_Array[:, :, k] = _sf_measurements(dat.values, sfCrn_Mat[:, k - 1], difference, crust)
+            sfRWRescaled_Array[:, :, k] = _rescale_step(sfRW_Array[:, :, k])
 
-    ### return final crn and add in the OG crn too for completeness
+            sfRWRescaledCurves_Array[:, :, k] = apply_getCurve(
+                pd.DataFrame(sfRWRescaled_Array[:, :, k]), method=method2, nyrs=nyrs)
+            if crust:
+                sfRWRescaledCurves_Array[:, :, k] = np.maximum(sfRWRescaledCurves_Array[:, :, k], 0.02)
+            bad = _bad_curve_cols(sfRWRescaledCurves_Array[:, :, k], dat.columns)
+            if bad:
+                raise ValueError(_neg_curve_error(bad, sfCrn_Mat[:, k - 1],
+                                                  dat.index.to_numpy(), difference, crust))
 
-    iter0Crn = pd.DataFrame({"std": iter0Crn_col0, "samp_depth": datSampDepth}, index=dat.index)
+            if difference:
+                sfRWI_Array[:, :, k] = dat.values - sfRWRescaledCurves_Array[:, :, k]
+            else:
+                sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
+
+            sfCrn_Mat[:, k] = tbrm_rows(sfRWI_Array[:, :, k])
+            if any(sfCrn_Mat[:, k] == 0):
+                sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
+
+            hfCrn_Mat[:, k] = sfCrn_Mat[:, k] - spline(
+                y=sfCrn_Mat[:, k], x=np.arange(1, len(sfCrn_Mat[:, k]) + 1),
+                period=int(np.floor(medianSegLength)))
+            hfCrnResids_Mat[:, k - 1] = hfCrn_Mat[:, k] - hfCrn_Mat[:, k - 1]
+            medianAbsDiff = np.median(np.abs(
+                hfCrn_Mat[:, k] * normalizedSampleDepth - hfCrn_Mat[:, k - 1] * normalizedSampleDepth))
+            MAD_Vec[k - 1] = medianAbsDiff
+
+            if verbose:
+                print(f"Iteration: {k+1}  Median Abs Diff: {round(medianAbsDiff, 5)}  "
+                      f"({round(mad_threshold / medianAbsDiff * 100, 5)}% of threshold)")
+
+            if k == (max_iterations - 1) and medianAbsDiff > mad_threshold:
+                raise ValueError(maxIterMsg)
+            iterationNumber += 1
+
+        # keep columns 0..k (slice :k+1); slicing :k would drop the final iteration
+        return {
+            "index": dat.index,
+            "columns": dat.columns,
+            "iter0_std": iter0Crn_col0,
+            "samp_depth": datSampDepth,
+            "k": k,
+            "sfRW_Array": sfRW_Array[:, :, :k + 1],
+            "sfRWRescaled_Array": sfRWRescaled_Array[:, :, :k + 1],
+            "sfRWRescaledCurves_Array": sfRWRescaledCurves_Array[:, :, :k + 1],
+            "sfRWI_Array": sfRWI_Array[:, :, :k + 1],
+            "sfCrn_Mat": sfCrn_Mat[:, :k + 1],
+            "hfCrn_Mat": hfCrn_Mat,
+            "hfCrnResids_Mat": hfCrnResids_Mat[:, :k],
+            "MAD_Vec": MAD_Vec[:k],
+        }
+
+    # A non-positive signal-free curve stops the run (as in dplR), with a message
+    # that names the pointer-year cause and points to preset='crust' (see
+    # _neg_curve_error and the Notes in the docstring).
+    core = _ssf_once(dat)
+
+    idx = core["index"]
+    samp_depth = core["samp_depth"]
+    k = core["k"]
+    iter0Crn = pd.DataFrame({"std": core["iter0_std"], "samp_depth": samp_depth}, index=idx)
     # the final chronology is the last computed iteration (column k), matching
     # dplR's finalCrn <- sfCrn_Mat[,k].
-    finalCrn = pd.DataFrame({"sfc": sfCrn_Mat[:, k], "samp_depth": datSampDepth}, index=dat.index)
+    finalCrn = pd.DataFrame({"sfc": core["sfCrn_Mat"][:, k], "samp_depth": samp_depth}, index=idx)
 
     infoList = {"fit": method2, "method": method, "spline_period": nyrs,
                 "max_iterations": max_iterations, "tol": mad_threshold}
@@ -556,14 +515,13 @@ def ssf(rwl,
             "infoList": infoList,
             "iter0Crn": iter0Crn,
             "ssfCrn": finalCrn,
-            "sfRW_Array": sfRW_Array,                     # SF measurements
-            "sfRWRescaled_Array": sfRWRescaled_Array,     # rescaled SF measurements
-            "sfRWRescaledCurves_Array": sfRWRescaledCurves_Array,  # rescaled SF curves
-            "sfRWI_Array": sfRWI_Array,                   # SF RWI
-            "sfCrn_Mat": sfCrn_Mat,                       # SF chronologies by iteration
-            "hfCrn_Mat": hfCrn_Mat,                       # high-frequency chronologies
-            "hfCrnResids_Mat": hfCrnResids_Mat,           # HF chronology residuals
-            "MAD_Vec": MAD_Vec,                           # median abs diff per iteration
+            "sfRW_Array": core["sfRW_Array"],             # SF measurements
+            "sfRWRescaled_Array": core["sfRWRescaled_Array"],       # rescaled SF measurements
+            "sfRWRescaledCurves_Array": core["sfRWRescaledCurves_Array"],  # rescaled SF curves
+            "sfRWI_Array": core["sfRWI_Array"],           # SF RWI
+            "sfCrn_Mat": core["sfCrn_Mat"],               # SF chronologies by iteration
+            "hfCrn_Mat": core["hfCrn_Mat"],               # high-frequency chronologies
+            "hfCrnResids_Mat": core["hfCrnResids_Mat"],   # HF chronology residuals
+            "MAD_Vec": core["MAD_Vec"],                   # median abs diff per iteration
         }
-    else:
-        return finalCrn
+    return finalCrn
