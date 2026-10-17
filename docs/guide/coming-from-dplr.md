@@ -26,6 +26,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | `write.rwl` / `write.tucson` | `writers(..., format="rwl")` | Returns the path written |
 | `write.crn` | `writers(..., format="crn")` | |
 | `combine.rwl` | `combine_rwl` | |
+| `read.tridas` / `write.tridas` | `read_tridas` / `write_tridas`, or `writers(..., format="tridas")` | TRiDaS 1.2.2 XML |
 
 ### Descriptive statistics
 
@@ -53,6 +54,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | dplR | dplPy | Notes |
 |---|---|---|
 | `chron` | `chron` | `prewhiten=True` adds the residual chronology |
+| `chron.ci` | `chron(ci=True)` | Bootstrap confidence interval on the standard chronology (adds `lower_ci`/`upper_ci`) |
 | `chron.ars` | `chron_ars` | ARSTAN-style |
 | `chron.stabilized` | `chron_stabilized` | Variance stabilization; `winLength` is `window_length` |
 | `ar` / AR modelling | `autoreg`, `ar_func` | Yule-Walker by default (`method="yw"`), as in R's `ar()`, with `ar_max=10`. **Order selection differs**: dplPy takes the *first local* AIC minimum (`first_aic_min=True`, the ARSTAN/COFECHA rule); R's `ar()` takes the global minimum. Pass `first_aic_min=False` to match R. |
@@ -69,6 +71,12 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 | *(COFECHA UFLOAT)* | `xdate_undated` | Relative dating of a set of undated series against one another |
 | `xdate.report` | `xdate_report` | COFECHA-style batch report (`xdate.report` arrived in dplR 1.8.0) |
 | *(COFECHA itself has no dplR equivalent)* | `xdate(preset="COFECHA")` | Full COFECHA emulation mode |
+
+### Editing series
+
+| dplR | dplPy | Notes |
+|---|---|---|
+| `insert.ring`, `delete.ring` | `edit_rwl` | One function inserts, deletes, or changes a ring; it pairs with the crossdating checks |
 
 ### Signal strength, agreement & indices
 
@@ -101,14 +109,15 @@ dplPy adds LiPD interchange, which dplR does not provide:
 ## Not yet ported
 
 dplPy targets the core standardization, chronology, and crossdating workflow.
-Some specialized dplR tools — for example superposed epoch analysis, spectral and
-wavelet methods, skeleton-plot crossdating, and interactive detrending — are not
-yet available. dplR 1.8.0 also added `insert.ring` (insert a missing or false
-ring and refit the series length), `chron.ci` (bootstrap chronology confidence
-intervals), and `read.sheet` / `write.sheet` (tidy/long and delimited spreadsheet
-I/O); these are not yet in dplPy. Check the [API Reference](../reference/io.md) for
-the current surface, and the [project repository](https://github.com/opendendro/dplpy)
-to request or contribute a port.
+A few dplR capabilities are intentionally out of scope: superposed epoch analysis
+and the spectral and wavelet methods are better served by dedicated Python
+time-series packages such as [Pyleoclim](https://pyleoclim-util.readthedocs.io/),
+so dplPy does not duplicate them. Skeleton-plot crossdating and interactive
+(point-and-click) detrending are not currently available. Of dplR's tabular I/O,
+`read.sheet` / `write.sheet` (tidy/long and delimited spreadsheet formats) are not
+yet ported. Check the [API Reference](../reference/io.md) for the current surface,
+and the [project repository](https://github.com/OpenDendro/dplPy) to request or
+contribute a port.
 
 ## A note on fidelity
 
