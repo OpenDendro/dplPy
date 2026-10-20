@@ -118,6 +118,7 @@ nav:
       - Crossdating & COFECHA: guide/crossdating.md
       - Dating a floating series: guide/floating-series.md
       - Statistics & agreement: guide/statistics.md
+      - Climate–growth response: guide/seascorr.md
       - LiPD interchange: guide/lipd.md
       - Coming from dplR: guide/coming-from-dplr.md
   - Examples:
@@ -130,6 +131,7 @@ nav:
       - Chronology: reference/chronology.md
       - Crossdating: reference/crossdating.md
       - Statistics & indices: reference/statistics.md
+      - Climate response: reference/climate.md
       - Utilities: reference/utilities.md
   - Background:
       - Fidelity & departures: background/fidelity.md

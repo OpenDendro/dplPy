@@ -292,6 +292,7 @@ def test_sweep_covers_every_public_transform():
         "read_tridas", "write_tridas", "to_lipd", "from_lipd", "lipd_metadata",
         "SiteMetadata", "TridasProject", "TridasMetadata", "help", "readme",
         "read_pos", "PosCollection",
+        "seascorr", "SeascorrResult",
         # plotting only
         "plot", "xdate_plot",
         # file-driven report

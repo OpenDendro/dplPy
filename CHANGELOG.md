@@ -25,6 +25,17 @@ and commit log.
   pith and the innermost ring widths (`method="dist"` or `"rings"`), producing a
   pith-offset table for `rcs`/`po_to_wc`. Pairs with `read_pos`. Ports modendro's
   `yrs_to_pith()`.
+- **`dpl.seascorr` identifies the seasonal climate signal in a chronology** — a
+  faithful port of SEASCORR (Meko, Touchan & Anchukaitis 2011). It correlates the
+  chronology (simple Pearson) with a primary monthly climate variable and (partial,
+  controlling for the primary) with a secondary variable, across season-lengths ×
+  14 ending months, with significance from exact spectral simulation of the
+  chronology (Percival & Constantine 2006) and a two-period stability test
+  (Fisher-z, Dawdy–Matalas effective sample size). Climate is accepted as wide,
+  tidy, or datetime-indexed monthly series; `plot=True` draws the two-panel
+  seasonal bar chart, colored by variable (temperature red, moisture blue).
+  Verified against the authors' MATLAB to the limit of its printed precision. Lives
+  in the new `dplpy.climate` module; also exported as `dpl.seascorr`.
 
 ### Fixed
 - **`ssf(preset="crust")` no longer breaks on interior absent rings.** A single
