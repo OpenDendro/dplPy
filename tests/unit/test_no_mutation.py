@@ -291,12 +291,13 @@ def test_sweep_covers_every_public_transform():
         "readers", "readers_url", "metadata", "read_crn", "read_ids", "writers",
         "read_tridas", "write_tridas", "to_lipd", "from_lipd", "lipd_metadata",
         "SiteMetadata", "TridasProject", "TridasMetadata", "help", "readme",
+        "read_pos", "PosCollection",
         # plotting only
         "plot", "xdate_plot",
         # file-driven report
         "xdate_report",
-        # standalone numerical helpers (take arrays/series, covered elsewhere)
-        "ads", "autoreg", "po_to_wc", "wc_to_po", "sens2", "sgc",
+        # standalone numerical helpers (take arrays/series or special tables)
+        "ads", "autoreg", "po_to_wc", "wc_to_po", "yrs_to_pith", "sens2", "sgc",
     }
     covered = {n.split("(")[0] for n in CASES}
     missing = [n for n in dpl.__all__ if n not in exempt and n not in covered]

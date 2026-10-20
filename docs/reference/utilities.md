@@ -19,6 +19,10 @@ helpers.
 
 ::: dplpy.pith.wc_to_po
 
+## yrs_to_pith
+
+::: dplpy.pith.yrs_to_pith
+
 ## to_lipd
 
 ::: dplpy.lipd.to_lipd

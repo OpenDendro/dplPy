@@ -110,6 +110,7 @@ nav:
       - Quickstart: getting-started/quickstart.md
   - User Guide:
       - Reading & writing data: guide/reading-writing-data.md
+      - CooRecorder .pos files: guide/coorecorder-pos.md
       - Detrending & standardization: guide/detrending-standardization.md
       - Handling internal gaps: guide/internal-gaps.md
       - Building chronologies: guide/chronologies.md

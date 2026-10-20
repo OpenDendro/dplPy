@@ -63,3 +63,11 @@ guide for worked examples.
 ## TridasMetadata
 
 ::: dplpy.tridas.TridasMetadata
+
+## read_pos
+
+::: dplpy.read_pos.read_pos
+
+## PosCollection
+
+::: dplpy.read_pos.PosCollection

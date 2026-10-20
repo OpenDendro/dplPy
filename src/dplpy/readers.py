@@ -140,14 +140,16 @@ def readers(filename, skip_lines=0, header=None, strict=True, format=None,
         how many of the first PHYSICAL lines of the file to skip before anything
         else (blank and comment lines count). The skipped lines are recorded on
         ``df.attrs["dplpy_skipped_lines"]``.
-    format : {None, "tucson", "csv", "tridas"}, default None
+    format : {None, "tucson", "csv", "tridas", "pos"}, default None
         force the file format regardless of suffix (case-insensitive). ``None``
-        infers it: .csv as CSV, .rwl/.raw as Tucson, .xml as TRiDaS, any other
-        suffix by sniffing content. ("rwl"/"raw" are aliases for "tucson"; "xml" for
-        "tridas".) A TRiDaS file is parsed and, for the common single-table case,
-        returned as one ring-width DataFrame; a multi-table or chronology TRiDaS
-        file raises with a pointer to ``dpl.read_tridas()``, which returns the
-        full ``TridasProject``.
+        infers it: .csv as CSV, .rwl/.raw as Tucson, .xml as TRiDaS, .pos (or a
+        directory of them) as CooRecorder, any other suffix by sniffing content.
+        ("rwl"/"raw" are aliases for "tucson"; "xml" for "tridas".) A TRiDaS file is
+        parsed and, for the common single-table case, returned as one ring-width
+        DataFrame; a multi-table or chronology TRiDaS file raises with a pointer to
+        ``dpl.read_tridas()``. A CooRecorder .pos file (or a directory of them) is
+        read into one whole-ring DataFrame; use ``dpl.read_pos()`` for the full
+        result (earlywood/latewood, attributes, coordinates).
     strict : bool, default True
         ``True`` refuses a file with an unrecoverable problem (fail-loud). ``False``
         (salvage) recovers as much as possible: a self-overlapping or
@@ -211,7 +213,7 @@ def readers(filename, skip_lines=0, header=None, strict=True, format=None,
     # suffix; otherwise sniff the content so a Tucson file with a nonstandard
     # extension (e.g. .txt) still reads.
     if format is not None:
-        f = _normalize_choice(format, ("tucson", "rwl", "raw", "csv", "tridas", "xml"),
+        f = _normalize_choice(format, ("tucson", "rwl", "raw", "csv", "tridas", "xml", "pos"),
                               "format")
         fmt = {"rwl": "tucson", "raw": "tucson", "xml": "tridas"}.get(f, f)
     elif filename.upper().endswith(".CSV"):
@@ -220,12 +222,14 @@ def readers(filename, skip_lines=0, header=None, strict=True, format=None,
         fmt = "tucson"
     elif filename.upper().endswith(".XML"):
         fmt = "tridas"
+    elif filename.upper().endswith(".POS") or os.path.isdir(filename):
+        fmt = "pos"          # a .pos file, or a directory of .pos files
     else:
         fmt = _sniff_format(filename, is_url)
         if fmt is None:
             raise ValueError(
                 "Could not determine the file format; pass format='tucson', 'csv', "
-                "or 'tridas' (suffixes: .csv, .rwl, .raw, .xml)."
+                "'tridas', or 'pos' (suffixes: .csv, .rwl, .raw, .xml, .pos)."
             )
         _warn("File suffix '" + FORMAT + "' not recognized; inferred "
               + fmt + " format from the file contents.")
@@ -239,6 +243,12 @@ def readers(filename, skip_lines=0, header=None, strict=True, format=None,
                              "download the .xml file and read it locally.")
         from .tridas import read_tridas_single
         return read_tridas_single(filename)
+
+    # CooRecorder .pos (a single file or a directory of them) is coordinate data,
+    # not a ring-width table; delegate to read_pos and return the whole-ring frame.
+    if fmt == "pos":
+        from .read_pos import read_pos_single
+        return read_pos_single(filename)
 
     # open the input file and read its data into a pandas dataframe
     if fmt == "csv":
@@ -927,6 +937,9 @@ def _sniff_format(filename, is_url):
     # comments may precede it, so scan a block rather than line 1 alone).
     if any("<tridas" in ln for ln in lines[:30]):
         return "tridas"
+    # CooRecorder .pos: first line declares a DENDRO coordinate file.
+    if lines and "DENDRO" in lines[0]:
+        return "pos"
     sample = []
     for ln in lines:
         ln = ln.rstrip("\r\n")

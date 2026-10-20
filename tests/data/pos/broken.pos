@@ -1,0 +1,9 @@
+#DENDRO (Cybis Dendro program compatible format) Coordinate file written as G:\Shared drives\USFS Tree-ring Data\Maher read_pos testing\complex_test.pos 2024-12-17 14:41:00
+#Imagefile G:\.shortcut-targets-by-id\1xcKOvsdxuPkCGSgKsKpNhub68n5CkR1G\Brooks Range Treeline Project_UAA_APU_AC\Data\Tree ring data\Aggie\AGR1\AGR1_focaltrees.jpg
+#DPI 2400.0
+#All coordinates in millimeters (mm)
+SCALE 1
+#C DATED 2021
+#C PithCoordinates=113.5486,11.8745; DistanceToPith=0.5; YearsToPith=1; 
+#C CalcRadius=Yes; Radius=51.5514; Written=2024-12-17 14:41:00; 
+#C CooRecorder=9.8.1 March 23 2022; 

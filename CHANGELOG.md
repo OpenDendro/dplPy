@@ -10,6 +10,22 @@ and commit log.
 
 ## [Unreleased]
 
+### Added
+- **`dpl.read_pos` reads CooRecorder `.pos` files** (a single file or a directory
+  tree) directly into dplPy, skipping the lossy CDendro `.rwl` export. It returns a
+  `PosCollection` with the whole-ring widths (`.rwl()`, full precision, mm),
+  earlywood/latewood (`.earlywood()`/`.latewood()`), per-series attributes
+  (distance to pith, radius, outer/inner year, comment, version), and the raw
+  coordinates for QC. `dpl.readers(path, format="pos")` and `.pos` sniffing return
+  just the whole-ring frame. Requires CooRecorder 7.8+ (pith coordinates); gaps are
+  measured around (per CRUST/modendro), multipoint via-points are excluded, and
+  undated files get relative years. Modeled on `read_pos()` in C. Maher's modendro
+  (MIT).
+- **`dpl.yrs_to_pith`** estimates a pith offset (rings to pith) from a distance to
+  pith and the innermost ring widths (`method="dist"` or `"rings"`), producing a
+  pith-offset table for `rcs`/`po_to_wc`. Pairs with `read_pos`. Ports modendro's
+  `yrs_to_pith()`.
+
 ### Fixed
 - **`ssf(preset="crust")` no longer breaks on interior absent rings.** A single
   interior zero-width ring could raise `'NA's are not allowed in the middle of

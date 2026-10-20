@@ -74,7 +74,8 @@ from .rwi_stats import rwi_stats, rwi_stats_running
 from .sensitivity import sens1, sens2
 from .common_interval import common_interval
 from .agedepspline import ads
-from .pith import po_to_wc, wc_to_po
+from .pith import po_to_wc, wc_to_po, yrs_to_pith
+from .read_pos import read_pos, PosCollection
 from .powt import powt
 from .rcs import rcs
 from .sfrcs import sfrcs
@@ -128,6 +129,9 @@ __all__ = [
     "common_interval",
     "ads",
     "po_to_wc",
+    "yrs_to_pith",
+    "read_pos",
+    "PosCollection",
     "wc_to_po",
     "powt",
     "rcs",

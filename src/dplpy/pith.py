@@ -34,7 +34,7 @@ __license__ = "GNU GPLv3"
 
 import numpy as np
 import pandas as pd
-from ._validate import _require_dataframe
+from ._validate import _require_dataframe, _normalize_choice, _warn
 
 
 def po_to_wc(po: pd.DataFrame) -> pd.DataFrame:
@@ -109,3 +109,77 @@ def wc_to_po(wc: pd.DataFrame) -> pd.DataFrame:
     pith_offset[known.to_numpy()] = np.asarray(total[known.to_numpy()], dtype="int64")
 
     return pd.DataFrame({"series": np.asarray(wc.index), "pith_offset": pith_offset})
+
+
+def yrs_to_pith(rwl, d2pith, method="dist", n_rings=10):
+    """Estimate years (rings) to pith from an estimated distance to pith.
+
+    Ports modendro's ``yrs_to_pith()`` (C. Maher). The number of unmeasured
+    rings between the pith and the innermost measured ring is estimated as the
+    distance to pith divided by a mean innermost ring width, rounded to a whole
+    number of rings. The distance to pith is whatever you measured (e.g. in
+    CooRecorder, as returned by ``dpl.read_pos().attributes``); only the table
+    format matters.
+
+    Parameters
+    ----------
+    rwl : pandas.DataFrame
+        ring widths, years as the index and series IDs as columns.
+    d2pith : pandas.DataFrame
+        one row per series, with a ``series`` column and a distance-to-pith
+        column named ``d2pith`` or ``distance_to_pith`` (same units as the ring
+        widths, typically mm).
+    method : {"dist", "rings"}, default "dist"
+        ``"rings"`` divides the distance by the mean of the innermost ``n_rings``
+        ring widths. ``"dist"`` divides by the mean of as many innermost rings as
+        fit within the distance (at least ``n_rings``), which tracks a changing
+        growth rate near the pith better.
+    n_rings : int, default 10
+        number of innermost rings to average (``"rings"``), or the floor on the
+        number averaged (``"dist"``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        columns ``series``, ``d2pith``, ``mean_rw``, and ``pith_offset`` (the
+        estimated whole-ring offset, 0 = pith present), ready to pass to
+        ``dpl.rcs``/``dpl.po_to_wc`` as a pith-offset table.
+    """
+    _require_dataframe(rwl)
+    _require_dataframe(d2pith)
+    method = _normalize_choice(method, ("dist", "rings"), "method")
+    if "series" not in d2pith.columns:
+        raise ValueError("d2pith must have a 'series' column.")
+    dcol = ("d2pith" if "d2pith" in d2pith.columns
+            else "distance_to_pith" if "distance_to_pith" in d2pith.columns else None)
+    if dcol is None:
+        raise ValueError("d2pith must have a 'd2pith' (or 'distance_to_pith') column.")
+    dmap = dict(zip(d2pith["series"].astype(str),
+                    pd.to_numeric(d2pith[dcol], errors="coerce")))
+
+    rows = []
+    for col in rwl.columns:
+        name = str(col)
+        s = pd.to_numeric(rwl[col], errors="coerce").dropna().sort_index()
+        d = dmap.get(name, np.nan)
+        inner = s.to_numpy()                         # sorted by year = innermost first
+        if inner.size == 0 or not np.isfinite(d):
+            if name not in dmap:
+                _warn("yrs_to_pith: no distance to pith for series '%s'." % name)
+            rows.append({"series": name, "d2pith": d, "mean_rw": np.nan,
+                         "pith_offset": pd.NA})
+            continue
+        if method == "rings":
+            used = inner[:n_rings]
+        else:
+            cum = np.cumsum(inner)
+            used = inner[cum < d]
+            if used.size < n_rings:                  # too few within the distance
+                used = inner[:n_rings]
+        mean_rw = float(np.nanmean(used)) if used.size else np.nan
+        po = int(round(d / mean_rw)) if (mean_rw and np.isfinite(mean_rw) and mean_rw > 0) else pd.NA
+        rows.append({"series": name, "d2pith": float(d), "mean_rw": mean_rw,
+                     "pith_offset": po})
+    out = pd.DataFrame(rows)
+    out["pith_offset"] = out["pith_offset"].astype("Int64")
+    return out
