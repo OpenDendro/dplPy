@@ -36,6 +36,31 @@ and commit log.
   seasonal bar chart, colored by variable (temperature red, moisture blue).
   Verified against the authors' MATLAB to the limit of its printed precision. Lives
   in the new `dplpy.climate` module; also exported as `dpl.seascorr`.
+- **`dpl.pcreg` reconstructs climate from a tree-ring network** by orthogonal
+  spatial / principal-components regression — a faithful port of Ed Cook's OSR
+  FORTRAN (the method of Cook, Briffa & Jones 1994). Predictors are screened against
+  the target over the calibration window, reduced to principal components (first-m,
+  eigenvalue-1, cumulative-percent, or Guiot PVP truncation), and the target is
+  regressed on the PCs that pass a t-test; the fit is back-transformed to
+  per-predictor weights, a reconstruction is produced over the full predictor
+  period, and it is verified against withheld data (Pearson r, RE, CE, on both the
+  undifferenced and 1st-differenced series). Optional AR prewhitening reuses
+  dplPy's own `ar_func` (Burg = Cook's maximum-entropy `memcof`). Lead/lag
+  predictor masks (`lag=`, Cook's `lagit`) expand each predictor into lagged/led
+  copies before screening, given either as integer offsets (`(0, 1)`) or an
+  11-char mask (`"00000110000"`). Leave-k-out cross-validation (`cv=`, `cv=1` for
+  leave-one-out) refits the whole pipeline on each held-out fold and reports the
+  out-of-sample skill (`cv_r`, `cv_RE`, `cv_CE`), exposing overfitting the
+  in-sample R² hides. Validated number-for-number against the compiled FORTRAN on
+  a single-target fixture (screened predictors, PC count, regression order,
+  calibration R², all verification statistics, and the lag expansion all exact;
+  reconstruction to 5e-4). dplPy deliberately does not fabricate the FORTRAN's
+  common-period edge padding, so a predictor must genuinely cover a lagged window
+  to enter it; any predictor dropped for insufficient coverage is reported in a
+  warning and kept on `result.dropped_coverage`, rather than silently padded.
+  Canonical regression, robust/biweight correlations, and the
+  Southern-Hemisphere auto-shift are planned for a later phase. Exported as
+  `dpl.pcreg`, returning a `PcregResult`.
 
 ### Fixed
 - **`ssf(preset="crust")` no longer breaks on interior absent rings.** A single
