@@ -292,7 +292,11 @@ def test_sweep_covers_every_public_transform():
         "read_tridas", "write_tridas", "to_lipd", "from_lipd", "lipd_metadata",
         "SiteMetadata", "TridasProject", "TridasMetadata", "help", "readme",
         "read_pos", "PosCollection",
+        # climate-response functions: driven by climate data, not the ca533
+        # ring-width fixtures this sweep uses -- each carries its own
+        # non-mutation test in its own module.
         "seascorr", "SeascorrResult",
+        "pcreg", "PcregResult",
         # plotting only
         "plot", "xdate_plot",
         # file-driven report
