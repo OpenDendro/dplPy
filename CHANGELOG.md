@@ -46,8 +46,12 @@ and commit log.
   period, and it is verified against withheld data on both the undifferenced and
   1st-differenced series with Cook's full statistical panel -- RE, CE, Pearson,
   Spearman and Kendall rank correlations, the sign test, the product-means test,
-  and the equality-of-means test (correlation significance one-sided, as in the
-  FORTRAN). Optional AR prewhitening reuses
+  and the equality-of-means test (correlation significance one-sided, positive
+  skill expected). Significance throughout -- screening and verification -- uses
+  SciPy's exact distributions rather than the FORTRAN's Wilson-Hilferty / normal
+  approximations; the statistic values match Cook's, but a close-call predictor
+  may fall on the other side of the screening threshold than his approximation
+  placed it. Optional AR prewhitening reuses
   dplPy's own `ar_func` (Burg = Cook's maximum-entropy `memcof`). Lead/lag
   predictor masks (`lag=`, Cook's `lagit`) expand each predictor into lagged/led
   copies before screening, given either as integer offsets (`(0, 1)`) or an

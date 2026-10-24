@@ -34,27 +34,10 @@ def test_import_paths():
     assert dpl.PcregResult is P.PcregResult
 
 
-# --------------------------------------------------------------- _prob -------
-
-def test_prob_known_values():
-    # Frozen snapshot of the ported Wilson-Hilferty approximation.
-    assert P._prob(2, 0.0, 23, 0) == 1.0               # zero statistic -> p=1
-    assert P._prob(2, 2.0, 23, 0) == pytest.approx(0.054845, abs=1e-6)
-    assert P._prob(3, 1.96, 0, 0) == pytest.approx(0.049996, abs=1e-6)  # ~5% normal tail
-    # two-tailed t is monotonic decreasing in |t|
-    assert P._prob(2, 3.0, 23, 0) < P._prob(2, 1.0, 23, 0)
-    # symmetry in the sign of t
-    assert P._prob(2, 1.3, 20, 0) == pytest.approx(P._prob(2, -1.3, 20, 0))
-
-def test_prob_rejects_unknown_nopt():
-    with pytest.raises(ValueError):
-        P._prob(7, 1.0, 10, 0)
-
-
-# ------------------------------------------------- _verify (oracle parity) ---
+# ----------------------------------------------------- _verify statistics ---
 # The 1959-1964 verification window Cook's FORTRAN printed for the Khangai
 # single-target run (standardized actual target vs recon_std), rounded to the
-# 3 d.p. of the FORTRAN log. The oracle reported r=0.442, RE=0.321, CE=0.191.
+# 3 d.p. of the FORTRAN log.
 
 _KHANGAI_ACTUAL = np.array([0.118, 0.399, -0.271, -0.284, 0.068, 2.400])
 _KHANGAI_EST = np.array([0.675, 1.014, 0.250, -0.243, 0.434, 0.657])
@@ -83,52 +66,52 @@ def test_verify_perfect_fit():
     assert v["CE"] == pytest.approx(1.0)
 
 
-def test_verify_full_panel_matches_cook_oracle():
-    # The complete verify panel the FORTRAN printed for the Khangai verification
-    # window (undifferenced): rank correlations, sign test, product-means test,
-    # equality-of-means test -- each with its one-sided (where Cook halves it)
-    # probability.
+def test_verify_full_panel():
+    # The statistic VALUES reproduce Cook's oracle panel (r, rank correlations,
+    # sign counts, product-means and equality-of-means differences); the
+    # significance comes from SciPy's exact distributions, not Ed's
+    # Wilson-Hilferty / normal approximations, so the p-values are the exact ones
+    # we ship (one-sided for the correlations, as Cook's method intends).
     v = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
+    # statistic values -- match the oracle
     assert v["r"] == pytest.approx(0.442, abs=1e-3)
-    assert v["r_p"] == pytest.approx(0.30875, abs=1e-3)
     assert v["spearman"] == pytest.approx(0.829, abs=1e-3)
-    assert v["spearman_p"] == pytest.approx(0.02104, abs=1e-3)
     assert v["kendall"] == pytest.approx(0.733, abs=1e-3)
-    assert v["kendall_p"] == pytest.approx(0.01939, abs=1e-3)
     assert v["sign_pos"] == 3 and v["sign_neg"] == 3
-    assert v["sign_z"] == pytest.approx(-0.408, abs=1e-3)
-    assert v["sign_p"] == pytest.approx(1.0)
     assert v["pm_diff"] == pytest.approx(0.321, abs=1e-3)
-    assert v["pm_t"] == pytest.approx(2.537, abs=2e-3)
-    assert v["pm_p"] == pytest.approx(0.03207, abs=1e-3)
+    assert v["pm_t"] == pytest.approx(2.536, abs=2e-3)
     assert v["eqmeans_diff"] == pytest.approx(-0.060, abs=1e-3)
     assert v["eqmeans_t"] == pytest.approx(-0.133, abs=1e-3)
-    # the equality-of-means probability is a Wilson-Hilferty approx at a real*4
-    # Welch df; same (non-significant) conclusion, within ~0.004 of the oracle
-    assert v["eqmeans_p"] == pytest.approx(0.88984, abs=6e-3)
+    # significance -- SciPy exact (one-sided correlations; exact binomial sign test)
+    assert v["r_p"] == pytest.approx(0.19028, abs=1e-3)
+    assert v["spearman_p"] == pytest.approx(0.02078, abs=1e-3)
+    assert v["kendall_p"] == pytest.approx(0.02778, abs=1e-3)
+    assert v["sign_p"] == pytest.approx(0.65625, abs=1e-3)
+    assert v["pm_p"] == pytest.approx(0.03212, abs=1e-3)
+    assert v["eqmeans_p"] == pytest.approx(0.89835, abs=1e-3)   # exact Welch
 
 
 def test_verify_rank_stats_are_one_sided():
-    # A negatively-correlated estimate carries no positive skill, so Cook's
-    # one-sided correlation p-values collapse to 1.0.
+    # A negatively-correlated estimate carries no positive skill, so the
+    # one-sided (``greater``) correlation p-values sit near 1.0.
     rng = np.random.default_rng(5)
     a = rng.normal(size=12)
     e = -a + 0.1 * rng.normal(size=12)                 # strong negative, not exact
     v = P._verify(a, e, re_baseline=0.0)
     assert v["r"] < 0
-    assert v["r_p"] == pytest.approx(1.0)
-    assert v["spearman_p"] == pytest.approx(1.0)
-    assert v["kendall_p"] == pytest.approx(1.0)
+    assert v["r_p"] > 0.99
+    assert v["spearman_p"] > 0.99
+    assert v["kendall_p"] > 0.99
 
 
-def test_verify_spearman_equals_pearson_on_ranks():
-    rng = np.random.default_rng(11)
-    a = rng.normal(size=30)
-    e = 0.6 * a + 0.5 * rng.normal(size=30)
-    rs, _, _ = P._spearman(a, e)
-    ra = pd.Series(a).rank().to_numpy()
-    re = pd.Series(e).rank().to_numpy()
-    assert rs == pytest.approx(np.corrcoef(ra, re)[0, 1])
+def test_verify_uses_scipy_exact():
+    # The shipped p-values are SciPy's, not a hand-rolled approximation.
+    from scipy import stats
+    a, e = _KHANGAI_ACTUAL, _KHANGAI_EST
+    v = P._verify(a, e, re_baseline=0.0)
+    assert v["r_p"] == pytest.approx(stats.pearsonr(a, e, alternative="greater").pvalue)
+    assert v["kendall_p"] == pytest.approx(stats.kendalltau(a, e, alternative="greater").pvalue)
+    assert v["eqmeans_p"] == pytest.approx(stats.ttest_ind(a, e, equal_var=False).pvalue)
 
 
 def test_verify_panel_flows_into_result():
