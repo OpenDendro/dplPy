@@ -66,6 +66,11 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/opendendro
 
+# MathJax (renders pymdownx.arithmatex math)
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+
 # Extensions
 markdown_extensions:
   - admonition
@@ -135,5 +140,6 @@ nav:
       - Utilities: reference/utilities.md
   - Background:
       - Fidelity & departures: background/fidelity.md
+      - Reconstruction validation: background/reconstruction-validation.md
       - "Crossdating: dplR vs COFECHA": background/crossdating-methods.md
       - References: background/references.md
