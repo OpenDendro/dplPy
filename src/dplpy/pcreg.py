@@ -390,6 +390,170 @@ def _pcr(scores_cal, y_cal, eigvecs, eigvals, neig, order_method, t_cutoff, ncal
 
 
 # --------------------------------------------------------------------------- #
+# Rank / sign / mean verification tests (ports of Cook's NR routines)
+# --------------------------------------------------------------------------- #
+
+def _avg_ranks(x):
+    """Average (tie-corrected) ranks of ``x``, 1-based, and the tie sum
+    ``sum(t**3 - t)`` over tied groups (Cook's ``crank`` ``s``)."""
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    order = np.argsort(x, kind="mergesort")       # stable, like the NR sort
+    ranks = np.empty(n, dtype=float)
+    s = 0.0
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and x[order[j + 1]] == x[order[i]]:
+            j += 1
+        rank = 0.5 * (i + 1 + j + 1)              # average of 1-based ranks i+1..j+1
+        for k in range(i, j + 1):
+            ranks[order[k]] = rank
+        t = j - i + 1
+        if t > 1:
+            s += t ** 3 - t
+        i = j + 1
+    return ranks, s
+
+
+def _spearman(a, e):
+    """Spearman rank correlation, a port of Numerical Recipes ``spear`` (the
+    tie-corrected form Cook uses). Significance via the ported ``_prob``.
+
+    Returns (rs, t, p). ``rs`` equals Pearson's r on the average ranks; the
+    tie correction makes the two identical even with ties.
+    """
+    a = np.asarray(a, dtype=float)
+    e = np.asarray(e, dtype=float)
+    n = a.size
+    if n < 3:
+        return np.nan, np.nan, np.nan
+    r1, sf = _avg_ranks(a)
+    r2, sg = _avg_ranks(e)
+    d = float(np.sum((r1 - r2) ** 2))
+    en = float(n)
+    en3n = en ** 3 - en
+    fac = (1.0 - sf / en3n) * (1.0 - sg / en3n)
+    if fac <= 0:
+        return np.nan, np.nan, np.nan
+    rs = (1.0 - (6.0 / en3n) * (d + 0.5 * (sf + sg))) / fac
+    denom = (1.0 + rs) * (1.0 - rs)
+    if denom <= 0:
+        return rs, np.inf * np.sign(rs), 0.0
+    t = rs * np.sqrt((en - 2.0) / denom)
+    p = _prob(2, t, int(en - 2.0), 0)
+    return rs, t, p
+
+
+def _kendall(a, e):
+    """Kendall's tau (tau-b) with the normal-approximation significance Cook
+    uses, a literal port of Numerical Recipes ``kendl1``. Returns (tau, z, p)."""
+    a = np.asarray(a, dtype=float)
+    e = np.asarray(e, dtype=float)
+    n = a.size
+    if n < 2:
+        return np.nan, np.nan, np.nan
+    n1 = 0
+    n2 = 0
+    iss = 0
+    for j in range(n - 1):
+        da = a[j] - a[j + 1:]
+        de = e[j] - e[j + 1:]
+        aa = da * de
+        pos = aa > 0
+        neg = aa < 0
+        zero = aa == 0
+        n1 += int(np.sum(~zero)) + int(np.sum(zero & (da != 0)))
+        n2 += int(np.sum(~zero)) + int(np.sum(zero & (de != 0)))
+        iss += int(np.sum(pos)) - int(np.sum(neg))
+    if n1 == 0 or n2 == 0:
+        return np.nan, np.nan, np.nan
+    tau = iss / np.sqrt(float(n1) * float(n2))
+    var = (4.0 * n + 10.0) / (9.0 * n * (n - 1.0))
+    z = tau / np.sqrt(var)
+    p = _prob(3, z, 0, 0)
+    return tau, z, p
+
+
+def _tutest(a, e):
+    """Welch two-sample t-test of equal means, a port of ``tutest``/``avevar``.
+    Returns (diff, t, p) with diff = mean(a) - mean(e)."""
+    a = np.asarray(a, dtype=float)
+    e = np.asarray(e, dtype=float)
+    n1, n2 = a.size, e.size
+    if n1 < 2 or n2 < 2:
+        return np.nan, np.nan, np.nan
+    ave1, ave2 = a.mean(), e.mean()
+    var1 = float(np.sum((a - ave1) ** 2)) / (n1 - 1)   # sample variance
+    var2 = float(np.sum((e - ave2) ** 2)) / (n2 - 1)
+    se = np.sqrt(var1 / n1 + var2 / n2)
+    if se <= 0:
+        return ave1 - ave2, np.nan, np.nan
+    t = (ave1 - ave2) / se
+    df = (var1 / n1 + var2 / n2) ** 2 / ((var1 / n1) ** 2 / (n1 - 1)
+                                         + (var2 / n2) ** 2 / (n2 - 1))
+    p = _prob(2, t, df, 0)                              # df is a float here
+    return ave1 - ave2, t, p
+
+
+def _sign_and_pm(a, e):
+    """Sign test and product-means (cross-products means) test, ported from the
+    inline block of Cook's ``verify``.
+
+    Both compare the signed products ``prod2 = (a - mean(a)) * (e - mean(a))``
+    (whether actual and estimate fall on the same side of the actual mean).
+
+    Returns a dict: sign_pos/sign_neg/sign_z/sign_p and pm_diff/pm_t/pm_p.
+    """
+    a = np.asarray(a, dtype=float)
+    e = np.asarray(e, dtype=float)
+    ma = a.mean()
+    prod2 = (a - ma) * (e - ma)
+    pos = prod2 > 0
+    npe = int(np.sum(pos))
+    nme = int(prod2.size - npe)                        # prod2 <= 0 (Cook's split)
+    out = {"sign_pos": npe, "sign_neg": nme}
+
+    # Sign test (z2): continuity-corrected binomial z on npe vs nme.
+    rnpme = float(npe + nme)
+    if rnpme > 0:
+        if npe >= nme:
+            z2 = ((npe - 0.5) - rnpme / 2.0) / (np.sqrt(rnpme) / 2.0)
+        else:
+            z2 = ((npe + 0.5) - rnpme / 2.0) / (np.sqrt(rnpme) / 2.0)
+        p2 = _prob(3, z2, 0, 0)
+        p2 = p2 / 2.0 if z2 > 0 else 1.0
+    else:
+        z2, p2 = np.nan, np.nan
+    out["sign_z"] = z2
+    out["sign_p"] = p2
+
+    # Product-means test: two-sample t between the mean positive product and the
+    # mean magnitude of the negative products.
+    cpmp = prod2[pos]
+    cpmm = prod2[~pos]
+    if npe >= 2 and nme >= 2:
+        mp = cpmp.mean()
+        mm = abs(cpmm.mean())
+        vp = float(np.sum(cpmp ** 2) - mp * mp * npe) / (npe - 1)
+        vm = float(np.sum(cpmm ** 2) - mm * mm * nme) / (nme - 1)
+        se = np.sqrt(vp / npe + vm / nme)
+        if se > 0:
+            t = (mp - mm) / se
+            pct = _prob(2, t, npe + nme - 2, 0) / 2.0
+            if t < 0:
+                pct = 1.0
+            out["pm_diff"] = mp - mm
+            out["pm_t"] = t
+            out["pm_p"] = pct
+        else:
+            out["pm_diff"], out["pm_t"], out["pm_p"] = mp - mm, np.nan, np.nan
+    else:
+        out["pm_diff"] = out["pm_t"] = out["pm_p"] = np.nan
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Step 4 -- verification statistics (port of `verify`, undifferenced pass)
 # --------------------------------------------------------------------------- #
 
@@ -438,12 +602,43 @@ def _verify(actual_std, est_std, re_baseline):
     ss_ver = float(np.sum((a - a.mean()) ** 2))
     CE = 1.0 - sse / ss_ver if ss_ver > _TINY else np.nan
 
+    # Cook's verify reports each correlation's significance ONE-sided: a valid
+    # reconstruction should correlate positively, so the two-tailed p from the
+    # NR routine is halved when the statistic is positive and set to 1.0 when it
+    # is not (no evidence of positive skill).
+    def _one_sided(p, stat):
+        # Skip only when undefined (NaN); a +/-inf statistic (perfect
+        # correlation) still resolves: +inf -> halve, -inf -> 1.0.
+        if np.isnan(p) or np.isnan(stat):
+            return p
+        return p / 2.0 if stat > 0 else 1.0
+
     if a.size >= 2 and np.std(a) > _TINY and np.std(e) > _TINY:
         r = float(np.corrcoef(a, e)[0, 1])
+        rdf = a.size - 2
+        denom = (1.0 - r * r) / rdf if rdf > 0 else 0.0
+        if denom > 0:
+            r_t = r / np.sqrt(denom)
+            r_p = _one_sided(_prob(2, r_t, rdf, 0), r_t) if rdf > 0 else np.nan
+        else:                                          # r = +/-1 exactly
+            r_t = np.inf * np.sign(r) if r != 0 else 0.0
+            r_p = 0.0 if r > 0 else 1.0                # perfect fit: skip prob(inf)
     else:
-        r = np.nan
+        r = r_t = r_p = np.nan
 
-    return {"r": r, "RE": RE, "CE": CE, "sse": sse, "ss_cal": ss_cal, "ss_ver": ss_ver}
+    out = {"r": r, "r_t": r_t, "r_p": r_p, "RE": RE, "CE": CE,
+           "sse": sse, "ss_cal": ss_cal, "ss_ver": ss_ver}
+
+    # Rank correlations, the equality-of-means test, and the sign /
+    # product-means tests (Cook's full verify panel, less the robust r).
+    rs, rs_t, rs_p = _spearman(a, e)
+    out.update({"spearman": rs, "spearman_t": rs_t, "spearman_p": _one_sided(rs_p, rs_t)})
+    tau, k_z, k_p = _kendall(a, e)
+    out.update({"kendall": tau, "kendall_z": k_z, "kendall_p": _one_sided(k_p, k_z)})
+    eqm_d, eqm_t, eqm_p = _tutest(a, e)     # two-sided (means may differ either way)
+    out.update({"eqmeans_diff": eqm_d, "eqmeans_t": eqm_t, "eqmeans_p": eqm_p})
+    out.update(_sign_and_pm(a, e))
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -472,9 +667,17 @@ class PcregResult:
     cal_r2 : float
         Calibration R-squared.
     stats : dict
-        Verification statistics (r, RE, CE) on the undifferenced data, on the
-        1st-differenced data under the ``_diff`` keys, and -- when ``cv`` was
-        requested -- the cross-validated skill under the ``cv_`` keys.
+        Verification statistics on the undifferenced data, the same set on the
+        1st-differenced data under ``_diff`` keys, and -- when ``cv`` was
+        requested -- the cross-validated skill under ``cv_`` keys. The panel
+        mirrors Cook's ``verify``: ``RE``, ``CE``; Pearson ``r`` (``r_t``,
+        ``r_p``); ``spearman`` and ``kendall`` rank correlations (with ``_t``/
+        ``_z`` and ``_p``); the ``sign_pos``/``sign_neg`` sign test
+        (``sign_z``, ``sign_p``); the product-means test ``pm_diff`` (``pm_t``,
+        ``pm_p``); and the equality-of-means test ``eqmeans_diff`` (``eqmeans_t``,
+        ``eqmeans_p``). Correlation p-values are one-sided (positive skill
+        expected), as in the FORTRAN. The robust/biweight correlation is not yet
+        ported.
     cv_reconstruction : pandas.Series or None
         The pooled held-out cross-validation prediction per calibration year
         (target units), or ``None`` when ``cv`` was not requested.

@@ -83,6 +83,63 @@ def test_verify_perfect_fit():
     assert v["CE"] == pytest.approx(1.0)
 
 
+def test_verify_full_panel_matches_cook_oracle():
+    # The complete verify panel the FORTRAN printed for the Khangai verification
+    # window (undifferenced): rank correlations, sign test, product-means test,
+    # equality-of-means test -- each with its one-sided (where Cook halves it)
+    # probability.
+    v = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
+    assert v["r"] == pytest.approx(0.442, abs=1e-3)
+    assert v["r_p"] == pytest.approx(0.30875, abs=1e-3)
+    assert v["spearman"] == pytest.approx(0.829, abs=1e-3)
+    assert v["spearman_p"] == pytest.approx(0.02104, abs=1e-3)
+    assert v["kendall"] == pytest.approx(0.733, abs=1e-3)
+    assert v["kendall_p"] == pytest.approx(0.01939, abs=1e-3)
+    assert v["sign_pos"] == 3 and v["sign_neg"] == 3
+    assert v["sign_z"] == pytest.approx(-0.408, abs=1e-3)
+    assert v["sign_p"] == pytest.approx(1.0)
+    assert v["pm_diff"] == pytest.approx(0.321, abs=1e-3)
+    assert v["pm_t"] == pytest.approx(2.537, abs=2e-3)
+    assert v["pm_p"] == pytest.approx(0.03207, abs=1e-3)
+    assert v["eqmeans_diff"] == pytest.approx(-0.060, abs=1e-3)
+    assert v["eqmeans_t"] == pytest.approx(-0.133, abs=1e-3)
+    # the equality-of-means probability is a Wilson-Hilferty approx at a real*4
+    # Welch df; same (non-significant) conclusion, within ~0.004 of the oracle
+    assert v["eqmeans_p"] == pytest.approx(0.88984, abs=6e-3)
+
+
+def test_verify_rank_stats_are_one_sided():
+    # A negatively-correlated estimate carries no positive skill, so Cook's
+    # one-sided correlation p-values collapse to 1.0.
+    rng = np.random.default_rng(5)
+    a = rng.normal(size=12)
+    e = -a + 0.1 * rng.normal(size=12)                 # strong negative, not exact
+    v = P._verify(a, e, re_baseline=0.0)
+    assert v["r"] < 0
+    assert v["r_p"] == pytest.approx(1.0)
+    assert v["spearman_p"] == pytest.approx(1.0)
+    assert v["kendall_p"] == pytest.approx(1.0)
+
+
+def test_verify_spearman_equals_pearson_on_ranks():
+    rng = np.random.default_rng(11)
+    a = rng.normal(size=30)
+    e = 0.6 * a + 0.5 * rng.normal(size=30)
+    rs, _, _ = P._spearman(a, e)
+    ra = pd.Series(a).rank().to_numpy()
+    re = pd.Series(e).rank().to_numpy()
+    assert rs == pytest.approx(np.corrcoef(ra, re)[0, 1])
+
+
+def test_verify_panel_flows_into_result():
+    predictors, target = _synthetic()
+    res = dpl.pcreg(predictors, target, calibration=(1950, 1999),
+                    verification=(1900, 1949), plot=False)
+    for k in ("spearman", "kendall", "sign_pos", "pm_diff", "eqmeans_diff",
+              "spearman_diff", "kendall_diff"):
+        assert k in res.stats
+
+
 # ------------------------------------------------------------ _pca rules -----
 
 def _spd_block(rng, n_obs, n_var):

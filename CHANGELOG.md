@@ -43,8 +43,11 @@ and commit log.
   eigenvalue-1, cumulative-percent, or Guiot PVP truncation), and the target is
   regressed on the PCs that pass a t-test; the fit is back-transformed to
   per-predictor weights, a reconstruction is produced over the full predictor
-  period, and it is verified against withheld data (Pearson r, RE, CE, on both the
-  undifferenced and 1st-differenced series). Optional AR prewhitening reuses
+  period, and it is verified against withheld data on both the undifferenced and
+  1st-differenced series with Cook's full statistical panel -- RE, CE, Pearson,
+  Spearman and Kendall rank correlations, the sign test, the product-means test,
+  and the equality-of-means test (correlation significance one-sided, as in the
+  FORTRAN). Optional AR prewhitening reuses
   dplPy's own `ar_func` (Burg = Cook's maximum-entropy `memcof`). Lead/lag
   predictor masks (`lag=`, Cook's `lagit`) expand each predictor into lagged/led
   copies before screening, given either as integer offsets (`(0, 1)`) or an
