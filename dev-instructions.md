@@ -251,6 +251,26 @@ ahead of the released PyPI version; the index page says so in a banner.
   deprecated keyword alias (with a `DeprecationWarning`) for one release.
 - Plotting goes through `_plot_style.py` helpers and never changes global
   matplotlib state; plotting functions return their `Figure`/`Axes`.
+- **Porting from FORTRAN, MATLAB, or R — prefer the Python ecosystem.** When
+  translating an algorithm into dplPy, prefer the vetted implementations in the
+  scientific Python stack (NumPy, SciPy, statsmodels, pandas, xarray, ...) over
+  re-rolling the original's arithmetic:
+    - A strict, line-for-line translation of the source is a fine *validation*
+      tool — port it to confirm the Python reproduces the original — but the
+      shipped code should then favour the library method, even where that
+      separates the Python from the source. (For example, `pcreg` was validated
+      against Ed Cook's FORTRAN using his Wilson-Hilferty `prob` approximation,
+      then switched to SciPy's exact distributions for release.)
+    - Use the library method except when it produces a large, arbitrary change in
+      the outcome; in that case stop and raise it with Kevin for guidance rather
+      than deciding unilaterally. A close-call shift — e.g. a predictor moving
+      across a screening threshold because the exact distribution differs from the
+      FORTRAN approximation — is expected and fine: reproducing the original
+      exactly is not the goal, correctness is.
+    - Compute in float64 throughout; never down-cast to the source's `real*4` /
+      single precision to reproduce its rounding. Where the only difference from
+      the original is its limited precision, ship the accurate value.
+    - When in any doubt, ask Kevin.
 - Add or extend a unit test in `tests/unit/test_<module>.py` with every change,
   and a line under `[Unreleased]` in `CHANGELOG.md`.
 
