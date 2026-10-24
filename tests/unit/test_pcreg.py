@@ -1,6 +1,6 @@
 """Tests for dpl.pcreg (OSR / principal-components regression reconstruction).
 
-Covers the ported probability function, the verification statistics (checked
+Covers the ported probability function, the validation statistics (checked
 number-for-number against Ed Cook's FORTRAN "oracle" on the Khangai fixture),
 the PCA truncation rules, the full pipeline on deterministic synthetic data (a
 frozen snapshot), the optional AR-prewhitening path, guard rails, and
@@ -34,8 +34,8 @@ def test_import_paths():
     assert dpl.PcregResult is P.PcregResult
 
 
-# ----------------------------------------------------- _verify statistics ---
-# The 1959-1964 verification window Cook's FORTRAN printed for the Khangai
+# --------------------------------------------- _validation_stats statistics ---
+# The 1959-1964 validation window Cook's FORTRAN printed for the Khangai
 # single-target run (standardized actual target vs recon_std), rounded to the
 # 3 d.p. of the FORTRAN log.
 
@@ -43,36 +43,36 @@ _KHANGAI_ACTUAL = np.array([0.118, 0.399, -0.271, -0.284, 0.068, 2.400])
 _KHANGAI_EST = np.array([0.675, 1.014, 0.250, -0.243, 0.434, 0.657])
 
 
-def test_verify_matches_cook_oracle():
-    v = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
+def test_validate_matches_cook_oracle():
+    v = P._validation_stats(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
     assert v["r"] == pytest.approx(0.442, abs=5e-4)
     assert v["RE"] == pytest.approx(0.321, abs=5e-4)
     assert v["CE"] == pytest.approx(0.191, abs=5e-4)
 
 
-def test_verify_re_vs_ce_baselines():
+def test_validate_re_vs_ce_baselines():
     # RE uses the supplied climatology baseline; CE uses the actual's own mean.
     # A nonzero baseline must change RE but never CE.
-    v0 = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
-    v1 = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.5)
+    v0 = P._validation_stats(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
+    v1 = P._validation_stats(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.5)
     assert v0["RE"] != v1["RE"]
     assert v0["CE"] == pytest.approx(v1["CE"])
 
 
-def test_verify_perfect_fit():
-    v = P._verify(_KHANGAI_ACTUAL, _KHANGAI_ACTUAL.copy(), re_baseline=0.0)
+def test_validate_perfect_fit():
+    v = P._validation_stats(_KHANGAI_ACTUAL, _KHANGAI_ACTUAL.copy(), re_baseline=0.0)
     assert v["r"] == pytest.approx(1.0)
     assert v["RE"] == pytest.approx(1.0)
     assert v["CE"] == pytest.approx(1.0)
 
 
-def test_verify_full_panel():
+def test_validate_full_panel():
     # The statistic VALUES reproduce Cook's oracle panel (r, rank correlations,
     # sign counts, product-means and equality-of-means differences); the
     # significance comes from SciPy's exact distributions, not Ed's
     # Wilson-Hilferty / normal approximations, so the p-values are the exact ones
     # we ship (one-sided for the correlations, as Cook's method intends).
-    v = P._verify(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
+    v = P._validation_stats(_KHANGAI_ACTUAL, _KHANGAI_EST, re_baseline=0.0)
     # statistic values -- match the oracle
     assert v["r"] == pytest.approx(0.442, abs=1e-3)
     assert v["spearman"] == pytest.approx(0.829, abs=1e-3)
@@ -89,37 +89,60 @@ def test_verify_full_panel():
     assert v["sign_p"] == pytest.approx(0.65625, abs=1e-3)
     assert v["pm_p"] == pytest.approx(0.03212, abs=1e-3)
     assert v["eqmeans_p"] == pytest.approx(0.89835, abs=1e-3)   # exact Welch
+    # robust = biweight midcorrelation (the modern standard, not Cook's 0.905 robcor)
+    assert v["robust"] == pytest.approx(0.8656, abs=1e-3)
+    assert v["robust_p"] == pytest.approx(0.01294, abs=1e-3)
 
 
-def test_verify_rank_stats_are_one_sided():
+def test_bicor_matches_astropy_formula():
+    # The de novo biweight midcorrelation equals astropy's, derived here directly
+    # (midcov/sqrt(midvar*midvar) reduces to sum(dx*dy)/sqrt(sum dx^2 sum dy^2)).
+    rng = np.random.default_rng(0)
+    for _ in range(5):
+        x = rng.normal(size=40)
+        y = 0.6 * x + 0.5 * rng.normal(size=40)
+        M = np.median; c = 9.0
+        def dev(v):
+            mad = M(np.abs(v - M(v)))
+            u = (v - M(v)) / (c * mad)
+            w = (np.abs(u) < 1).astype(float)
+            return (v - M(v)) * w * (1 - u ** 2) ** 2
+        dx, dy = dev(x), dev(y)
+        ref = np.sum(dx * dy) / np.sqrt(np.sum(dx ** 2) * np.sum(dy ** 2))
+        assert P._bicor(x, y) == pytest.approx(ref)
+    # zero-spread guard
+    assert np.isnan(P._bicor(np.ones(6), np.arange(6.0)))
+
+
+def test_validate_rank_stats_are_one_sided():
     # A negatively-correlated estimate carries no positive skill, so the
     # one-sided (``greater``) correlation p-values sit near 1.0.
     rng = np.random.default_rng(5)
     a = rng.normal(size=12)
     e = -a + 0.1 * rng.normal(size=12)                 # strong negative, not exact
-    v = P._verify(a, e, re_baseline=0.0)
+    v = P._validation_stats(a, e, re_baseline=0.0)
     assert v["r"] < 0
     assert v["r_p"] > 0.99
     assert v["spearman_p"] > 0.99
     assert v["kendall_p"] > 0.99
 
 
-def test_verify_uses_scipy_exact():
+def test_validate_uses_scipy_exact():
     # The shipped p-values are SciPy's, not a hand-rolled approximation.
     from scipy import stats
     a, e = _KHANGAI_ACTUAL, _KHANGAI_EST
-    v = P._verify(a, e, re_baseline=0.0)
+    v = P._validation_stats(a, e, re_baseline=0.0)
     assert v["r_p"] == pytest.approx(stats.pearsonr(a, e, alternative="greater").pvalue)
     assert v["kendall_p"] == pytest.approx(stats.kendalltau(a, e, alternative="greater").pvalue)
     assert v["eqmeans_p"] == pytest.approx(stats.ttest_ind(a, e, equal_var=False).pvalue)
 
 
-def test_verify_panel_flows_into_result():
+def test_validate_panel_flows_into_result():
     predictors, target = _synthetic()
     res = dpl.pcreg(predictors, target, calibration=(1950, 1999),
-                    verification=(1900, 1949), plot=False)
-    for k in ("spearman", "kendall", "sign_pos", "pm_diff", "eqmeans_diff",
-              "spearman_diff", "kendall_diff"):
+                    validation=(1900, 1949), plot=False)
+    for k in ("spearman", "kendall", "robust", "sign_pos", "pm_diff",
+              "eqmeans_diff", "spearman_diff", "kendall_diff", "robust_diff"):
         assert k in res.stats
 
 
@@ -184,7 +207,7 @@ def _synthetic(seed=7, n_pred=20, first=1900, last=1999):
 def test_pipeline_runs_and_is_frozen():
     predictors, target = _synthetic()
     res = dpl.pcreg(predictors, target, calibration=(1950, 1999),
-                    verification=(1900, 1949), pc_criterion="pvp", plot=False)
+                    validation=(1900, 1949), pc_criterion="pvp", plot=False)
     assert isinstance(res, dpl.PcregResult)
     # signal-bearing predictors should dominate those retained
     signal_kept = [c for c in res.predictors_screened if int(c[1:]) < 10]
@@ -214,7 +237,7 @@ def test_pipeline_reconstruction_rescaled_to_target_units():
 def test_prewhiten_path_runs():
     predictors, target = _synthetic()
     res = dpl.pcreg(predictors, target, calibration=(1950, 1999),
-                    verification=(1900, 1949), prewhiten=True,
+                    validation=(1900, 1949), prewhiten=True,
                     ar_method="burg", plot=False)
     assert isinstance(res, dpl.PcregResult)
     assert res.reconstruction.notna().any()
@@ -316,12 +339,12 @@ def test_lag_expands_predictor_pool():
     assert lagged.settings["lag"] == [0, 1]
 
 
-# ------------------------------------------------------- cross-validation ----
+# ----------------------------------------------------- cross-validation ----
 
 def test_cv_loo_runs_and_reports():
     predictors, target = _synthetic()
     res = dpl.pcreg(predictors, target, calibration=(1950, 1999),
-                    verification=(1900, 1949), cv=1, plot=False)
+                    validation=(1900, 1949), cv=1, plot=False)
     assert res.cv_reconstruction is not None
     assert res.cv_reconstruction.index.min() == 1950
     assert res.cv_reconstruction.index.max() == 1999
@@ -418,6 +441,6 @@ def test_inputs_not_mutated():
     p0 = predictors.copy()
     t0 = target.copy()
     dpl.pcreg(predictors, target, calibration=(1950, 1990),
-              verification=(1910, 1949), lag=(0, 1), cv=1, plot=False)
+              validation=(1910, 1949), lag=(0, 1), cv=1, plot=False)
     pd.testing.assert_frame_equal(predictors, p0)
     pd.testing.assert_series_equal(target, t0)

@@ -101,6 +101,21 @@ Two foundational texts underpin the field and the methods dplPy implements:
 - Biondi, F., Qeadan, F. (2008). Inequality in paleorecords. *Ecology* 89(4),
   1056–1067. *(Gini coefficient; mean-sensitivity treatment)*
 
+## Climate response & reconstruction
+
+- Cook, E.R., Briffa, K.R., Jones, P.D. (1994). Spatial regression methods in
+  dendroclimatology: a review and comparison of two techniques.
+  *International Journal of Climatology* 14(4), 379–402. *(the OSR / PCR method
+  behind `pcreg`)*
+- Meko, D.M., Touchan, R., Anchukaitis, K.J. (2011). Seascorr: A MATLAB program
+  for identifying the seasonal climate signal in an annual tree-ring time series.
+  *Computers & Geosciences* 37(9), 1234–1241. *(the method behind `seascorr`)*
+- Fritts, H.C. (1976). *Tree Rings and Climate.* Academic Press. *(reduction of
+  error and the verification/validation statistics)*
+- Oreskes, N., Shrader-Frechette, K., Belitz, K. (1994). Verification, validation,
+  and confirmation of numerical models in the Earth sciences. *Science* 263(5147),
+  641–646. *(why dplPy says "validation", not "verification")*
+
 ## Citing dplPy
 
 dplPy is developed by the [OpenDendro](https://opendendro.org) group. If you use

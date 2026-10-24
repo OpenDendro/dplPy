@@ -28,12 +28,12 @@ __license__ = "GNU GPLv3"
 #              principal components, and the target is regressed on a subset of
 #              those PCs; the fit is back-transformed to per-predictor weights,
 #              a reconstruction is produced over the full predictor period, and
-#              it is verified against withheld data. This is the second function
+#              it is validated against withheld data. This is the second function
 #              in dplPy's climate-response module (after seascorr).
 #
 #              Parity: validated number-for-number against the compiled FORTRAN
 #              "oracle" on a single-target fixture (Khangai, 101.25E/48.75N;
-#              calibration 1965-1989, verification 1959-1964). See
+#              calibration 1965-1989, validation 1959-1964). See
 #              dev/pcreg_DECISIONS.md for every quirk that is preserved on
 #              purpose. Where a comment says "parity:" it is reproducing the
 #              FORTRAN exactly, not choosing what is statistically ideal.
@@ -73,7 +73,7 @@ _TINY = 1e-12
 # Wilson-Hilferty ``prob`` approximation. Ed wrote that approximation (and the
 # Numerical Recipes rank routines) because the language and era required it; the
 # exact distributions are more accurate -- most visibly at low degrees of freedom
-# (a short verification window) and right at a screening threshold, where a
+# (a short validation window) and right at a screening threshold, where a
 # close-call predictor can fall on the other side of alpha than Cook's code put
 # it. Exact reproduction of Ed's selection is not the goal; correctness is.
 
@@ -324,8 +324,8 @@ def _pcr(scores_cal, y_cal, eigvecs, eigvals, neig, order_method, t_cutoff, ncal
 # --------------------------------------------------------------------------- #
 
 def _sign_and_pm(a, e):
-    """Sign test and product-means (cross-products means) test -- the two verify
-    panels SciPy has no off-the-shelf equivalent for, so we keep Cook's
+    """Sign test and product-means (cross-products means) test -- the two
+    validation panels SciPy has no off-the-shelf equivalent for, so we keep Cook's
     construction and take the significance from an exact SciPy distribution.
 
     Both rest on the signed products ``prod2 = (a - mean(a)) * (e - mean(a))`` --
@@ -371,12 +371,48 @@ def _sign_and_pm(a, e):
         out["pm_diff"] = out["pm_t"] = out["pm_p"] = np.nan
     return out
 
+
+def _bicor(a, e, c=9.0):
+    """Biweight midcorrelation -- a robust correlation that down-weights outliers
+    through Tukey's biweight.
+
+    This is the modern standard estimator (Wilcox; WGCNA; identical to
+    ``astropy.stats.biweight_midcorrelation``), computed here directly so dplPy
+    needs no extra dependency. It replaces Cook's older sum/difference
+    ``robcor``: the construction differs (and the values differ by a few
+    hundredths), but the biweight midcorrelation is the documented, widely-used
+    robust correlation. ``c=9`` is the usual tuning constant (Cook's ``robcor``
+    value too).
+
+    Returns the correlation, or NaN when a series has zero median absolute
+    deviation (no spread to weight).
+    """
+    def _dev(v):
+        M = np.median(v)
+        mad = np.median(np.abs(v - M))
+        if mad <= 0:
+            return None
+        u = (v - M) / (c * mad)
+        w = (np.abs(u) < 1.0).astype(float)           # Tukey biweight support
+        return (v - M) * w * (1.0 - u * u) ** 2
+    a = np.asarray(a, dtype=float)
+    e = np.asarray(e, dtype=float)
+    da = _dev(a)
+    de = _dev(e)
+    if da is None or de is None:
+        return np.nan
+    denom = np.sqrt(np.sum(da ** 2) * np.sum(de ** 2))
+    if denom <= 0:
+        return np.nan
+    return float(np.sum(da * de) / denom)
+
+
 # --------------------------------------------------------------------------- #
-# Step 4 -- verification statistics (port of `verify`, undifferenced pass)
+# Step 4 -- validation statistics (port of `verify`, undifferenced pass)
 # --------------------------------------------------------------------------- #
 
-def _verify(actual_std, est_std, re_baseline):
-    """Verification statistics in standardized units, as Cook's ``verify`` /
+def _validation_stats(actual_std, est_std, re_baseline):
+    """Validation statistics in standardized units, as Cook's ``verify`` /
     ``rece`` compute them (lines 4848, 5418).
 
     Both inputs are standardized by the *calibration* mean and SD of the target.
@@ -393,12 +429,12 @@ def _verify(actual_std, est_std, re_baseline):
     ``xm``. For the undifferenced pass that is the calibration mean of the
     standardized target (= 0); for the 1st-differenced pass it is the
     calibration mean of the *differenced* target, which is generally non-zero.
-    CE always uses the verification period's own mean.
+    CE always uses the validation period's own mean.
 
     Parameters
     ----------
     actual_std : ndarray
-        Standardized actual target over the verification years.
+        Standardized actual target over the validation years.
     est_std : ndarray
         Standardized reconstruction (recon_std) over the same years.
     re_baseline : float
@@ -416,7 +452,7 @@ def _verify(actual_std, est_std, re_baseline):
     ss_cal = float(np.sum((a - re_baseline) ** 2))
     RE = 1.0 - sse / ss_cal if ss_cal > _TINY else np.nan
 
-    # CE baseline = verification-period mean of the (standardized) actual.
+    # CE baseline = validation-period mean of the (standardized) actual.
     ss_ver = float(np.sum((a - a.mean()) ** 2))
     CE = 1.0 - sse / ss_ver if ss_ver > _TINY else np.nan
 
@@ -437,9 +473,24 @@ def _verify(actual_std, est_std, re_baseline):
         out["spearman_p"] = float(sp.pvalue)
         out["kendall"] = float(kt.statistic)
         out["kendall_p"] = float(kt.pvalue)
+        # Robust (biweight midcorrelation). Its significance follows the panel's
+        # one-sided t convention; the t-distribution is exact for Pearson under
+        # normality and an approximation for a robust correlation, so treat the
+        # robust p as indicative.
+        rb = _bicor(a, e)
+        out["robust"] = rb
+        if np.isfinite(rb) and abs(rb) < 1.0:
+            rbdf = a.size - 2
+            rt = rb * np.sqrt(rbdf / (1.0 - rb * rb))
+            out["robust_p"] = float(stats.t.sf(rt, rbdf)) if rt > 0 else 1.0
+        elif np.isfinite(rb):                          # |rb| == 1
+            out["robust_p"] = 0.0 if rb > 0 else 1.0
+        else:
+            out["robust_p"] = np.nan
     else:
         out.update({"r": np.nan, "r_p": np.nan, "spearman": np.nan,
-                    "spearman_p": np.nan, "kendall": np.nan, "kendall_p": np.nan})
+                    "spearman_p": np.nan, "kendall": np.nan, "kendall_p": np.nan,
+                    "robust": np.nan, "robust_p": np.nan})
 
     # Equality of means: Welch's two-sample t (two-sided), from SciPy.
     if a.size >= 2 and e.size >= 2:
@@ -467,8 +518,8 @@ class PcregResult:
         Year-indexed reconstruction of the target over the full predictor
         period, in the target's own units (variance rescaled to the calibration
         mean and SD).
-    calibration, verification : tuple(int, int) or None
-        The calibration and verification windows (first, last).
+    calibration, validation : tuple(int, int) or None
+        The calibration and validation windows (first, last).
     predictors_screened : list
         Column labels retained by the screening step, in column order.
     screen_info : pandas.DataFrame
@@ -480,17 +531,19 @@ class PcregResult:
     cal_r2 : float
         Calibration R-squared.
     stats : dict
-        Verification statistics on the undifferenced data, the same set on the
+        Validation statistics on the undifferenced data, the same set on the
         1st-differenced data under ``_diff`` keys, and -- when ``cv`` was
         requested -- the cross-validated skill under ``cv_`` keys. The panel
         mirrors Cook's ``verify``: ``RE``, ``CE``; Pearson ``r`` (``r_p``);
-        ``spearman`` and ``kendall`` rank correlations (``_p``); the
-        ``sign_pos``/``sign_neg`` sign test (``sign_p``); the product-means test
-        ``pm_diff`` (``pm_t``, ``pm_p``); and the equality-of-means test
-        ``eqmeans_diff`` (``eqmeans_t``, ``eqmeans_p``). Significance comes from
-        SciPy's exact distributions; the correlation p-values are one-sided
-        (positive skill expected) and the sign test is an exact binomial. The
-        robust/biweight correlation is not yet ported.
+        ``spearman`` and ``kendall`` rank correlations (``_p``); the ``robust``
+        biweight midcorrelation (``robust_p``); the ``sign_pos``/``sign_neg``
+        sign test (``sign_p``); the product-means test ``pm_diff`` (``pm_t``,
+        ``pm_p``); and the equality-of-means test ``eqmeans_diff`` (``eqmeans_t``,
+        ``eqmeans_p``). Significance comes from SciPy's exact distributions; the
+        correlation p-values are one-sided (positive skill expected) and the sign
+        test is an exact binomial. ``robust`` is the modern biweight
+        midcorrelation (equivalent to ``astropy``'s), which replaces Cook's older
+        sum/difference ``robcor``.
     cv_reconstruction : pandas.Series or None
         The pooled held-out cross-validation prediction per calibration year
         (target units), or ``None`` when ``cv`` was not requested.
@@ -507,12 +560,12 @@ class PcregResult:
         The resolved analysis settings.
     """
 
-    def __init__(self, reconstruction, calibration, verification,
+    def __init__(self, reconstruction, calibration, validation,
                  predictors_screened, screen_info, n_pc, pcs_selected, cal_r2,
                  stats, weights, eigenvalues, settings):
         self.reconstruction = reconstruction
         self.calibration = calibration
-        self.verification = verification
+        self.validation = validation
         self.predictors_screened = predictors_screened
         self.screen_info = screen_info
         self.n_pc = n_pc
@@ -532,7 +585,7 @@ class PcregResult:
         rv = self.stats.get("r")
         re = self.stats.get("RE")
         return ("PcregResult(cal=%s, n_pred=%d, n_pc=%d, order=%d, "
-                "cal_R2=%.3f, ver_r=%s, ver_RE=%s)"
+                "cal_R2=%.3f, val_r=%s, val_RE=%s)"
                 % (("%d-%d" % cal) if cal else None,
                    len(self.predictors_screened), self.n_pc,
                    len(self.pcs_selected), self.cal_r2,
@@ -801,7 +854,7 @@ def _cross_validate(P, y, cal_years, s, cv):
 # Public function
 # --------------------------------------------------------------------------- #
 
-def pcreg(predictors, target, calibration, verification=None,
+def pcreg(predictors, target, calibration, validation=None,
           screen_alpha=0.10, screen_tails=2, screen_sign=None,
           min_coverage=None,
           pc_criterion="pvp", n_pc=12, ev_cutoff=1.0, cum_pct=90.0,
@@ -816,7 +869,7 @@ def pcreg(predictors, target, calibration, verification=None,
     reduced to principal components, and the target is regressed on the PCs that
     pass a t-test; the fit is back-transformed to per-predictor weights, a
     reconstruction is produced over the full predictor period, and (if a
-    verification window is given) it is verified against the withheld data.
+    validation window is given) it is validated against the withheld data.
 
     Parameters
     ----------
@@ -829,9 +882,9 @@ def pcreg(predictors, target, calibration, verification=None,
         (e.g. a March-May PDSI mean) before calling.
     calibration : (first, last)
         Calibration window, inclusive.
-    verification : (first, last) or None
-        Verification window, inclusive. When ``None``, only the calibration fit
-        and the reconstruction are returned (no verification statistics).
+    validation : (first, last) or None
+        Validation window, inclusive. When ``None``, only the calibration fit
+        and the reconstruction are returned (no validation statistics).
     screen_alpha : float
         Screening significance level. Use ``1.0`` with ``screen_tails=2`` to
         force every predictor into the PCA ("normal response function").
@@ -878,10 +931,10 @@ def pcreg(predictors, target, calibration, verification=None,
         keys (``cv_r``, ``cv_RE``, ``cv_CE``; ``cv_RE`` and ``cv_CE`` coincide
         over the calibration window). ``None`` skips cross-validation.
     first_differences : bool
-        Also report verification statistics on the 1st-differenced series (the
-        FORTRAN's second verification pass), under ``_diff`` keys in ``stats``.
+        Also report validation statistics on the 1st-differenced series (the
+        FORTRAN's second validation pass), under ``_diff`` keys in ``stats``.
     plot : bool
-        Draw the reconstruction/verification figure.
+        Draw the reconstruction/validation figure.
 
     Returns
     -------
@@ -890,7 +943,7 @@ def pcreg(predictors, target, calibration, verification=None,
     Notes
     -----
     A single target, PC-regression core with optional AR prewhitening, lead/lag
-    predictor masks, 1st-difference verification, and leave-k-out
+    predictor masks, 1st-difference validation, and leave-k-out
     cross-validation. Deferred to a later phase (and documented in
     ``dev/pcreg_DECISIONS.md``): canonical regression, robust / biweight
     correlations, and the Southern-Hemisphere auto-shift.
@@ -906,7 +959,7 @@ def pcreg(predictors, target, calibration, verification=None,
     y = _as_year_series(target)
 
     cal = _parse_window(calibration, "calibration")
-    ver = _parse_window(verification, "verification")
+    val = _parse_window(validation, "validation")
     if cal is None:
         raise ValueError("calibration window is required.")
     cal_years = np.arange(cal[0], cal[1] + 1)
@@ -967,10 +1020,10 @@ def pcreg(predictors, target, calibration, verification=None,
     recon_scaled.name = "reconstruction"
     pmu, psd = fit["pmu"], fit["psd"]
 
-    # ---- Verification --------------------------------------------------- #
+    # ---- Validation --------------------------------------------------- #
     stats = {}
-    if ver is not None:
-        ver_years = np.arange(ver[0], ver[1] + 1)
+    if val is not None:
+        val_years = np.arange(val[0], val[1] + 1)
         # Work in the same standardized units `verify` uses: standardized actual
         # target, and recon_std (the PC fit before variance rescaling).
         y_std = (y - pmu) / psd
@@ -982,11 +1035,11 @@ def pcreg(predictors, target, calibration, verification=None,
         base_undiff = float(np.nanmean(y_std_cal))
         base_diff = float(np.nanmean(np.diff(y_std_cal)))
 
-        a = y_std.reindex(ver_years).to_numpy()
-        e = recon_std.reindex(ver_years).to_numpy()
+        a = y_std.reindex(val_years).to_numpy()
+        e = recon_std.reindex(val_years).to_numpy()
         good = np.isfinite(a) & np.isfinite(e)
-        vstats = _verify(a[good], e[good], base_undiff)
-        stats.update(vstats)
+        valstats = _validation_stats(a[good], e[good], base_undiff)
+        stats.update(valstats)
 
         if first_differences:
             # parity: difference both series (consecutive years), then recompute
@@ -995,7 +1048,7 @@ def pcreg(predictors, target, calibration, verification=None,
             de = np.diff(e)
             g2 = np.isfinite(da) & np.isfinite(de)
             if g2.sum() >= 2:
-                d = _verify(da[g2], de[g2], base_diff)
+                d = _validation_stats(da[g2], de[g2], base_diff)
                 stats.update({k + "_diff": v for k, v in d.items()})
 
     # ---- Cross-validation (leave-k-out, full refit) --------------------- #
@@ -1007,7 +1060,7 @@ def pcreg(predictors, target, calibration, verification=None,
     result = PcregResult(
         reconstruction=recon_scaled,
         calibration=cal,
-        verification=ver,
+        validation=val,
         predictors_screened=kept,
         screen_info=fit["screen_info"],
         n_pc=fit["neig"],

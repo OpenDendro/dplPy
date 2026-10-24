@@ -21,7 +21,7 @@ __license__ = "GNU GPLv3"
 # Title: pcreg_plot.py
 # Description: The figure pcreg draws -- the reconstruction over the full
 #   predictor period with the actual climate target overlaid, the calibration
-#   and verification windows shaded, and the key skill statistics annotated.
+#   and validation windows shaded, and the key skill statistics annotated.
 #   Styled per-Axes via _plot_style, like the rest of dplPy's plots.
 
 import numpy as np
@@ -33,7 +33,7 @@ _ACTUAL = "#444444"        # observed target
 _RECON = "#1f6f8b"         # reconstruction
 _CV = "#e6872e"            # cross-validation (held-out) prediction
 _CAL = "#2ca02c"           # calibration shading
-_VER = "#d62728"           # verification shading
+_VAL = "#d62728"           # validation shading
 
 
 def _plot_pcreg(result, target, show=True):
@@ -67,17 +67,17 @@ def _plot_pcreg(result, target, show=True):
         ax.plot(cvr.index, cvr.to_numpy(), color=_CV, lw=0.0, marker="o",
                 ms=3, alpha=0.7, label="cross-validation", zorder=5)
 
-    # Shade the calibration and verification windows.
+    # Shade the calibration and validation windows.
     if result.calibration is not None:
         c0, c1 = result.calibration
         ax.axvspan(c0, c1, color=_CAL, alpha=0.08, zorder=0)
         ax.text(0.5 * (c0 + c1), ax.get_ylim()[1], "calibration",
                 color=_CAL, ha="center", va="top", fontsize=8)
-    if result.verification is not None:
-        v0, v1 = result.verification
-        ax.axvspan(v0, v1, color=_VER, alpha=0.08, zorder=0)
-        ax.text(0.5 * (v0 + v1), ax.get_ylim()[1], "verification",
-                color=_VER, ha="center", va="top", fontsize=8)
+    if result.validation is not None:
+        v0, v1 = result.validation
+        ax.axvspan(v0, v1, color=_VAL, alpha=0.08, zorder=0)
+        ax.text(0.5 * (v0 + v1), ax.get_ylim()[1], "validation",
+                color=_VAL, ha="center", va="top", fontsize=8)
 
     # Annotate the skill statistics.
     bits = ["n$_{pred}$=%d" % len(result.predictors_screened),

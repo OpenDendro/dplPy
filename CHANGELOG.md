@@ -43,11 +43,17 @@ and commit log.
   eigenvalue-1, cumulative-percent, or Guiot PVP truncation), and the target is
   regressed on the PCs that pass a t-test; the fit is back-transformed to
   per-predictor weights, a reconstruction is produced over the full predictor
-  period, and it is verified against withheld data on both the undifferenced and
+  period, and it is validated against withheld data (the `validation=` window) on
+  both the undifferenced and
   1st-differenced series with Cook's full statistical panel -- RE, CE, Pearson,
-  Spearman and Kendall rank correlations, the sign test, the product-means test,
-  and the equality-of-means test (correlation significance one-sided, positive
-  skill expected). Significance throughout -- screening and verification -- uses
+  Spearman and Kendall rank correlations, the biweight midcorrelation (a robust
+  correlation, equivalent to astropy's and replacing Cook's older sum/difference
+  `robcor`), the sign test, the product-means test, and the equality-of-means
+  test (correlation significance one-sided, positive skill expected). The
+  validation window is stated explicitly via `validation=` (we follow Oreskes et
+  al. 1994 in preferring "validation" -- establishing legitimacy -- over
+  "verification", which implies proving truth). Significance throughout --
+  screening and validation -- uses
   SciPy's exact distributions rather than the FORTRAN's Wilson-Hilferty / normal
   approximations; the statistic values match Cook's, but a close-call predictor
   may fall on the other side of the screening threshold than his approximation
@@ -60,7 +66,7 @@ and commit log.
   out-of-sample skill (`cv_r`, `cv_RE`, `cv_CE`), exposing overfitting the
   in-sample R² hides. Validated number-for-number against the compiled FORTRAN on
   a single-target fixture (screened predictors, PC count, regression order,
-  calibration R², all verification statistics, and the lag expansion all exact;
+  calibration R², all validation statistics, and the lag expansion all exact;
   reconstruction to 5e-4). dplPy deliberately does not fabricate the FORTRAN's
   common-period edge padding, so a predictor must genuinely cover a lagged window
   to enter it; any predictor dropped for insufficient coverage is reported in a
