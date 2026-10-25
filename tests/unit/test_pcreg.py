@@ -101,7 +101,9 @@ def test_bicor_matches_astropy_formula():
     for _ in range(5):
         x = rng.normal(size=40)
         y = 0.6 * x + 0.5 * rng.normal(size=40)
-        M = np.median; c = 9.0
+        M = np.median
+        c = 9.0
+
         def dev(v):
             mad = M(np.abs(v - M(v)))
             u = (v - M(v)) / (c * mad)
