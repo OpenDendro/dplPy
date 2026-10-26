@@ -1,3 +1,5 @@
+import contextlib
+import io
 import warnings
 
 import numpy as np
@@ -5,6 +7,38 @@ import pandas as pd
 import pytest
 
 import dplpy as dpl
+
+
+def _read_quiet(path):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            return dpl.readers(path)
+
+
+# Release years from the MATLAB golden master (v267_rga, sig=0) on Dan
+# Druckenbrod's mo024 post-oak test set: 94 releases across 52 of 61 series.
+# See dev/druckenbrod/ for the MATLAB source and validate_releases.py.
+_MO024_RELEASES = {
+    'DEM01A': [1915], 'DEM01B': [1914], 'DEM01C': [1914],
+    'DEM03A': [1809, 1813, 1964], 'DEM07A': [1779, 1803], 'DEM07B': [1781, 1801],
+    'DEM07C': [1780, 1803], 'DEM11A': [1809, 1907], 'DEM11B': [1804, 1905],
+    'DEM11C': [1804, 1906], 'DEM14B': [1902, 1907], 'DEM14E': [1809],
+    'DEM15A': [1839, 1901], 'DEM17B': [1804, 1901], 'DEM17C': [1746, 1750, 1901],
+    'DEM18B': [1769, 1803, 1807], 'DEM19A': [1839], 'DEM19B': [1901],
+    'DEM21A': [1865, 1872, 1874], 'DEM21B': [1906], 'DEM26A': [1756, 1803],
+    'DEM26B': [1907, 1909], 'DEM37A': [1760, 1801, 1905, 1938], 'DEM38A': [1895],
+    'DEM38B': [1807, 1901], 'DEM40B': [1806, 1836], 'DEM41A': [1768, 1809],
+    'DEM41B': [1767, 1809], 'DEM43A': [1715], 'DEM43B': [1715, 1918, 1946],
+    'DEM44A': [1936], 'DEM44B': [1934], 'DEM46A': [1938], 'DEM46B': [1934, 1939],
+    'DEM47A': [1835, 1901], 'DEM47B': [1901], 'DEM49A': [1810, 1839, 1901],
+    'DEM49B': [1814, 1895, 1901], 'DEM50A': [1925, 1939, 1944], 'DEM50B': [1934],
+    'DEM51A': [1944], 'DEM52A': [1804, 1907, 1938], 'DEM52B': [1902, 1941],
+    'DEM53A': [1941], 'DEM53B': [1943], 'DEM54A': [1906, 1941], 'DEM54B': [1901],
+    'DEM55A': [1902, 1954], 'DEM55B': [1902], 'DEM57A': [1882, 1901],
+    'DEM57B': [1901], 'DEM59B': [1907],
+}
 
 
 def test_releases_synthetic_known_event():
@@ -70,3 +104,95 @@ def test_releases_accepts_series_and_frame_equivalently():
     r_series = dpl.releases(s, threshold=50, window_length=5)
     r_frame = dpl.releases(s.to_frame(), threshold=50, window_length=5)
     pd.testing.assert_frame_equal(r_series, r_frame)
+
+
+def test_releases_mo024_matches_matlab_golden_master():
+    # Full regression against Druckenbrod's MATLAB on his mo024 test set.
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    r = dpl.releases(data, threshold=50, window_length=15)
+    assert len(r) == 94
+    assert r["series"].nunique() == 52
+    got = {nm: sorted(g["year"].tolist())
+           for nm, g in r.groupby("series")}
+    assert got == _MO024_RELEASES
+
+
+# ----- disturbance_detrend -----
+
+# Reference values from the MATLAB golden master (v267_chron(3,50,15,0,.), mo024).
+# St = DSt/At climate index (sheet 4), DSt (sheet 2), At (sheet 3), StTR residual.
+def test_disturbance_detrend_mo024_matches_golden_master():
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    info = dpl.disturbance_detrend(data, threshold=50, window_length=15,
+                                   return_info=True)
+    St = info["index"]; DSt = info["disturbance_standardized"]
+    At = info["age_trend"]; StTR = info["residual_index"]
+    atol = 1e-6
+    assert abs(St.loc[1915, "DEM01A"] - 1.1219009924) < atol
+    assert abs(St.loc[1982, "DEM01A"] - 1.1659081864) < atol
+    assert abs(St.loc[1803, "DEM07A"] - 0.9508481645) < atol
+    assert abs(St.loc[1900, "DEM04A"] - 0.7862283674) < atol   # a no-release series
+    assert abs(DSt.loc[1946, "DEM43B"] - 0.2717307208) < atol
+    assert abs(At.loc[1946, "DEM43B"] - 0.3155444786) < atol
+    assert abs(StTR.loc[1914, "DEM01C"] - (-0.0723035449)) < atol
+    # per-series index means
+    assert abs(St["DEM01A"].mean() - 1.0329213232) < atol
+    assert abs(St["DEM43B"].mean() - 1.0331350531) < atol
+
+
+def test_disturbance_detrend_return_info_keys():
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    info = dpl.disturbance_detrend(data, return_info=True)
+    assert set(info) == {"index", "disturbance_standardized", "age_trend",
+                         "residual_index", "releases", "averages"}
+    assert list(info["averages"].columns) == [
+        "ring_width", "age_trend", "Dt", "index", "sample_depth"]
+    assert len(info["releases"]) == 94
+
+
+def test_disturbance_detrend_index_feeds_chron():
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    idx = dpl.disturbance_detrend(data)
+    assert isinstance(idx, pd.DataFrame)
+    assert idx.shape[1] == data.shape[1]
+    ch = dpl.chron(idx, plot=False)          # must accept it like detrend output
+    assert len(ch) == len(idx)
+
+
+def test_disturbance_detrend_no_release_series_has_zero_increment():
+    # DEM04A has no releases, so the disturbance increment Dt is zero throughout
+    # and the index reduces to an age-only detrend.
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    s = data["DEM04A"]
+    info = dpl.disturbance_detrend(s, return_info=True)
+    dst = info["disturbance_standardized"].dropna()
+    raw = s.dropna()
+    assert np.allclose(dst.to_numpy(), raw.to_numpy(), atol=1e-6)  # DSt == raw
+
+
+def test_disturbance_detrend_power_false_runs_and_differs():
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    a = dpl.disturbance_detrend(data, power=True)
+    b = dpl.disturbance_detrend(data, power=False)
+    assert not np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
+
+
+def test_disturbance_detrend_series_in_series_out():
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    out = dpl.disturbance_detrend(data["DEM01A"])
+    assert isinstance(out, pd.Series)
+
+
+def test_disturbance_detrend_significance_not_implemented():
+    s = pd.Series(np.ones(60), index=np.arange(1900, 1960), name="FLAT")
+    with pytest.raises(NotImplementedError):
+        dpl.disturbance_detrend(s, significance=True)
+
+
+def test_disturbance_detrend_too_short_all_nan_warns():
+    s = pd.Series(np.linspace(1, 2, 20), index=np.arange(2000, 2020), name="SH")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        out = dpl.disturbance_detrend(s, window_length=15)
+    assert out.isna().all()
+    assert any("NaN" in str(x.message) for x in w)

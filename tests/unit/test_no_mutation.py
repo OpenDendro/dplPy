@@ -231,8 +231,18 @@ def _c_xdate_undated(rwl, rwi):
     return [small], lambda: _call(dpl.xdate_undated, small, **QUIET)
 
 
+def _c_releases(rwl, rwi):
+    return [rwl], lambda: _call(dpl.releases, rwl)
+
+
+def _c_disturbance_detrend(rwl, rwi):
+    return [rwl], lambda: _call(dpl.disturbance_detrend, rwl, **QUIET)
+
+
 CASES = {
     "detrend": _c_detrend,
+    "releases": _c_releases,
+    "disturbance_detrend": _c_disturbance_detrend,
     "fill_internal": _c_fill_internal,
     "edit_rwl": _c_edit_rwl,
     "combine_rwl": _c_combine_rwl,

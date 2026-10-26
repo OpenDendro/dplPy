@@ -29,14 +29,17 @@ __license__ = "GNU GPLv3"
 #              85, 126195). Releases are detected by radial-growth averaging
 #              (Lorimer & Frelich: running means, percent-growth-change, a
 #              threshold, and the local maximum of each above-threshold segment).
-#              A later addition, disturbance_detrend(), will power-transform each
-#              series, remove each release with an age-dependent spline, age-detrend
-#              the disturbance-free series, and return a climate index.
+#              disturbance_detrend() then power-transforms each series, removes each
+#              release with an age-dependent spline (dplPy's ads, the same routine
+#              as Dan's ADSmelvin), age-detrends the disturbance-free series, and
+#              returns a climate index that drops into chron() like detrend output.
 #
-#              Parity: the release detector is validated against the MATLAB golden
-#              master (v267_rga, sig=0) on Dan's mo024 post-oak test set, 94
-#              releases across 52 of 61 series, release years identical. The MATLAB
-#              source and a validation script live in dev/druckenbrod/. Where a
+#              Parity: both are validated against the MATLAB golden master
+#              (v267_rga, sig=0) on Dan's mo024 post-oak test set. The detector
+#              reproduces 94 releases across 52 of 61 series with identical release
+#              years; the pipeline reproduces the per-series disturbance series, age
+#              trend, index and residual to ~1e-11 (float64 round-off). The MATLAB
+#              source and validation scripts live in dev/druckenbrod/. Where a
 #              comment says "parity:" it reproduces the MATLAB exactly, not
 #              necessarily what is statistically ideal.
 
@@ -44,6 +47,7 @@ import numpy as np
 import pandas as pd
 
 from ._validate import _warn
+from .agedepspline import ads
 
 
 def _rga_one(raw, yrs, threshold, window_length):
@@ -177,8 +181,6 @@ def releases(data, threshold=50, window_length=15, significance=False,
             continue
         yrs = v.index.to_numpy()
         raw = v.to_numpy(dtype=float)
-        if (~np.isnan(data[name].to_numpy())).sum() != len(raw):
-            pass  # (dropna already contiguous for standard rwl input)
         rel, M, pgc = _rga_one(raw, yrs, threshold, window_length)
         if len(raw) < 2 * window_length:
             _warn(f"releases: series '{name}' has only {len(raw)} rings "
@@ -192,3 +194,216 @@ def releases(data, threshold=50, window_length=15, significance=False,
     table = (pd.DataFrame(rows, columns=["series", "year", "pct_growth_change"])
              .sort_values(["series", "year"]).reset_index(drop=True))
     return (table, info) if return_info else table
+
+
+def _power_transform(raw, power):
+    """Druckenbrod's power transformation of one raw series.
+
+    Returns ``(transformed, p)``. The optimal power is ``1 - slope`` from the
+    regression of ``log|first difference|`` on ``log(subsequent ring width)`` over
+    pairs where both are non-zero (natural logs, parity with v267_rga). ``p <= 0.05``
+    takes natural logs, ``p > 1`` is clamped to 1, otherwise the series is raised to
+    ``p``. ``power=False`` skips the transform (identity, ``p`` returned as None).
+    """
+    if not power:
+        return np.asarray(raw, dtype=float), None
+    raw = np.asarray(raw, dtype=float)
+    sub = raw[1:]                        # fdiff(:,1) = raw(x+1)
+    dif = np.abs(np.diff(raw))           # fdiff(:,2) = |raw(x+1) - raw(x)|
+    mask = (sub != 0) & (dif != 0)
+    x = np.log(sub[mask])
+    y = np.log(dif[mask])
+    X = np.column_stack([np.ones_like(x), x])
+    slope = np.linalg.lstsq(X, y, rcond=None)[0][1]
+    p = 1.0 - slope
+    if p <= 0.05:
+        return np.log(raw), p
+    if p > 1:
+        return raw ** 1.0, 1.0
+    return raw ** p, p
+
+
+def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, power):
+    """Run the full Druckenbrod pipeline on ONE gap-free raw series.
+
+    ``rel_idx`` are the release positions (0-based, ascending) from detection.
+    Returns a dict of full-length arrays: ``DSt`` (disturbance standardized),
+    ``At`` (age trend), ``St`` (climate index = DSt/At), ``StTR`` (residual index in
+    transformed space), ``Dt`` (disturbance increment raw-DSt), and ``power``.
+    Mirrors v267_rga after detection, line for line.
+    """
+    n = len(raw)
+    mav = int(window_length)
+    rawT, p = _power_transform(raw, power)
+
+    # INCREMENTAL DETRENDING of each release, newest to oldest.
+    DStT = rawT.copy()
+    for q in range(len(rel_idx) - 1, -1, -1):
+        ri = int(rel_idx[q])
+        rline = np.asarray(ads(DStT[ri:n], nyrs0=release_flex, pos_slope=True), float)
+        DSti = DStT.copy()
+        DStT[ri:n] = DStT[ri:n] + rawT[ri] - rline          # detrend and re-anchor
+        lo = ri + mav - 1                                    # transient test region
+        if lo < n:
+            cond = DSti[lo:n] < DStT[lo:n]
+            if cond.any():                                   # transient release
+                transient = int(np.argmax(cond)) + mav
+                DStT = DSti.copy()                           # revert, detrend part way
+                DStT[ri:ri + transient] = (DSti[ri:ri + transient]
+                                           + rawT[ri] - rline[:transient])
+
+    # Age detrend the disturbance-free series, then the residual index.
+    AtT = np.asarray(ads(DStT, nyrs0=age_flex, pos_slope=True), float)
+    StTR = DStT - AtT
+
+    # Re-express in original units.
+    if power and p <= 0.05:
+        DSt = np.exp(DStT)
+        At = np.exp(AtT)
+    elif power:
+        DStTf = DStT.copy()
+        DStTf[DStTf < 0] = 0.001                             # parity: floor negatives
+        DSt = DStTf ** (1.0 / p)
+        At = AtT ** (1.0 / p)
+    else:
+        DSt = DStT
+        At = AtT
+
+    Dt = (raw - DSt) if len(rel_idx) > 0 else np.zeros(n)
+    St = DSt / At
+    return dict(DSt=DSt, At=At, St=St, StTR=StTR, Dt=Dt, power=p)
+
+
+def disturbance_detrend(data, threshold=50, window_length=15, significance=False,
+                        release_flex=10, age_flex=30, power=True, return_info=False):
+    """Standardize ring widths by removing canopy-disturbance releases and the age trend.
+
+    The Druckenbrod et al. (2024) method. For each series: detect releases by radial
+    growth averaging (see ``releases``), power-transform the series, remove each
+    release in turn (newest first) with a fixed-length age-dependent spline while it
+    sustains elevated growth, age-detrend the disturbance-free series with a second
+    spline, and re-express in ring-width units. The climate index is the ratio of
+    the disturbance-standardized series to the age trend.
+
+    The returned index is per series and detrend-style, so it feeds ``dpl.chron``
+    exactly like ``dpl.detrend`` output.
+
+    Parameters
+    ----------
+    data : pandas DataFrame or Series, or str
+        ring widths from ``dpl.readers``, a single series, or a path to an rwl/csv
+        file. Series shorter than ``2 * window_length`` are returned all-NaN with a
+        warning (parity with v267_rga, which cannot analyze them).
+    threshold : int or float, default 50
+        percent-growth-change threshold for a release (see ``releases``).
+    window_length : int, default 15
+        running-mean window in years for detection, and the offset used by the
+        transient-release test.
+    significance : bool, default False
+        significance testing of releases. Not implemented; ``True`` raises
+        ``NotImplementedError``.
+    release_flex : int, default 10
+        stiffness (``nyrs0``) in years of the age-dependent spline fit to each
+        release event.
+    age_flex : int, default 30
+        stiffness (``nyrs0``) in years of the age-dependent spline fit to the
+        disturbance-free series for the final age detrend.
+    power : bool, default True
+        apply Druckenbrod's power transformation before detrending and re-express
+        afterwards. This is the method's own transform (optimal power ``1 - slope``,
+        natural-log branch at power <= 0.05); it diverges from ``dpl.powt`` and is
+        kept as the validated default. ``False`` operates in raw ring-width units
+        with no transform.
+    return_info : bool, default False
+        if True, return a dict instead of just the index (see Returns).
+
+    Returns
+    -------
+    pandas.DataFrame or Series
+        the age-and-disturbance-standardized climate index, same type as ``data``
+        (DataFrame of years x series, or a single Series), NaN outside each series'
+        span. If ``return_info`` is True, returns a dict with:
+        ``"index"`` (the climate index), ``"disturbance_standardized"`` (DSt),
+        ``"age_trend"`` (At), ``"residual_index"`` (StTR, the transformed-space
+        residual DStT - AtT), ``"releases"`` (the detection table from ``releases``),
+        and ``"averages"`` (a DataFrame of the straight across-series means: ring
+        width, age trend, disturbance increment Dt, index, and running sample depth).
+
+    References
+    ----------
+    Druckenbrod, D.L., Cook, E.R., Pederson, N. & Martin-Benito, D. (2024).
+    Dendrochronologia 85, 126195.
+    """
+    if significance:
+        raise NotImplementedError(
+            "significance testing of releases is not implemented in this release "
+            "(deferred pending confirmation of the test). Use significance=False.")
+    if window_length < 1:
+        raise ValueError("window_length must be a positive integer.")
+
+    was_series = isinstance(data, pd.Series)
+    if isinstance(data, str):
+        from .readers import readers
+        data = readers(data)
+    if was_series:
+        data = data.to_frame()
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame or Series, or a path (str) "
+                        "to an rwl/csv file, not " + str(type(data)) + ".")
+
+    index = pd.DataFrame(index=data.index, dtype=float)
+    dst = pd.DataFrame(index=data.index, dtype=float)
+    at = pd.DataFrame(index=data.index, dtype=float)
+    sttr = pd.DataFrame(index=data.index, dtype=float)
+    dt = pd.DataFrame(index=data.index, dtype=float)
+    rel_rows = []
+
+    for name in data.columns:
+        v = data[name].dropna()
+        full = pd.Series(np.nan, index=data.index, dtype=float)
+        index[name] = full
+        dst[name] = full.copy(); at[name] = full.copy()
+        sttr[name] = full.copy(); dt[name] = full.copy()
+        if v.empty:
+            continue
+        yrs = v.index.to_numpy()
+        raw = v.to_numpy(dtype=float)
+        if len(raw) < 2 * window_length:
+            _warn(f"disturbance_detrend: series '{name}' has only {len(raw)} rings "
+                  f"(< 2 * window_length = {2 * window_length}); returned as NaN.")
+            continue
+        rel, _, _ = _rga_one(raw, yrs, threshold, window_length)
+        rel_idx = sorted(int(np.where(yrs == yr)[0][0]) for yr, _ in rel)
+        res = _disturb_one(raw, yrs, rel_idx, window_length,
+                           release_flex, age_flex, power)
+        index.loc[yrs, name] = res["St"]
+        dst.loc[yrs, name] = res["DSt"]
+        at.loc[yrs, name] = res["At"]
+        sttr.loc[yrs, name] = res["StTR"]
+        dt.loc[yrs, name] = res["Dt"]
+        for yr, pg in rel:
+            rel_rows.append({"series": name, "year": yr, "pct_growth_change": pg})
+
+    if not return_info:
+        return index[data.columns[0]] if was_series else index
+
+    raw_nozero = data.copy()
+    depth = raw_nozero.notna().sum(axis=1)
+    averages = pd.DataFrame({
+        "ring_width": raw_nozero.mean(axis=1, skipna=True),
+        "age_trend": at.mean(axis=1, skipna=True),
+        "Dt": (raw_nozero - dst).mean(axis=1, skipna=True),
+        "index": index.mean(axis=1, skipna=True),
+        "sample_depth": depth,
+    })
+    releases_table = (pd.DataFrame(rel_rows,
+                                   columns=["series", "year", "pct_growth_change"])
+                      .sort_values(["series", "year"]).reset_index(drop=True))
+    return {
+        "index": index[data.columns[0]] if was_series else index,
+        "disturbance_standardized": dst[data.columns[0]] if was_series else dst,
+        "age_trend": at[data.columns[0]] if was_series else at,
+        "residual_index": sttr[data.columns[0]] if was_series else sttr,
+        "releases": releases_table,
+        "averages": averages,
+    }
