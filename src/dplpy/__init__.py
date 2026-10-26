@@ -79,6 +79,7 @@ from .read_pos import read_pos, PosCollection
 from .climate import seascorr, SeascorrResult
 from .pcreg import pcreg, PcregResult
 from .powt import powt
+from .disturbance import releases
 from .rcs import rcs
 from .sfrcs import sfrcs
 from .mrcs import mrcs
@@ -139,6 +140,7 @@ __all__ = [
     "SeascorrResult",
     "wc_to_po",
     "powt",
+    "releases",
     "rcs",
     "sfrcs",
     "mrcs",
