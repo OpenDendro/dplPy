@@ -48,6 +48,7 @@ import pandas as pd
 
 from ._validate import _warn
 from .agedepspline import ads
+from .powt import powt
 
 
 def _rga_one(raw, yrs, threshold, window_length, min_mean=0.0):
@@ -238,45 +239,34 @@ def releases(data, threshold=50, window_length=15, significance=False,
     return (table, info) if return_info else table
 
 
-def _power_transform(raw, power):
-    """Druckenbrod's power transformation of one raw series.
-
-    Returns ``(transformed, p)``. The optimal power is ``1 - slope`` from the
-    regression of ``log|first difference|`` on ``log(subsequent ring width)`` over
-    pairs where both are non-zero (natural logs, parity with v267_rga). ``p <= 0.05``
-    takes natural logs, ``p > 1`` is clamped to 1, otherwise the series is raised to
-    ``p``. ``power=False`` skips the transform (identity, ``p`` returned as None).
-    """
-    if not power:
-        return np.asarray(raw, dtype=float), None
-    raw = np.asarray(raw, dtype=float)
-    sub = raw[1:]                        # fdiff(:,1) = raw(x+1)
-    dif = np.abs(np.diff(raw))           # fdiff(:,2) = |raw(x+1) - raw(x)|
-    mask = (sub != 0) & (dif != 0)
-    x = np.log(sub[mask])
-    y = np.log(dif[mask])
-    X = np.column_stack([np.ones_like(x), x])
-    slope = np.linalg.lstsq(X, y, rcond=None)[0][1]
-    p = 1.0 - slope
-    if p <= 0.05:
-        return np.log(raw), p
-    if p > 1:
-        return raw ** 1.0, 1.0
-    return raw ** p, p
+_TRANSFORM_METHOD = {"druckenbrod": "druckenbrod", "powt": "cook"}
 
 
-def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, power):
+def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, transform):
     """Run the full Druckenbrod pipeline on ONE gap-free raw series.
 
     ``rel_idx`` are the release positions (0-based, ascending) from detection.
-    Returns a dict of full-length arrays: ``DSt`` (disturbance standardized),
-    ``At`` (age trend), ``St`` (climate index = DSt/At), ``StTR`` (residual index in
-    transformed space), ``Dt`` (disturbance increment raw-DSt), and ``power``.
-    Mirrors v267_rga after detection, line for line.
+    ``transform`` is ``"druckenbrod"`` (the method's own power transform),
+    ``"powt"`` (dplPy's Cook & Peters transform), or None (no transform); both the
+    forward transform and the final re-expression are delegated to ``dpl.powt`` so
+    there is a single transform home. Returns a dict of full-length arrays: ``DSt``
+    (disturbance standardized), ``At`` (age trend), ``St`` (climate index = DSt/At),
+    ``StTR`` (residual index in transformed space), ``Dt`` (disturbance increment
+    raw - DSt), and ``power``. Mirrors v267_rga after detection.
     """
     n = len(raw)
     mav = int(window_length)
-    rawT, p = _power_transform(raw, power)
+    raw = np.asarray(raw, dtype=float)
+
+    # FORWARD TRANSFORM (via powt), to detrend in a variance-stabilised space.
+    if transform is None:
+        rawT, p, logbranch, method = raw.copy(), None, False, None
+    else:
+        method = _TRANSFORM_METHOD[transform]
+        rawT_s, p = powt(pd.Series(raw), method=method, return_power=True)
+        rawT = rawT_s.to_numpy()
+        p = float(p)
+        logbranch = (p <= 0.05) if method == "druckenbrod" else (p <= 0.0)
 
     # INCREMENTAL DETRENDING of each release, newest to oldest.
     DStT = rawT.copy()
@@ -298,18 +288,16 @@ def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, power
     AtT = np.asarray(ads(DStT, nyrs0=age_flex, pos_slope=True), float)
     StTR = DStT - AtT
 
-    # Re-express in original units.
-    if power and p <= 0.05:
-        DSt = np.exp(DStT)
-        At = np.exp(AtT)
-    elif power:
-        DStTf = DStT.copy()
-        DStTf[DStTf < 0] = 0.001                             # parity: floor negatives
-        DSt = DStTf ** (1.0 / p)
-        At = AtT ** (1.0 / p)
+    # RE-EXPRESS in original units (via powt's inverse), matching v267_rga.
+    if transform is None:
+        DSt, At = DStT, AtT
     else:
-        DSt = DStT
-        At = AtT
+        dstt = DStT
+        if not logbranch:
+            dstt = DStT.copy()
+            dstt[dstt < 0] = 0.001                           # parity: floor negatives
+        DSt = powt(pd.Series(dstt), method=method, inverse=True, power=p).to_numpy()
+        At = powt(pd.Series(AtT), method=method, inverse=True, power=p).to_numpy()
 
     Dt = (raw - DSt) if len(rel_idx) > 0 else np.zeros(n)
     St = DSt / At
@@ -317,8 +305,9 @@ def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, power
 
 
 def disturbance_detrend(data, threshold=50, window_length=15, significance=False,
-                        release_flex=10, age_flex=30, power=True,
-                        recode_zeros=False, min_mean=0.01, return_info=False):
+                        release_flex=10, age_flex=30, transform="druckenbrod",
+                        recode_zeros=False, min_mean=0.01, plot=False,
+                        return_info=False):
     """Standardize ring widths by removing canopy-disturbance releases and the age trend.
 
     The Druckenbrod et al. (2024) method. For each series: detect releases by radial
@@ -351,12 +340,17 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
     age_flex : int, default 30
         stiffness (``nyrs0``) in years of the age-dependent spline fit to the
         disturbance-free series for the final age detrend.
-    power : bool, default True
-        apply Druckenbrod's power transformation before detrending and re-express
-        afterwards. This is the method's own transform (optimal power ``1 - slope``,
-        natural-log branch at power <= 0.05); it diverges from ``dpl.powt`` and is
-        kept as the validated default. ``False`` operates in raw ring-width units
-        with no transform.
+    transform : {"druckenbrod", "powt", None}, default "druckenbrod"
+        the variance-stabilising power transform applied before detrending and
+        inverted on re-expression, delegated to ``dpl.powt``. ``"druckenbrod"`` is
+        the method's own transform (``powt(method="druckenbrod")``: optimal power
+        ``1 - slope`` on the subsequent-ring level, natural-log branch at power
+        <= 0.05) and is the validated default that reproduces the published method.
+        ``"powt"`` uses dplPy's standard Cook & Peters transform
+        (``powt(method="cook")``); it departs materially from the published method
+        (on mo024 the per-series powers differ by ~0.3 on average) and is offered
+        for workflows that prefer dplPy's house transform. ``None`` operates in raw
+        ring-width units with no transform.
     recode_zeros : bool, default False
         recode literal zero (locally absent) rings to 0.001 before processing, the
         ``dpl.ssf`` convention (the input frame is never modified). Absent rings
@@ -366,6 +360,12 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
         minimum preceding running-mean ring width (mm) for a release to be eligible
         (see ``releases``). Guards against a near-zero baseline inflating the
         percent growth change; set 0 for exact v267_rga behaviour.
+    plot : bool, default False
+        if True, draw a single figure: the summary chronology (release histogram
+        with sample depth, mean widths with the disturbance removed and the age
+        trend, and the mean index) for a DataFrame, or the three-panel per-series
+        figure for a single Series. A many-series call never draws one figure per
+        series; use ``dpl.disturbance_plot`` to inspect named series.
     return_info : bool, default False
         if True, return a dict instead of just the index (see Returns).
 
@@ -392,6 +392,8 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
             "(deferred pending confirmation of the test). Use significance=False.")
     if window_length < 1:
         raise ValueError("window_length must be a positive integer.")
+    if transform not in ("druckenbrod", "powt", None):
+        raise ValueError("transform must be 'druckenbrod', 'powt', or None.")
 
     was_series = isinstance(data, pd.Series)
     if isinstance(data, str):
@@ -428,7 +430,7 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
         rel, _, _ = _rga_one(raw, yrs, threshold, window_length, min_mean)
         rel_idx = sorted(int(np.where(yrs == yr)[0][0]) for yr, _ in rel)
         res = _disturb_one(raw, yrs, rel_idx, window_length,
-                           release_flex, age_flex, power)
+                           release_flex, age_flex, transform)
         index.loc[yrs, name] = res["St"]
         dst.loc[yrs, name] = res["DSt"]
         at.loc[yrs, name] = res["At"]
@@ -437,21 +439,43 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
         for yr, pg in rel:
             rel_rows.append({"series": name, "year": yr, "pct_growth_change": pg})
 
-    if not return_info:
-        return index[data.columns[0]] if was_series else index
-
-    raw_nozero = data.copy()
-    depth = raw_nozero.notna().sum(axis=1)
-    averages = pd.DataFrame({
-        "ring_width": raw_nozero.mean(axis=1, skipna=True),
-        "age_trend": at.mean(axis=1, skipna=True),
-        "Dt": (raw_nozero - dst).mean(axis=1, skipna=True),
-        "index": index.mean(axis=1, skipna=True),
-        "sample_depth": depth,
-    })
     releases_table = (pd.DataFrame(rel_rows,
                                    columns=["series", "year", "pct_growth_change"])
                       .sort_values(["series", "year"]).reset_index(drop=True))
+    averages = None
+    if return_info or (plot and not was_series):
+        raw_nozero = data.copy()
+        depth = raw_nozero.notna().sum(axis=1)
+        averages = pd.DataFrame({
+            "ring_width": raw_nozero.mean(axis=1, skipna=True),
+            "age_trend": at.mean(axis=1, skipna=True),
+            "Dt": (raw_nozero - dst).mean(axis=1, skipna=True),
+            "index": index.mean(axis=1, skipna=True),
+            "sample_depth": depth,
+        })
+
+    # Plotting: one figure at most. A single Series draws its three-panel; a
+    # DataFrame draws the summary chronology (never a figure per series).
+    if plot:
+        from .disturbance_plot import _summary_from_frames, _series_fig
+        rel_years = releases_table["year"].to_numpy()
+        if was_series:
+            name = data.columns[0]
+            raw_s = data[name].dropna()
+            yrs = raw_s.index.to_numpy()
+            _, _M, pgc = _rga_one(raw_s.to_numpy(dtype=float), yrs, threshold,
+                                  window_length, min_mean)
+            _series_fig(name, yrs, raw_s.to_numpy(),
+                        dst[name].reindex(raw_s.index).to_numpy(),
+                        at[name].reindex(raw_s.index).to_numpy(),
+                        index[name].reindex(raw_s.index).to_numpy(),
+                        pgc, threshold, sorted(rel_years.tolist()), True)
+        else:
+            _summary_from_frames(data, dst, at, index, averages, rel_years, True)
+
+    if not return_info:
+        return index[data.columns[0]] if was_series else index
+
     return {
         "index": index[data.columns[0]] if was_series else index,
         "disturbance_standardized": dst[data.columns[0]] if was_series else dst,

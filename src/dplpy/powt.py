@@ -189,7 +189,7 @@ def _powt_diagnostic_plot(stats):
 
 
 def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
-         return_stats=False):
+         return_stats=False, inverse=False, power=None):
     """Adaptive power transformation of ring-width series (variance stabilising).
 
     Stabilise the variance of ring-width series by raising each value to a
@@ -259,7 +259,16 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
     if not (isinstance(rwl, pd.DataFrame) or is_series):
         raise TypeError("Expected a pandas DataFrame or Series, got "
                         + str(rwl.__class__) + " instead.")
-    method = _normalize_choice(method, ("cook", "universal"), "method")
+    method = _normalize_choice(method, ("cook", "universal", "druckenbrod"), "method")
+
+    if inverse:
+        if power is None:
+            raise ValueError("inverse=True requires 'power' from the forward "
+                             "transform (assumes the forward used rescale=False).")
+        result = _powt_inverse(rwl, is_series, method, power)
+        _carry_attrs(rwl, result, kind="rwl")
+        return result
+
     if not is_series:
         rwl = _drop_allnan_columns(rwl, "rwl")
     vals = rwl.to_numpy(dtype=float)
@@ -267,11 +276,14 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
         raise ValueError("'rwl' has no measured values.")
     if np.nanmin(vals) < 0:
         raise ValueError("'rwl' values cannot be negative.")
-    if is_series and method != "cook":
-        raise ValueError("If rwl is a Series, method must be 'cook'.")
+    if is_series and method == "universal":
+        raise ValueError("If rwl is a Series, method must be 'cook' or 'druckenbrod'.")
 
     if method == "cook":
         out = _powt_cook(rwl, is_series, rescale, return_power, plot, return_stats)
+    elif method == "druckenbrod":
+        out = _powt_druckenbrod(rwl, is_series, rescale, return_power, plot,
+                                return_stats)
     else:
         out = _powt_universal(rwl, rescale, return_power, plot, return_stats)
     result = out[0] if isinstance(out, tuple) else out
@@ -338,6 +350,96 @@ def _powt_cook(rwl, is_series, rescale, return_power, plot=False, return_stats=F
     power = pd.Series(powers, name="power")
     stats = pd.DataFrame(rows).set_index("series") if need_stats else None
     return _finish(result, power, stats, return_power, return_stats, plot)
+
+
+def _druckenbrod_apply(col, rescale):
+    """Druckenbrod's variant on one series (NaN-omitted for the fit, applied in
+    place). Level is the SUBSEQUENT ring and the spread is the first difference,
+    over pairs where both are non-zero; p = 1 - slope (signed, unlike Cook's
+    |1 - b|). p <= 0.05 takes natural logs, p > 1 is clamped to 1. Returns
+    ``(transformed, effective_power)`` where the effective power is 1.0 when
+    clamped and otherwise p; p <= 0.05 signals the log branch to the inverse.
+    This reproduces v267_rga's power transformation exactly."""
+    x = np.asarray(col, dtype=float)
+    mask = ~np.isnan(x)
+    xv = x[mask]
+    sub = xv[1:]                                  # fdiff(:,1) = raw(x+1)
+    dif = np.abs(np.diff(xv))                      # fdiff(:,2) = |raw(x+1)-raw(x)|
+    nz = (sub != 0) & (dif != 0)                  # non-zero ring widths only
+    X = np.column_stack([np.ones(int(nz.sum())), np.log(sub[nz])])
+    slope = np.linalg.lstsq(X, np.log(dif[nz]), rcond=None)[0][1]
+    p = 1.0 - slope
+    out = x.copy()
+    if p <= 0.05:
+        out[mask] = np.log(xv)
+        eff = p
+    elif p > 1:
+        out[mask] = xv ** 1.0
+        eff = 1.0
+    else:
+        out[mask] = xv ** p
+        eff = p
+    if rescale:
+        out = _rescale(out, x)
+    return out, eff
+
+
+def _powt_druckenbrod(rwl, is_series, rescale, return_power, plot=False,
+                      return_stats=False):
+    prec = _getprec(rwl.to_numpy())
+    need_stats = plot or return_stats
+    if is_series:
+        raw = rwl.to_numpy()
+        out, p = _druckenbrod_apply(raw, rescale)
+        result = pd.Series(out, index=rwl.index, name=rwl.name)
+        stats = None
+        if need_stats:
+            nm = rwl.name if rwl.name is not None else "series"
+            stats = pd.DataFrame([_series_stats(nm, raw, out, prec, p)]
+                                 ).set_index("series")
+        return _finish(result, p, stats, return_power, return_stats, plot)
+
+    powers, cols, rows = {}, {}, []
+    for name in rwl.columns:
+        col = rwl[name].to_numpy()
+        out, p = _druckenbrod_apply(col, rescale)
+        powers[name] = p
+        cols[name] = out
+        if need_stats:
+            rows.append(_series_stats(name, col, out, prec, p))
+    result = pd.DataFrame(cols, index=rwl.index)
+    power = pd.Series(powers, name="power")
+    stats = pd.DataFrame(rows).set_index("series") if need_stats else None
+    return _finish(result, power, stats, return_power, return_stats, plot)
+
+
+def _powt_inverse(rwl, is_series, method, power):
+    """Re-express a power-transformed series in original units, given the power
+    from the forward transform (which must have used rescale=False). The log
+    branch (and hence ``exp`` inverse) is keyed to the method's own rule:
+    ``p <= 0.05`` for 'druckenbrod', ``p <= 0`` for 'cook'/'universal'. A negative
+    value under a fractional inverse power has no real root and becomes NaN; the
+    disturbance pipeline floors such values before calling this."""
+    thr = 0.05 if method == "druckenbrod" else 0.0
+
+    def inv(col, p):
+        x = np.asarray(col, dtype=float)
+        out = x.copy()
+        mask = ~np.isnan(x)
+        if p <= thr:
+            out[mask] = np.exp(x[mask])
+        else:
+            with np.errstate(invalid="ignore"):
+                out[mask] = x[mask] ** (1.0 / p)
+        return out
+
+    if is_series:
+        p = float(power if np.isscalar(power) else np.asarray(power).reshape(-1)[0])
+        return pd.Series(inv(rwl.to_numpy(), p), index=rwl.index, name=rwl.name)
+    pw = power if hasattr(power, "get") else dict(zip(rwl.columns,
+                                                      np.atleast_1d(power)))
+    cols = {c: inv(rwl[c].to_numpy(), float(pw[c])) for c in rwl.columns}
+    return pd.DataFrame(cols, index=rwl.index)
 
 
 def _powt_universal(rwl, rescale, return_power, plot=False, return_stats=False):

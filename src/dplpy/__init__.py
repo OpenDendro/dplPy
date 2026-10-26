@@ -80,6 +80,7 @@ from .climate import seascorr, SeascorrResult
 from .pcreg import pcreg, PcregResult
 from .powt import powt
 from .disturbance import releases, disturbance_detrend
+from .disturbance_plot import disturbance_plot
 from .rcs import rcs
 from .sfrcs import sfrcs
 from .mrcs import mrcs
@@ -142,6 +143,7 @@ __all__ = [
     "powt",
     "releases",
     "disturbance_detrend",
+    "disturbance_plot",
     "rcs",
     "sfrcs",
     "mrcs",

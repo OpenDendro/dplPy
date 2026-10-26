@@ -308,7 +308,7 @@ def test_sweep_covers_every_public_transform():
         "seascorr", "SeascorrResult",
         "pcreg", "PcregResult",
         # plotting only
-        "plot", "xdate_plot",
+        "plot", "xdate_plot", "disturbance_plot",
         # file-driven report
         "xdate_report",
         # standalone numerical helpers (take arrays/series or special tables)

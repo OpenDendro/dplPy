@@ -169,3 +169,49 @@ def test_powt_output_attrs():
     assert "dplpy_precision" not in out.attrs
     pt, p = dpl.powt(rwl, return_power=True)
     assert pt.attrs["kind"] == "rwl_powt"
+
+
+# ----- method='druckenbrod' and the inverse (added with disturbance_detrend) -----
+
+def test_powt_druckenbrod_forward_and_inverse_roundtrip():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    s = rwl["CAM011"].dropna()
+    pt, p = dpl.powt(s, method="druckenbrod", return_power=True)
+    # forward is log(x) (p<=0.05) or x**p, matching v267_rga's branch
+    x = s.to_numpy()
+    expect = np.log(x) if p <= 0.05 else x ** (1.0 if p > 1 else p)
+    assert np.allclose(pt.to_numpy(), expect, atol=1e-12)
+    # inverse re-expresses to the original
+    back = dpl.powt(pt, method="druckenbrod", inverse=True, power=p)
+    assert np.allclose(back.to_numpy(), x, atol=1e-9)
+
+
+def test_powt_druckenbrod_differs_from_cook():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    _, p_cook = dpl.powt(rwl, method="cook", return_power=True)
+    _, p_dan = dpl.powt(rwl, method="druckenbrod", return_power=True)
+    # cook is |1-b| (never negative); druckenbrod is signed 1-b and can be
+    assert (p_cook >= 0).all()
+    assert not np.allclose(p_cook.to_numpy(), p_dan.reindex(p_cook.index).to_numpy())
+
+
+def test_powt_cook_inverse_roundtrip_dataframe():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    pt, power = dpl.powt(rwl, method="cook", return_power=True)
+    back = dpl.powt(pt, method="cook", inverse=True, power=power)
+    # round-trips where defined (cook power > 0, so x**p -> x**(1/p))
+    a = back.to_numpy(); b = rwl[back.columns].to_numpy()
+    m = ~np.isnan(b)
+    assert np.allclose(a[m], b[m], atol=1e-8)
+
+
+def test_powt_inverse_requires_power():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    with pytest.raises(ValueError):
+        dpl.powt(rwl, method="cook", inverse=True)
+
+
+def test_powt_druckenbrod_allowed_on_series():
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    out = dpl.powt(rwl["CAM011"].dropna(), method="druckenbrod")
+    assert isinstance(out, pd.Series)

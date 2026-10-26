@@ -170,11 +170,19 @@ def test_disturbance_detrend_no_release_series_has_zero_increment():
     assert np.allclose(dst.to_numpy(), raw.to_numpy(), atol=1e-6)  # DSt == raw
 
 
-def test_disturbance_detrend_power_false_runs_and_differs():
+def test_disturbance_detrend_transform_variants_differ():
     data = _read_quiet("tests/data/rwl/mo024.rwl")
-    a = dpl.disturbance_detrend(data, power=True)
-    b = dpl.disturbance_detrend(data, power=False)
-    assert not np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
+    dan = dpl.disturbance_detrend(data, transform="druckenbrod")
+    none = dpl.disturbance_detrend(data, transform=None)
+    cook = dpl.disturbance_detrend(data, transform="powt")
+    assert not np.allclose(dan.to_numpy(), none.to_numpy(), equal_nan=True)
+    assert not np.allclose(dan.to_numpy(), cook.to_numpy(), equal_nan=True)
+
+
+def test_disturbance_detrend_bad_transform_raises():
+    s = pd.Series(np.ones(60), index=np.arange(1900, 1960), name="FLAT")
+    with pytest.raises(ValueError):
+        dpl.disturbance_detrend(s, transform="banana")
 
 
 def test_disturbance_detrend_series_in_series_out():
@@ -241,3 +249,50 @@ def test_disturbance_detrend_mo024_unchanged_by_default_guard():
     st_default = dpl.disturbance_detrend(data)
     st_noguard = dpl.disturbance_detrend(data, min_mean=0.0)
     pd.testing.assert_frame_equal(st_default, st_noguard)
+
+
+# ----- plotting (phase 3) -----
+
+def test_disturbance_plot_summary_returns_figure():
+    import matplotlib.pyplot as plt
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    fig = dpl.disturbance_plot(data, show=False)
+    assert fig.__class__.__name__ == "Figure"
+    assert len(fig.axes) == 4            # 3 panels + 1 twin axis (depth)
+    plt.close("all")
+
+
+def test_disturbance_plot_named_series_returns_figure():
+    import matplotlib.pyplot as plt
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    fig = dpl.disturbance_plot(data, series="DEM01A", show=False)
+    assert fig.__class__.__name__ == "Figure"
+    assert len(fig.axes) == 4            # 3 panels + 1 twin axis (pgc)
+    plt.close("all")
+
+
+def test_disturbance_plot_series_list_returns_list():
+    import matplotlib.pyplot as plt
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    figs = dpl.disturbance_plot(data, series=["DEM01A", "DEM07B"], show=False)
+    assert isinstance(figs, list) and len(figs) == 2
+    plt.close("all")
+
+
+def test_disturbance_detrend_plot_preserves_numerics():
+    import matplotlib.pyplot as plt
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    base = dpl.disturbance_detrend(data)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        withplot = dpl.disturbance_detrend(data, plot=True)
+    pd.testing.assert_frame_equal(base, withplot)
+    plt.close("all")
+
+
+def test_disturbance_detrend_plot_series_input():
+    import matplotlib.pyplot as plt
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    out = dpl.disturbance_detrend(data["DEM01A"], plot=True)
+    assert isinstance(out, pd.Series)
+    plt.close("all")
