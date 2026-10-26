@@ -139,9 +139,60 @@ weakens in a late-century divergence) supported by a significant whole-trace tes
 is the strong case. The per-window band is a reminder that each point is itself
 uncertain, especially for short windows.
 
-The analysis here is one chronology against one season. Scanning several seasons
-or variables reintroduces multiplicity across the grid; that field-significance
-case is a planned extension.
+## The season grid
+
+Everything above is one chronology against one season. To ask the stability
+question across the whole seasonal grid — every season length by every ending
+month, as in [`seascorr`](seascorr.md) — pass `season_lengths` (plural) instead of
+a single `season_length`:
+
+```python
+grid = dpl.moving_corr(crn, precip, end_month=12, season_lengths=(1, 3, 6, 12),
+                       window=30, agg="sum", seed=1)
+
+grid.grid        # one row per season: overall_r, stability_p, fdr_sig, ...
+grid.cube        # the moving-correlation trace of every season
+grid.field       # field significance (see below)
+grid.plot(kind="small_multiples", seasons=[(3, 5), (3, 8)])
+grid.plot(kind="dominant")
+grid.plot(kind="surface")
+print(grid.summary())
+```
+
+This returns a `MovingCorrGridResult` with three complementary views, none of which
+uses a per-cell significance mask:
+
+- **`small_multiples`** (the default) tiles the single-season trace-with-band plot
+  across the seasons you pass in `seasons=` (a list of `(length, end_month)`), each
+  panel an honest estimate-and-uncertainty display with `*` marking the
+  FDR-significant seasons. With no `seasons=` it warns and falls back to the
+  strongest-correlating season at each length.
+- **`dominant`** shows, for one season length, which ending month carries the
+  strongest correlation at each window — the trace of the "winning" season over
+  time, coloured by its strength, with a grey bar spanning the seasons within 90 %
+  of the best (narrow where the choice is sharp, wide where it is ambiguous). It
+  answers "does the dominant season shift," but because it always draws a
+  confident-looking line, read it together with the field-significance verdict.
+- **`surface`** is the full picture: a season-by-time heatmap of each cell's
+  *departure from its own full-period correlation*, so stability itself is the
+  signal (a flat, pale row is a stable season) and you are never reading a grid of
+  significance flags flickering through time.
+
+### Field significance
+
+Scanning dozens of seasons across many windows is a severe multiple-comparisons
+problem, made worse because neighbouring seasons share months and so move
+together. dplPy reports two things, for two different questions. The
+**Livezey-Chen** field test is the grid-level headline: it counts the
+locally-significant cells and compares that count against the distribution
+produced by a chronology *unrelated* to climate (reusing the real climate grid, so
+the inter-season correlation is preserved), answering "is this chronology's
+seasonal signal, as a whole, more non-stationary than noise?" The
+**Benjamini-Hochberg FDR** set is the per-season annotation — which individual
+seasons survive multiplicity — shown as the `*` marks and the red surface labels.
+The point, again in the spirit of Gelman & Stern (2006), is a grid-level verdict
+plus honest per-season effect sizes, not a thresholded map that invites you to
+read the on/off pattern as the signal.
 
 ## Fidelity
 

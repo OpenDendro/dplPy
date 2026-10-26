@@ -44,3 +44,7 @@ for how `pcreg` validates a reconstruction and what each statistic in
 ## MovingCorrResult
 
 ::: dplpy.moving_corr.MovingCorrResult
+
+## MovingCorrGridResult
+
+::: dplpy.moving_corr.MovingCorrGridResult

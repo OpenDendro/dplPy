@@ -468,12 +468,12 @@ def _positions(years, window, starts, position):
     raise ValueError("position must be 'center', 'end' or 'start'")
 
 
-def moving_corr(crn, climate, end_month=9, season_length=1, agg="mean",
-                window=30, offset=1, position="center", method="pearson",
-                noise="red", tests=("std", "peak", "range"),
+def moving_corr(crn, climate, end_month=9, season_length=1, season_lengths=None,
+                agg="mean", window=30, offset=1, position="center",
+                method="pearson", noise="red", tests=("std", "peak", "range"),
                 peak_condition="observed", ci="fisher", ci_level=0.95,
-                n_boot=1000, iters=1000, seed=None, period=None, column=None,
-                plot=False):
+                n_boot=1000, iters=1000, lc_iters=500, seed=None, period=None,
+                column=None, plot=False):
     """Moving (windowed) correlation of a tree-ring chronology with a seasonal
     climate variable, with global significance tests for the stability of the
     relationship.
@@ -498,7 +498,13 @@ def moving_corr(crn, climate, end_month=9, season_length=1, agg="mean",
         Ending month of the season (1=Jan .. 12=Dec), as in ``seascorr``.
     season_length : int
         Season length in months ending at ``end_month`` (1 = that month alone,
-        3 = the three months ending at it, etc.).
+        3 = the three months ending at it, etc.). Used for the single-trace mode.
+    season_lengths : sequence of int or None
+        If given (e.g. ``(1, 3, 6, 12)``), switches to **grid mode**: a moving
+        correlation for every season of these lengths across the 14 ending months
+        up to ``end_month`` (the seascorr grid), returning a
+        :class:`MovingCorrGridResult` with the three grid views and field
+        significance. ``season_length`` is ignored in this mode.
     agg : {"mean", "sum"}
         How to aggregate the months of the season: ``"mean"`` for temperature-like
         variables, ``"sum"`` for precipitation totals.
@@ -552,9 +558,6 @@ def moving_corr(crn, climate, end_month=9, season_length=1, agg="mean",
                           _normalize_agg, _lag1, _eff_n)
 
     agg = _normalize_agg(agg, "agg")
-    season_length = int(season_length)
-    if season_length < 1:
-        raise ValueError("season_length must be >= 1, got %r." % season_length)
     end_month = int(end_month)
     if end_month not in range(1, 13):
         raise ValueError("end_month must be 1..12, got %r." % end_month)
@@ -562,20 +565,31 @@ def moving_corr(crn, climate, end_month=9, season_length=1, agg="mean",
         raise ValueError("method must be 'pearson' or 'spearman'.")
     if noise not in ("red", "white"):
         raise ValueError("noise must be 'red' or 'white'.")
-    if peak_condition not in ("observed", "zero"):
-        raise ValueError("peak_condition must be 'observed' or 'zero'.")
     if ci not in ("fisher", "bootstrap", "none"):
         raise ValueError("ci must be 'fisher', 'bootstrap' or 'none'.")
+
+    x = _as_chronology(crn, column)
+    c3 = _to_month3(climate, "climate")
+
+    # grid mode: a full seascorr-style season grid when season_lengths is given
+    if season_lengths is not None:
+        return _moving_corr_grid(
+            x, c3, end_month, season_lengths, agg, window, offset, position,
+            method, noise, ci, ci_level, iters, lc_iters, seed, period, plot)
+
+    # ---- single-trace path ----
+    season_length = int(season_length)
+    if season_length < 1:
+        raise ValueError("season_length must be >= 1, got %r." % season_length)
+    if peak_condition not in ("observed", "zero"):
+        raise ValueError("peak_condition must be 'observed' or 'zero'.")
     tests = tuple(t.lower() for t in tests)
     for t in tests:
         if t not in ("std", "peak", "range"):
             raise ValueError("unknown test %r (use std/peak/range)." % t)
 
-    x = _as_chronology(crn, column)
-
     # seasonalize the climate variable; pick the single season (length,
     # end_month) ending in the current growth year
-    c3 = _to_month3(climate, "climate")
     frame, meta = _seasonalize(c3, end_month, (season_length,), agg)
     # the newest ending month (p = N-1) is the current-year season ending at
     # end_month; its column key is (season_length, N-1)
@@ -691,3 +705,221 @@ def _longest_run(xa, ca, years, good):
                       % (good.size - best_len, good.size, best_len),
                       UserWarning, stacklevel=3)
     return xa[sl], ca[sl], years[sl]
+
+
+# --------------------------------------------------------------------------- #
+# Stage 2: the season grid (moving seascorr) and its field significance
+# --------------------------------------------------------------------------- #
+
+def _bh_fdr(p, alpha=0.05):
+    """Benjamini-Hochberg FDR: return (boolean significant mask, critical p, k)."""
+    p = np.asarray(p, dtype=float)
+    m = p.size
+    order = np.argsort(p)
+    ranked = p[order]
+    thresh = alpha * np.arange(1, m + 1) / m
+    passed = ranked <= thresh
+    if passed.any():
+        k = int(np.max(np.where(passed)[0]) + 1)
+        crit = float(ranked[k - 1])
+    else:
+        k, crit = 0, 0.0
+    return (p <= crit), crit, k
+
+
+def _longest_consecutive(years):
+    """Longest run of consecutive integer years (so windows are contiguous)."""
+    years = np.asarray(years, dtype=int)
+    if years.size == 0:
+        return years
+    best_s, best_len, s = 0, 1, 0
+    for i in range(1, years.size):
+        if years[i] != years[i - 1] + 1:
+            if i - s > best_len:
+                best_s, best_len = s, i - s
+            s = i
+    if years.size - s > best_len:
+        best_s, best_len = s, years.size - s
+    return years[best_s:best_s + best_len]
+
+
+def _moving_corr_grid(x, c3, end_month, season_lengths, agg, window, offset,
+                      position, method, noise, ci, ci_level, iters, lc_iters,
+                      seed, period, plot):
+    """Compute the full seascorr-style season grid of moving correlations plus
+    per-cell stability p-values and two field-significance methods (FDR and a
+    Livezey-Chen count test). Returns a MovingCorrGridResult."""
+    from .climate import _seasonalize, _lag1
+
+    season_lengths = tuple(int(m) for m in season_lengths)
+    if not season_lengths:
+        raise ValueError("season_lengths must be a non-empty sequence of ints.")
+    window = int(window)
+    offset = int(offset)
+    if offset < 1:
+        raise ValueError("offset must be >= 1, got %d." % offset)
+
+    frame, meta = _seasonalize(c3, end_month, season_lengths, agg)
+    cells = list(frame.columns)
+    ncell = len(cells)
+    labels = np.array([m["label"] for m in meta])
+    slen = np.array([m["season_length"] for m in meta])
+    emon = np.array([m["end_month"] for m in meta])
+    prior = np.array([m["prior"] for m in meta])
+
+    # common contiguous year span across all cells and the chronology
+    common = x.index
+    for key in cells:
+        common = common.intersection(frame[key].dropna().index.astype(int))
+    common = np.sort(common.to_numpy())
+    if period is not None:
+        p0, p1 = int(period[0]), int(period[1])
+        common = common[(common >= p0) & (common <= p1)]
+    common = _longest_consecutive(common)
+    nt = common.size
+    if window < 10:
+        raise ValueError("window must be >= 10 years, got %d." % window)
+    if window >= nt:
+        raise ValueError("window (%d) must be shorter than the aligned grid "
+                         "period (%d years)." % (window, nt))
+
+    xa = x.reindex(common).to_numpy(dtype=float)
+    clim_mat = np.vstack([frame[key].reindex(common).to_numpy(dtype=float)
+                          for key in cells])
+    starts = np.arange(0, nt - window + 1, offset)
+    pos_years = common[starts + (window - 1) // 2]
+    L = starts.size
+
+    rng = np.random.default_rng(seed)
+    phi_x = _ar1_fit(xa) if noise == "red" else None
+    r1x = _lag1(xa)
+
+    cube = np.empty((ncell, L))
+    overall = np.empty(ncell)
+    pstd = np.empty(ncell)
+    thr95 = np.empty(ncell)
+    r1c = np.empty(ncell)
+    for j in range(ncell):
+        ca = clim_mat[j]
+        r = _moving_correlation(xa, ca, window, method=method, offset=offset)
+        cube[j] = r[:L]
+        oc = float(np.corrcoef(xa, ca)[0, 1])
+        overall[j] = oc
+        r1c[j] = _lag1(ca)
+        phi_c = _ar1_fit(ca) if noise == "red" else None
+        ens = _mc_ensemble(nt, window, oc, iters, noise, method, rng, offset,
+                           phi_x, phi_c)["std"]
+        pstd[j] = float(np.mean(ens >= float(np.nanstd(r))))
+        thr95[j] = float(np.quantile(ens, 0.95))
+    anomaly = cube - overall[:, None]
+
+    fdr_sig, fdr_crit, fdr_k = _bh_fdr(pstd, 0.05)
+
+    # Livezey-Chen field test: the count of locally-significant cells vs the
+    # distribution of that count under chronologies unrelated to climate (the
+    # real climate grid is reused, so the inter-season correlation is preserved)
+    K_obs = int(np.sum(pstd < 0.05))
+    K_null = np.empty(int(lc_iters), dtype=int)
+    for it in range(int(lc_iters)):
+        if noise == "red":
+            e = rng.standard_normal(nt + 500)
+            s_sur = lfilter([1.0], [1.0, -phi_x], e)[500:]
+        else:
+            s_sur = rng.standard_normal(nt)
+        cnt = 0
+        for j in range(ncell):
+            rr = _moving_correlation(s_sur, clim_mat[j], window, method=method,
+                                     offset=offset)
+            if np.nanstd(rr[:L]) >= thr95[j]:
+                cnt += 1
+        K_null[it] = cnt
+    lc_p = float(np.mean(K_null >= K_obs))
+
+    grid = pd.DataFrame({"season_length": slen, "end_month": emon,
+                         "prior": prior, "label": labels, "overall_r": overall,
+                         "stability_p": pstd, "fdr_sig": fdr_sig})
+    field = {"fdr_crit": fdr_crit, "fdr_k": fdr_k, "n_fdr": int(fdr_sig.sum()),
+             "lc_p": lc_p, "lc_K_obs": K_obs, "lc_K_null": K_null}
+    settings = {"end_month": int(end_month), "season_lengths": season_lengths,
+                "agg": agg, "window": window, "offset": offset,
+                "position": position, "method": method, "noise": noise,
+                "ci": ci, "ci_level": ci_level, "iters": int(iters),
+                "lc_iters": int(lc_iters), "seed": seed}
+    result = MovingCorrGridResult(grid, cube, anomaly, pos_years, overall, pstd,
+                                  thr95, r1c, r1x, fdr_sig, field,
+                                  (int(common[0]), int(common[-1])), settings)
+    if plot:
+        result.plot()
+    return result
+
+
+class MovingCorrGridResult:
+    """Result of :func:`moving_corr` in grid mode (a moving seascorr).
+
+    Attributes
+    ----------
+    grid : pandas.DataFrame
+        One row per season cell: ``season_length``, ``end_month``, ``prior``,
+        ``label``, ``overall_r`` (full-period correlation), ``stability_p`` (the
+        Gershunov std-test p for the trace), and ``fdr_sig`` (survives FDR).
+    cube : ndarray, shape (n_cells, n_windows)
+        The moving-correlation trace of every cell.
+    anomaly : ndarray
+        ``cube`` minus each cell's ``overall_r`` -- the departure from baseline.
+    pos_years : ndarray
+        Window-position years (per ``position``), shared by all cells.
+    field : dict
+        Field significance: ``lc_p`` (Livezey-Chen grid-level p), ``lc_K_obs``
+        and ``lc_K_null`` (observed and null counts of locally-significant cells),
+        ``n_fdr`` / ``fdr_crit`` / ``fdr_k`` (the FDR set).
+    overall, stability_p, thr95, r1_climate : ndarray (per cell)
+    r1_chronology : float
+    period : tuple(int, int)
+    settings : dict
+    """
+
+    def __init__(self, grid, cube, anomaly, pos_years, overall, stability_p,
+                 thr95, r1_climate, r1_chronology, fdr_sig, field, period,
+                 settings):
+        self.grid = grid
+        self.cube = cube
+        self.anomaly = anomaly
+        self.pos_years = pos_years
+        self.overall = overall
+        self.stability_p = stability_p
+        self.thr95 = thr95
+        self.r1_climate = r1_climate
+        self.r1_chronology = r1_chronology
+        self.fdr_sig = fdr_sig
+        self.field = field
+        self.period = period
+        self.settings = settings
+        self.fig = None
+        self.axes = None
+
+    def __repr__(self):
+        a, b = self.period
+        return ("MovingCorrGridResult(%d seasons, %d-%d, window=%d; FDR %d sig, "
+                "LC p=%.3f)" % (len(self.grid), a, b, self.settings["window"],
+                                self.field["n_fdr"], self.field["lc_p"]))
+
+    def summary(self):
+        a, b = self.period
+        lines = ["Moving correlation grid (moving seascorr)",
+                 "  period        : %d-%d (%d years)" % (a, b, b - a + 1),
+                 "  seasons       : %d cells, lengths %s"
+                 % (len(self.grid), tuple(self.settings["season_lengths"])),
+                 "  window/offset : %d / %d" % (self.settings["window"],
+                                                self.settings["offset"]),
+                 "  null model    : %s" % self.settings["noise"],
+                 "  FDR           : %d of %d seasons significant (crit p=%.4f)"
+                 % (self.field["n_fdr"], len(self.grid), self.field["fdr_crit"]),
+                 "  Livezey-Chen  : %d locally-significant cells vs ~%d expected, "
+                 "field p=%.3f" % (self.field["lc_K_obs"],
+                                   int(np.median(self.field["lc_K_null"])),
+                                   self.field["lc_p"])]
+        return "\n".join(lines)
+
+    def plot(self, kind="small_multiples", **kwargs):
+        from .moving_corr_grid_plot import moving_corr_grid_plot
+        return moving_corr_grid_plot(self, kind=kind, **kwargs)

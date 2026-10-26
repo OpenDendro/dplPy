@@ -276,3 +276,121 @@ def test_result_repr_and_summary():
                           iters=100, seed=1)
     assert "MovingCorrResult" in repr(res)
     assert "Moving correlation" in res.summary()
+
+
+# =========================================================================== #
+# Stage 2: grid mode (moving seascorr)
+# =========================================================================== #
+
+import matplotlib
+matplotlib.use("Agg")
+
+# grid golden masters (regime synthetic, lengths (1,3), end_month=12, window=25)
+_G_NCELLS = 28
+_G_CUBE_SHAPE = (28, 75)
+_G_JA_LABEL = "Jun-Aug"
+_G_JA_OVERALL = 0.385414
+
+
+@pytest.fixture(scope="module")
+def grid_res():
+    chron, clim = _synthetic(regime=True)
+    return dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
+                           window=25, iters=300, lc_iters=300, seed=7)
+
+
+@pytest.fixture(scope="module")
+def grid_null():
+    chron, clim = _synthetic(regime=False)
+    # make the chronology unrelated to climate: shuffle so no real signal
+    rng = np.random.default_rng(0)
+    chron = pd.Series(rng.standard_normal(chron.size), index=chron.index)
+    return dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
+                           window=25, iters=300, lc_iters=300, seed=7)
+
+
+def test_grid_type_shape_labels(grid_res):
+    from dplpy.moving_corr import MovingCorrGridResult
+    assert isinstance(grid_res, MovingCorrGridResult)
+    assert len(grid_res.grid) == _G_NCELLS
+    assert grid_res.cube.shape == _G_CUBE_SHAPE
+    g = grid_res.grid
+    j = g.index[(g.season_length == 3) & (g.end_month == 8) & (~g.prior)][0]
+    assert g.label.iloc[j] == _G_JA_LABEL
+    assert float(grid_res.overall[j]) == pytest.approx(_G_JA_OVERALL, abs=1e-4)
+
+
+def test_grid_anomaly_identity(grid_res):
+    np.testing.assert_allclose(grid_res.anomaly,
+                               grid_res.cube - grid_res.overall[:, None], atol=1e-12)
+
+
+def test_grid_cell_matches_single_mode_closely(grid_res):
+    # grid aligns on the common span across all cells, so it differs from the
+    # single-season call only by the edge years -> overall r should be very close
+    chron, clim = _synthetic(regime=True)
+    single = dpl.moving_corr(chron, clim, end_month=8, season_length=3, window=25,
+                             iters=20, seed=7, tests=(), ci="none")
+    g = grid_res.grid
+    j = g.index[(g.season_length == 3) & (g.end_month == 8) & (~g.prior)][0]
+    assert abs(single.overall_corr - float(grid_res.overall[j])) < 0.01
+
+
+def test_grid_regime_is_field_significant(grid_res):
+    assert grid_res.field["lc_p"] < 0.10
+    assert grid_res.field["n_fdr"] >= 1
+    assert (grid_res.grid["stability_p"].between(0, 1)).all()
+
+
+def test_grid_null_not_field_significant(grid_null):
+    assert grid_null.field["lc_p"] > 0.10
+    assert grid_null.field["n_fdr"] <= 2
+
+
+def test_grid_reproducible():
+    chron, clim = _synthetic(regime=True)
+    a = dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
+                        window=25, iters=150, lc_iters=150, seed=11)
+    b = dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
+                        window=25, iters=150, lc_iters=150, seed=11)
+    np.testing.assert_array_equal(a.cube, b.cube)
+    assert a.field["lc_p"] == b.field["lc_p"]
+    np.testing.assert_array_equal(a.fdr_sig, b.fdr_sig)
+
+
+def test_grid_small_multiples_fallback_warns(grid_res):
+    with pytest.warns(UserWarning, match="no seasons="):
+        fig = grid_res.plot(kind="small_multiples", show=False)
+    assert fig is not None
+
+
+def test_grid_small_multiples_explicit(grid_res):
+    fig = grid_res.plot(kind="small_multiples",
+                        seasons=[(3, 6), (3, 7), (3, 8)], show=False)
+    assert fig is not None
+
+
+def test_grid_bad_season_raises(grid_res):
+    with pytest.raises(ValueError, match="not in the grid"):
+        grid_res.plot(kind="small_multiples", seasons=[(3, 13)], show=False)
+
+
+def test_grid_plot_kinds_run(grid_res):
+    for kind in ("dominant", "surface"):
+        fig = grid_res.plot(kind=kind, show=False)
+        assert fig is not None
+    with pytest.raises(ValueError, match="kind must be"):
+        grid_res.plot(kind="bogus", show=False)
+
+
+def test_grid_summary_and_repr(grid_res):
+    assert "MovingCorrGridResult" in repr(grid_res)
+    s = grid_res.summary()
+    assert "moving seascorr" in s and "Livezey-Chen" in s
+
+
+def test_grid_empty_season_lengths_raises():
+    chron, clim = _synthetic()
+    with pytest.raises(ValueError, match="non-empty"):
+        dpl.moving_corr(chron, clim, end_month=12, season_lengths=(), window=25,
+                        iters=20, seed=1)

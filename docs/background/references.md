@@ -89,6 +89,17 @@ Two foundational texts underpin the field and the methods dplPy implements:
 - Slutzky, E. (1937). The summation of random causes as the source of cyclic
   processes. *Econometrica* 5(2), 105-146. *(why overlapping windows manufacture
   low-frequency wobble)*
+- Livezey, R.E., Chen, W.Y. (1983). Statistical field significance and its
+  determination by Monte Carlo techniques. *Monthly Weather Review* 111(1), 46-59.
+  *(the grid-level field-significance test for the season grid)*
+- Benjamini, Y., Hochberg, Y. (1995). Controlling the false discovery rate: a
+  practical and powerful approach to multiple testing. *Journal of the Royal
+  Statistical Society B* 57(1), 289-300. *(the per-season FDR annotation)*
+- Crameri, F. (2018). *Scientific colour maps.* Zenodo,
+  doi:10.5281/zenodo.1243862.<br>
+  Crameri, F., Shephard, G.E., Heron, P.J. (2020). The misuse of colour in science
+  communication. *Nature Communications* 11, 5444. *(the perceptually-uniform,
+  colourblind-safe maps used in the grid figures)*
 
 ## Chronology & signal strength
 
