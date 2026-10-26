@@ -307,6 +307,7 @@ def test_sweep_covers_every_public_transform():
         # non-mutation test in its own module.
         "seascorr", "SeascorrResult",
         "pcreg", "PcregResult",
+        "sea", "SeaResult",
         # plotting only
         "plot", "xdate_plot", "disturbance_plot",
         # file-driven report

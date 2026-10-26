@@ -66,6 +66,14 @@ Two foundational texts underpin the field and the methods dplPy implements:
   Detecting and removing the effects of canopy disturbances from tree-ring
   chronologies with an age-dependent spline. *Dendrochronologia* 85, 126195.
 
+## Superposed epoch analysis
+
+- Rao, M.P., Cook, E.R., Cook, B.I., Anchukaitis, K.J., D'Arrigo, R.D., Krusic,
+  P.J., LeGrande, A.N. (2019). A double bootstrap approach to Superposed Epoch
+  Analysis to evaluate response uncertainty. *Dendrochronologia* 55, 119-124.
+- Adams, J.B., Mann, M.E., Ammann, C.M. (2003). Proxy evidence for an El Nino-like
+  response to volcanic forcing. *Nature* 426, 274-278. *(block bootstrap)*
+
 ## Chronology & signal strength
 
 - Wigley, T.M.L., Briffa, K.R., Jones, P.D. (1984). On the average value of

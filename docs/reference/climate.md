@@ -24,3 +24,11 @@ how `pcreg` validates a reconstruction and what each statistic in
 ## PcregResult
 
 ::: dplpy.pcreg.PcregResult
+
+## sea
+
+::: dplpy.sea.sea
+
+## SeaResult
+
+::: dplpy.sea.SeaResult
