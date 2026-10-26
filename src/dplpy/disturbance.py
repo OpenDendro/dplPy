@@ -50,7 +50,7 @@ from ._validate import _warn
 from .agedepspline import ads
 
 
-def _rga_one(raw, yrs, threshold, window_length):
+def _rga_one(raw, yrs, threshold, window_length, min_mean=0.0):
     """Radial-growth averaging on ONE gap-free raw ring-width series.
 
     Returns ``(releases, running_mean, pct_growth_change)`` where ``releases`` is a
@@ -58,8 +58,14 @@ def _rga_one(raw, yrs, threshold, window_length):
     year of maximum percent growth change in that segment. ``running_mean`` and
     ``pct_growth_change`` are full-length arrays (NaN where undefined) for plotting.
 
-    Mirrors v267_rga's RGA block exactly. ``raw`` is float ring widths with no NaN,
-    ``yrs`` the aligned calendar years, both length n. Returns empty if n < 2*mav.
+    Mirrors v267_rga's RGA block. ``raw`` is float ring widths with no NaN, ``yrs``
+    the aligned calendar years, both length n. Returns empty if n < 2*mav.
+
+    ``min_mean`` guards the denominator: a release is only eligible where the
+    preceding running mean is at least ``min_mean`` mm, which keeps a near-zero
+    baseline (e.g. a window dominated by absent/recoded rings) from inflating the
+    percent growth change into a spurious release. ``min_mean=0`` reproduces
+    v267_rga exactly.
     """
     mav = int(window_length)
     n = len(raw)
@@ -79,8 +85,9 @@ def _rga_one(raw, yrs, threshold, window_length):
     # mav-year mean (ending at g+mav), for g in [mav-1, n-mav-1]. (series(:,4).)
     col5 = np.zeros(n)                      # PGC where >= threshold, else 0 (series(:,5))
     for g in range(mav - 1, n - mav):
-        pgc[g] = (M[g + mav] - M[g]) / M[g] * 100.0
-        if pgc[g] >= threshold:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pgc[g] = (M[g + mav] - M[g]) / M[g] * 100.0
+        if pgc[g] >= threshold and M[g] >= min_mean:   # min_mean=0 -> exact v267_rga
             col5[g] = pgc[g]
 
     # Local maximum of each contiguous above-threshold segment is the release.
@@ -103,8 +110,32 @@ def _rga_one(raw, yrs, threshold, window_length):
     return releases, M, pgc
 
 
+def _recode_zeros_or_warn(data, recode_zeros, where):
+    """Handle literal zero (locally absent) rings before processing.
+
+    If ``recode_zeros`` is True, return a COPY with zeros recoded to 0.001 (the
+    same convention as ``dpl.ssf``; the caller's frame is never modified). If
+    False and zeros are present, warn (naming the affected series) rather than
+    letting them propagate silently, and return the frame unchanged. NaN is no
+    data and is left alone; only literal zeros are touched.
+    """
+    zero_cols = [c for c in data.columns if (data[c] == 0).any()]
+    if recode_zeros:
+        if zero_cols:
+            data = data.copy()
+            data[data == 0] = 0.001
+        return data
+    if zero_cols:
+        shown = ", ".join(zero_cols[:6]) + (" ..." if len(zero_cols) > 6 else "")
+        _warn(f"{where}: {len(zero_cols)} series contain zero (absent) rings "
+              f"({shown}); these are treated as zero growth and can yield NaN in "
+              f"the log-transform branch. Pass recode_zeros=True to recode them to "
+              f"0.001 before processing.")
+    return data
+
+
 def releases(data, threshold=50, window_length=15, significance=False,
-             method="rga", return_info=False):
+             method="rga", recode_zeros=False, min_mean=0.01, return_info=False):
     """Detect canopy-disturbance release events by radial-growth averaging.
 
     Finds releases in each series with the Lorimer & Frelich method as implemented
@@ -137,6 +168,16 @@ def releases(data, threshold=50, window_length=15, significance=False,
     method : {"rga"}, default "rga"
         the detection method. Only radial-growth averaging is available; the
         argument reserves room for other detectors.
+    recode_zeros : bool, default False
+        recode literal zero (locally absent) rings to 0.001 before detection, the
+        same convention as ``dpl.ssf`` (the input frame is never modified). When
+        False, series containing zeros are detected as-is and a warning names them.
+    min_mean : float, default 0.01
+        minimum preceding running-mean ring width, in mm, for a year to be eligible
+        as a release. Guards the percent-growth-change denominator so a near-zero
+        baseline (a window dominated by absent or recoded rings) cannot inflate into
+        a spurious release. The default touches only such pathological windows;
+        set 0 to disable the guard (exact v267_rga behaviour).
     return_info : bool, default False
         if True, also return a dict keyed by series name, each value a DataFrame
         indexed by year with the ``running_mean`` and ``pct_growth_change`` curves,
@@ -172,6 +213,7 @@ def releases(data, threshold=50, window_length=15, significance=False,
     if not isinstance(data, pd.DataFrame):
         raise TypeError("data must be a pandas DataFrame or Series, or a path (str) "
                         "to an rwl/csv file, not " + str(type(data)) + ".")
+    data = _recode_zeros_or_warn(data, recode_zeros, "releases")
 
     rows = []
     info = {}
@@ -181,7 +223,7 @@ def releases(data, threshold=50, window_length=15, significance=False,
             continue
         yrs = v.index.to_numpy()
         raw = v.to_numpy(dtype=float)
-        rel, M, pgc = _rga_one(raw, yrs, threshold, window_length)
+        rel, M, pgc = _rga_one(raw, yrs, threshold, window_length, min_mean)
         if len(raw) < 2 * window_length:
             _warn(f"releases: series '{name}' has only {len(raw)} rings "
                   f"(< 2 * window_length = {2 * window_length}); skipped.")
@@ -275,7 +317,8 @@ def _disturb_one(raw, yrs, rel_idx, window_length, release_flex, age_flex, power
 
 
 def disturbance_detrend(data, threshold=50, window_length=15, significance=False,
-                        release_flex=10, age_flex=30, power=True, return_info=False):
+                        release_flex=10, age_flex=30, power=True,
+                        recode_zeros=False, min_mean=0.01, return_info=False):
     """Standardize ring widths by removing canopy-disturbance releases and the age trend.
 
     The Druckenbrod et al. (2024) method. For each series: detect releases by radial
@@ -314,6 +357,15 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
         natural-log branch at power <= 0.05); it diverges from ``dpl.powt`` and is
         kept as the validated default. ``False`` operates in raw ring-width units
         with no transform.
+    recode_zeros : bool, default False
+        recode literal zero (locally absent) rings to 0.001 before processing, the
+        ``dpl.ssf`` convention (the input frame is never modified). Absent rings
+        otherwise flow through as zero growth and can yield NaN in the log-transform
+        branch; when False and zeros are present, a warning names the series.
+    min_mean : float, default 0.01
+        minimum preceding running-mean ring width (mm) for a release to be eligible
+        (see ``releases``). Guards against a near-zero baseline inflating the
+        percent growth change; set 0 for exact v267_rga behaviour.
     return_info : bool, default False
         if True, return a dict instead of just the index (see Returns).
 
@@ -350,6 +402,7 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
     if not isinstance(data, pd.DataFrame):
         raise TypeError("data must be a pandas DataFrame or Series, or a path (str) "
                         "to an rwl/csv file, not " + str(type(data)) + ".")
+    data = _recode_zeros_or_warn(data, recode_zeros, "disturbance_detrend")
 
     index = pd.DataFrame(index=data.index, dtype=float)
     dst = pd.DataFrame(index=data.index, dtype=float)
@@ -372,7 +425,7 @@ def disturbance_detrend(data, threshold=50, window_length=15, significance=False
             _warn(f"disturbance_detrend: series '{name}' has only {len(raw)} rings "
                   f"(< 2 * window_length = {2 * window_length}); returned as NaN.")
             continue
-        rel, _, _ = _rga_one(raw, yrs, threshold, window_length)
+        rel, _, _ = _rga_one(raw, yrs, threshold, window_length, min_mean)
         rel_idx = sorted(int(np.where(yrs == yr)[0][0]) for yr, _ in rel)
         res = _disturb_one(raw, yrs, rel_idx, window_length,
                            release_flex, age_flex, power)

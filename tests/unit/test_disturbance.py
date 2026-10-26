@@ -196,3 +196,48 @@ def test_disturbance_detrend_too_short_all_nan_warns():
         out = dpl.disturbance_detrend(s, window_length=15)
     assert out.isna().all()
     assert any("NaN" in str(x.message) for x in w)
+
+
+# ----- Q8: absent rings (recode_zeros) and the micro-ring denominator guard -----
+
+def test_min_mean_guard_suppresses_near_zero_baseline():
+    # A 100% "release" between two essentially-absent levels (0.001 -> 0.002) is a
+    # denominator artifact. The default guard removes it; min_mean=0 reproduces the
+    # unguarded v267_rga behaviour and detects it.
+    raw = np.r_[np.full(20, 0.001), np.full(20, 0.002)]
+    s = pd.Series(raw, index=np.arange(1900, 1940), name="ART")
+    assert len(dpl.releases(s, window_length=5, threshold=50, min_mean=0.0)) == 1
+    assert len(dpl.releases(s, window_length=5, threshold=50, min_mean=0.01)) == 0
+
+
+def test_min_mean_default_preserves_real_release():
+    # A genuine release off a healthy baseline is untouched by the default guard.
+    raw = np.r_[np.ones(20), 3.0 * np.ones(20)]
+    s = pd.Series(raw, index=np.arange(1900, 1940), name="SYN")
+    assert dpl.releases(s, window_length=5)["year"].tolist() == [1919]
+
+
+def test_releases_zeros_warn_when_not_recoded():
+    raw = np.r_[np.ones(19), [0.0], np.ones(20)]       # one absent ring
+    s = pd.Series(raw, index=np.arange(1900, 1940), name="ABS")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        dpl.releases(s, window_length=5)
+    assert any("absent" in str(x.message) for x in w)
+
+
+def test_recode_zeros_does_not_mutate_input():
+    raw = np.r_[np.ones(19), [0.0], np.ones(20)]
+    s = pd.Series(raw, index=np.arange(1900, 1940), name="ABS")
+    before = s.copy(deep=True)
+    dpl.releases(s, window_length=5, recode_zeros=True)
+    dpl.disturbance_detrend(s, window_length=5, recode_zeros=True)
+    pd.testing.assert_series_equal(s, before)           # zero still present, unchanged
+
+
+def test_disturbance_detrend_mo024_unchanged_by_default_guard():
+    # The default min_mean=0.01 must not perturb the validated golden-master result.
+    data = _read_quiet("tests/data/rwl/mo024.rwl")
+    st_default = dpl.disturbance_detrend(data)
+    st_noguard = dpl.disturbance_detrend(data, min_mean=0.0)
+    pd.testing.assert_frame_equal(st_default, st_noguard)
