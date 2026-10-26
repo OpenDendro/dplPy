@@ -125,6 +125,7 @@ nav:
       - Dating a floating series: guide/floating-series.md
       - Statistics & agreement: guide/statistics.md
       - Climate–growth response: guide/seascorr.md
+      - Moving correlation: guide/moving-correlation.md
       - Superposed epoch analysis: guide/superposed-epoch.md
       - LiPD interchange: guide/lipd.md
       - Coming from dplR: guide/coming-from-dplr.md

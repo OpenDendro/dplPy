@@ -79,6 +79,7 @@ from .read_pos import read_pos, PosCollection
 from .climate import seascorr, SeascorrResult
 from .pcreg import pcreg, PcregResult
 from .sea import sea, SeaResult
+from .moving_corr import moving_corr, MovingCorrResult
 from .powt import powt
 from .disturbance import releases, disturbance_detrend
 from .disturbance_plot import disturbance_plot
@@ -141,6 +142,8 @@ __all__ = [
     "pcreg",
     "sea",
     "SeaResult",
+    "moving_corr",
+    "MovingCorrResult",
     "SeascorrResult",
     "wc_to_po",
     "powt",

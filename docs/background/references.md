@@ -74,6 +74,22 @@ Two foundational texts underpin the field and the methods dplPy implements:
 - Adams, J.B., Mann, M.E., Ammann, C.M. (2003). Proxy evidence for an El Nino-like
   response to volcanic forcing. *Nature* 426, 274-278. *(block bootstrap)*
 
+## Moving correlation
+
+- Gershunov, A., Schneider, N., Barnett, T. (2001). Low-frequency modulation of
+  the ENSO-Indian monsoon rainfall relationship: signal or noise? *Journal of
+  Climate* 14, 2486-2492. *(the variability test and the surrogate approach)*
+- Gelman, A., Stern, H. (2006). The difference between "significant" and "not
+  significant" is not itself statistically significant. *The American
+  Statistician* 60(4), 328-331. *(why `moving_corr` shows estimates and
+  uncertainty, not a grid of per-window significance)*
+- Zang, C., Biondi, F. (2014). treeclim: an R package for the numerical
+  calibration of proxy-climate relationships. *Ecography* 38(4), 431-436. *(the
+  moving-correlation / moving-response convention)*
+- Slutzky, E. (1937). The summation of random causes as the source of cyclic
+  processes. *Econometrica* 5(2), 105-146. *(why overlapping windows manufacture
+  low-frequency wobble)*
+
 ## Chronology & signal strength
 
 - Wigley, T.M.L., Briffa, K.R., Jones, P.D. (1984). On the average value of
