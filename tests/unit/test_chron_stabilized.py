@@ -182,7 +182,7 @@ def test_chron_stabilized_spline_uses_shared_spline_component():
     out = _quiet(dpl.chron_stabilized, rwi, method="spline", spline_period=60)
     std = dpl.chron(rwi, plot=False)["std"].to_numpy()
     n = rwi.notna().sum(axis=1).to_numpy()
-    ref = _spline_component(std, 60, 0.5, clip_negative=True, ok=n > 0)
+    ref = _spline_component(std, 60, 0.5, clip_negative=False, ok=n > 0)
     assert np.allclose(out["vsc"].to_numpy(), ref, equal_nan=True)
 
 

@@ -42,7 +42,7 @@ _METHODS = ("running_rbar", "briffa", "mean_rbar", "spline")
 
 def chron_stabilized(rwi_data: pd.DataFrame, window_length=50, min_seg_ratio=1/3,
                      biweight=True, running_rbar=False, method="running_rbar",
-                     spline_period=None, **kwargs):
+                     spline_period=None, clip_negative=False, **kwargs):
     """Build a variance-stabilized mean-value chronology.
 
     Scales a mean-value chronology by the square root of the effective independent
@@ -179,7 +179,8 @@ def chron_stabilized(rwi_data: pd.DataFrame, window_length=50, min_seg_ratio=1/3
     else:  # method == "spline"
         # ARSTAN's ad-hoc spline variance stabilization: flatten the time trend
         # in the chronology's absolute departures with a smoothing spline.
-        vsc = _spline_stabilize(mean_rwis + mean_val, n_samps, spline_period)
+        vsc = _spline_stabilize(mean_rwis + mean_val, n_samps, spline_period,
+                                clip_negative=clip_negative)
 
     out = {"vsc": vsc, "samp_depth": n_samps}
     if method == "running_rbar" and running_rbar:
@@ -198,11 +199,14 @@ def _n_eff(n_samps, rbar):
         return np.where(np.isnan(denom), n_samps, np.minimum(n_samps / denom, n_samps))
 
 
-def _spline_stabilize(chron_series, n_samps, spline_period=None, **kwargs):
+def _spline_stabilize(chron_series, n_samps, spline_period=None,
+                      clip_negative=False, **kwargs):
     """ARSTAN's ad-hoc spline variance stabilization of a chronology, resolving
     the stiffness convention (int > 1: years; 0 < float < 1: fraction of length;
-    None: the 67% spline), clipping negatives, and taking the mean/SD only over
-    years with sample depth > 0. Thin wrapper over `stabilize._spline_component()`.
+    None: the 67% spline) and taking the mean/SD only over years with sample
+    depth > 0. Thin wrapper over `stabilize._spline_component()`. ``clip_negative``
+    is off by default (a zero-centered chronology has legitimate negatives); set it
+    True only for a positive index.
     """
     spline_period = _alias_kwarg(kwargs, "spline_nyrs", "spline_period", spline_period,
                                  "_spline_stabilize")
@@ -214,5 +218,5 @@ def _spline_stabilize(chron_series, n_samps, spline_period=None, **kwargs):
         nyrs = max(int(round(spline_period * n)), 2)
     else:
         nyrs = max(int(spline_period), 2)
-    return _spline_component(chron_series, nyrs, 0.5, clip_negative=True,
+    return _spline_component(chron_series, nyrs, 0.5, clip_negative=clip_negative,
                              ok=(np.asarray(n_samps) > 0))

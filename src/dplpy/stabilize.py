@@ -133,7 +133,7 @@ def _spline_component(x, period, f=0.5, clip_negative=False, ok=None):
 def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
                     running_rbar=None, samp_depth=None, rbar_mode="running",
                     window_length=50, min_seg_ratio=1 / 3, spline_period=None,
-                    f=0.5, clip_negative=True, return_info=False, **kwargs):
+                    f=0.5, clip_negative=False, return_info=False, **kwargs):
     """Variance-stabilize an already-built chronology.
 
     Scales the departures of a chronology you already built with `chron()` or
@@ -184,8 +184,12 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
         float in (0, 1) is a fraction of length; a negative value is a percent spline.
     f : float, default 0.5
         spline frequency response (50% amplitude cutoff).
-    clip_negative : bool, default True
-        clamp the stabilized chronology at >= 0.
+    clip_negative : bool, default False
+        clamp the stabilized chronology at >= 0. Off by default: a chronology
+        centered at zero (difference detrending, or a residual chronology) has
+        legitimate negative departures, and clamping them floors the series at 0.
+        Set True only for a positive ratio/index chronology where a negative value
+        is not meaningful.
     return_info : bool, default False
         also return the diagnostics (rbar used, N_eff, sample depth).
 

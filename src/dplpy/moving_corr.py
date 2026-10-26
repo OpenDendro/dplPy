@@ -617,10 +617,20 @@ def moving_corr(crn, climate, end_month=9, season_length=1, season_lengths=None,
         raise ValueError("chronology and climate share no overlapping years.")
     xa = x.reindex(common).to_numpy(dtype=float)
     ca = clim.reindex(common).to_numpy(dtype=float)
-    good = np.isfinite(xa) & np.isfinite(ca)
-    if not good.all():
-        # keep the longest unbroken run so windows are contiguous in time
-        xa, ca, common = _longest_run(xa, ca, common, good)
+    # keep the longest run of CONSECUTIVE years with finite values in both, so a
+    # window never silently bridges a gap (dropped NaN years, or missing climate
+    # months, would otherwise make non-adjacent years look contiguous)
+    finite = np.isfinite(xa) & np.isfinite(ca)
+    run = _longest_consecutive(common[finite])
+    if run.size < common.size:
+        import warnings
+        warnings.warn("moving_corr: %d of %d aligned years had gaps or missing "
+                      "values; using the longest unbroken run (%d-%d)."
+                      % (common.size - run.size, common.size,
+                         int(run[0]), int(run[-1])), UserWarning, stacklevel=2)
+    common = run
+    xa = x.reindex(common).to_numpy(dtype=float)
+    ca = clim.reindex(common).to_numpy(dtype=float)
     n = xa.size
 
     window = int(window)
@@ -684,27 +694,6 @@ def moving_corr(crn, climate, end_month=9, season_length=1, season_lengths=None,
     if plot:
         result.plot()
     return result
-
-
-def _longest_run(xa, ca, years, good):
-    """Keep the longest unbroken run of finite paired values, so the windows are
-    contiguous in time. Ties resolve to the most recent block (as in climate's
-    _longest_unbroken)."""
-    best_len, best_end, run = 0, -1, 0
-    for i, g in enumerate(good):
-        run = run + 1 if g else 0
-        if run >= best_len:
-            best_len, best_end = run, i
-    if best_len == 0:
-        raise ValueError("chronology and climate have no overlapping finite years.")
-    sl = slice(best_end - best_len + 1, best_end + 1)
-    import warnings
-    if best_len < good.size:
-        warnings.warn("moving_corr: %d of %d aligned years had gaps; using the "
-                      "longest unbroken run (%d years)."
-                      % (good.size - best_len, good.size, best_len),
-                      UserWarning, stacklevel=3)
-    return xa[sl], ca[sl], years[sl]
 
 
 # --------------------------------------------------------------------------- #

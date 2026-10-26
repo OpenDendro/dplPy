@@ -394,3 +394,15 @@ def test_grid_empty_season_lengths_raises():
     with pytest.raises(ValueError, match="non-empty"):
         dpl.moving_corr(chron, clim, end_month=12, season_lengths=(), window=25,
                         iters=20, seed=1)
+
+
+def test_interior_gap_not_bridged():
+    # dropping interior climate years must split the analysis at the gap, never
+    # silently bridge it (regression for the single-path alignment)
+    chron, clim = _synthetic()
+    clim_gap = clim[~clim.year.isin([1948, 1949, 1950, 1951])]
+    with pytest.warns(UserWarning, match="unbroken run"):
+        res = dpl.moving_corr(chron, clim_gap, end_month=8, season_length=3,
+                              window=25, iters=20, seed=1, tests=(), ci="none")
+    # the window set must lie entirely on one side of the gap
+    assert not (res.period[0] < 1948 and res.period[1] > 1951)
