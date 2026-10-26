@@ -120,6 +120,7 @@ nav:
       - Handling internal gaps: guide/internal-gaps.md
       - Building chronologies: guide/chronologies.md
       - Variance stabilization: guide/variance-stabilization.md
+      - Canopy disturbance detrending: guide/canopy-disturbance.md
       - Crossdating & COFECHA: guide/crossdating.md
       - Dating a floating series: guide/floating-series.md
       - Statistics & agreement: guide/statistics.md
@@ -133,6 +134,7 @@ nav:
   - API Reference:
       - Input & output: reference/io.md
       - Detrending & standardization: reference/detrending.md
+      - Canopy disturbance: reference/disturbance.md
       - Chronology: reference/chronology.md
       - Crossdating: reference/crossdating.md
       - Statistics & indices: reference/statistics.md

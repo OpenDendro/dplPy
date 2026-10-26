@@ -57,6 +57,15 @@ Two foundational texts underpin the field and the methods dplPy implements:
   of Regional Chronology Standardisation: Part 2. Further RCS options and
   recommendations. *Dendrochronologia*, 32(4), 343–356.
 
+## Canopy disturbance
+
+- Lorimer, C.G., Frelich, L.E. (1989). A methodology for estimating canopy
+  disturbance frequency and intensity in dense temperate forests. *Canadian
+  Journal of Forest Research* 19(5), 651–663. *(radial-growth averaging)*
+- Druckenbrod, D.L., Cook, E.R., Pederson, N., Martin-Benito, D. (2024).
+  Detecting and removing the effects of canopy disturbances from tree-ring
+  chronologies with an age-dependent spline. *Dendrochronologia* 85, 126195.
+
 ## Chronology & signal strength
 
 - Wigley, T.M.L., Briffa, K.R., Jones, P.D. (1984). On the average value of
