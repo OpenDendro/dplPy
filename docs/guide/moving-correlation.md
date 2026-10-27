@@ -173,10 +173,12 @@ uses a per-cell significance mask:
   of the best (narrow where the choice is sharp, wide where it is ambiguous). It
   answers "does the dominant season shift," but because it always draws a
   confident-looking line, read it together with the field-significance verdict.
-- **`surface`** is the full picture: a season-by-time heatmap of each cell's
-  *departure from its own full-period correlation*, so stability itself is the
-  signal (a flat, pale row is a stable season) and you are never reading a grid of
-  significance flags flickering through time.
+- **`surface`** is the full picture: a season-by-time heatmap of the moving
+  correlation on a diverging red/blue scale (red positive, white near zero), so
+  you see at a glance which seasons carry the signal and how it changes through
+  time — never a grid of significance flags flickering from cell to cell. Pass
+  `mode="anomaly"` to map each cell's *departure from its own full-period
+  correlation* instead, which flattens the magnitude to emphasise change alone.
 
 ### Field significance
 

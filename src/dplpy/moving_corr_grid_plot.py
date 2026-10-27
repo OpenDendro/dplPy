@@ -31,10 +31,14 @@ __license__ = "GNU GPLv3"
 #              significance is carried as a grid-level verdict (Livezey-Chen) and a
 #              per-season annotation (FDR), following Gelman & Stern (2006).
 #
-#              Colormaps are Crameri's scientific colour maps (perceptually uniform,
-#              colourblind-safe), embedded here as compact control points so dplPy
-#              needs no extra dependency. Crameri, F. (2018), Scientific colour maps,
-#              Zenodo, doi:10.5281/zenodo.1243862; Crameri, Shephard & Heron (2020),
+#              The surface uses matplotlib's RdBu_r (ColorBrewer, colourblind-safe:
+#              red = positive correlation, white = 0, blue = negative) on the raw
+#              moving correlation; mode="anomaly" instead maps the departure from
+#              each season's full-period correlation. The dominant-season view uses
+#              Crameri's "lajolla" (perceptually uniform, colourblind-safe), embedded
+#              as compact control points so dplPy needs no extra dependency.
+#              Crameri, F. (2018), Scientific colour maps, Zenodo,
+#              doi:10.5281/zenodo.1243862; Crameri, Shephard & Heron (2020),
 #              Nature Communications 11, 5444.
 
 import numpy as np
@@ -47,20 +51,8 @@ _MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 _SHADE = "#bcd0e6"
 _FDR = "#c1442e"
 
-# Crameri "vik" (diverging) and "lajolla" (sequential), 32 control points each.
-_VIK = [
-    (0.0013,0.0698,0.3795),(0.0071,0.1208,0.4113),(0.0091,0.1691,0.4426),
-    (0.0097,0.2170,0.4736),(0.0112,0.2720,0.5089),(0.0196,0.3230,0.5417),
-    (0.0543,0.3771,0.5769),(0.1177,0.4356,0.6158),(0.2108,0.5062,0.6635),
-    (0.3050,0.5709,0.7074),(0.4038,0.6351,0.7512),(0.5037,0.6979,0.7940),
-    (0.6159,0.7669,0.8409),(0.7153,0.8263,0.8806),(0.8131,0.8787,0.9107),
-    (0.8965,0.9052,0.9080),(0.9348,0.8779,0.8452),(0.9238,0.8215,0.7630),
-    (0.8992,0.7588,0.6781),(0.8730,0.6968,0.5951),(0.8443,0.6293,0.5051),
-    (0.8195,0.5715,0.4281),(0.7955,0.5155,0.3537),(0.7718,0.4606,0.2814),
-    (0.7432,0.3978,0.2016),(0.7088,0.3350,0.1305),(0.6550,0.2615,0.0641),
-    (0.5874,0.1907,0.0260),(0.5148,0.1292,0.0220),(0.4565,0.0843,0.0248),
-    (0.4021,0.0394,0.0282),(0.3504,0.0001,0.0305),
-]
+# Crameri "lajolla" (sequential, for the dominant-season strength), 32 control
+# points. The surface uses matplotlib's RdBu_r (ColorBrewer, colourblind-safe).
 _LAJOLLA = [
     (0.0988,0.0997,0.0001),(0.1258,0.1093,0.0156),(0.1532,0.1190,0.0318),
     (0.1833,0.1294,0.0502),(0.2220,0.1425,0.0706),(0.2615,0.1559,0.0894),
@@ -170,7 +162,9 @@ def _small_multiples(result, seasons=None, ci="fisher", ci_level=None, show=True
             axes[r, 0].set_ylabel("Correlation")
 
     fig.suptitle("Moving correlation by season  -  estimate and per-window "
-                 "uncertainty", fontsize=11.5, x=0.06, ha="left")
+                 "uncertainty  (window %d, step %d)"
+                 % (result.settings["window"], result.settings["offset"]),
+                 fontsize=11.5, x=0.06, ha="left")
     fig.text(0.06, 0.005, "dotted line = full-period r.   * = FDR-significant "
              "season (%d of %d).   grid Livezey-Chen field test p = %.3f."
              % (result.field["n_fdr"], len(result.grid), result.field["lc_p"]),
@@ -223,8 +217,9 @@ def _dominant(result, season_length=None, show=True):
     ax.set_ylabel("Ending month of strongest %d-month season" % season_length)
     cb = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
     cb.set_label("correlation of the winning season  (darker = stronger)", fontsize=8)
-    ax.set_title("Which season carries the signal, over time  (%d-month seasons)"
-                 % season_length, fontsize=11, loc="left")
+    ax.set_title("Which season carries the signal, over time  (%d-month seasons, "
+                 "window %d, step %d)" % (season_length, result.settings["window"],
+                 result.settings["offset"]), fontsize=11, loc="left")
     ax.text(0.0, -0.17, "grey bar = other seasons within 90%% of the best "
             "(narrow = sharp choice, wide = ambiguous).   grid field test p = %.3f."
             % result.field["lc_p"], transform=ax.transAxes, fontsize=8,
@@ -242,13 +237,16 @@ def _dominant(result, season_length=None, show=True):
 # stability surface
 # --------------------------------------------------------------------------- #
 
-def _surface(result, show=True):
+def _surface(result, show=True, mode="correlation"):
     import matplotlib.pyplot as plt
+    if mode not in ("correlation", "anomaly"):
+        raise ValueError("mode must be 'correlation' or 'anomaly'.")
     g = result.grid
     lengths = sorted(set(g["season_length"]))
     t = result.pos_years.astype(float)
-    vmax = float(np.nanpercentile(np.abs(result.anomaly), 98))
-    div = _cmap("vik", _VIK)
+    field = result.cube if mode == "correlation" else result.anomaly
+    vmax = float(np.nanpercentile(np.abs(field), 98))
+    div = plt.cm.RdBu_r                       # red = positive r, white = 0, blue = negative
 
     fig, axes = plt.subplots(len(lengths), 1, figsize=(9, 2.3 * len(lengths) + 1),
                              sharex=True, squeeze=False,
@@ -257,7 +255,7 @@ def _surface(result, show=True):
     im = None
     for ax, m in zip(axes, lengths):
         idx = g.index[g["season_length"] == m].to_numpy()
-        A = result.anomaly[idx]
+        A = field[idx]
         im = ax.pcolormesh(t, np.arange(len(idx)), A, cmap=div,
                            vmin=-vmax, vmax=vmax, shading="nearest")
         ax.set_yticks(np.arange(len(idx)))
@@ -273,10 +271,16 @@ def _surface(result, show=True):
             ax.spines[s].set_visible(False)
     axes[-1].set_xlabel("Year (window %s)" % result.settings["position"])
     cb = fig.colorbar(im, ax=list(axes), fraction=0.025, pad=0.02)
-    cb.set_label("moving r  minus  full-period r   (departure from baseline)",
-                 fontsize=8)
-    fig.suptitle("Signal stability surface  -  departure of each season's moving "
-                 "correlation from its own baseline", fontsize=11, x=0.09, ha="left")
+    win = "  (window %d, step %d)" % (result.settings["window"],
+                                      result.settings["offset"])
+    if mode == "correlation":
+        cb.set_label("moving correlation", fontsize=8)
+        title = "Moving-correlation surface  -  chronology vs season" + win
+    else:
+        cb.set_label("moving r  minus  full-period r   (departure from baseline)",
+                     fontsize=8)
+        title = ("Signal stability surface  -  departure from baseline" + win)
+    fig.suptitle(title, fontsize=11, x=0.09, ha="left")
     fig.text(0.09, 0.012, "season labels in red = field-significant by FDR (%d of "
              "%d).   Livezey-Chen field test: %d locally-significant cells vs ~%d "
              "expected, p = %.3f." % (result.field["n_fdr"], len(result.grid),
