@@ -15,14 +15,14 @@ from dplpy._validate import _warn, DplpyWarning
 
 @pytest.fixture(autouse=True)
 def _restore_formatter():
-    """Each test may toggle the global formatter; always put it back to the
-    import-time default (friendly ON) afterwards so tests stay independent."""
+    """Each test may toggle the global formatter; restore the exact object that
+    was active at setup (the import-time friendly formatter) afterwards so tests
+    stay independent and leave the session's warning display as it found it."""
     saved = warnings.formatwarning
     try:
         yield
     finally:
         warnings.formatwarning = saved
-        dpl.set_friendly_warnings(True)
 
 
 def test_category_is_a_userwarning_subclass():
@@ -102,6 +102,21 @@ def test_off_leaves_a_third_party_formatter_alone():
     warnings.formatwarning = custom
     dpl.set_friendly_warnings(False)          # we are not installed -> no-op
     assert warnings.formatwarning is custom
+
+
+def test_reactivating_a_saved_friendly_formatter_still_delegates():
+    # Regression: disabling once nulled the shared delegate, so bringing a saved
+    # friendly formatter back by hand (as a test fixture does, and as happens
+    # under pytest's own warning capture) left it delegating to None and crashed
+    # on the next non-dplPy warning. The predecessor is now held per-install, so
+    # a re-activated friendly formatter must still format a foreign warning.
+    saved = warnings.formatwarning            # the friendly formatter
+    assert getattr(saved, "_dplpy_friendly", False)
+    dpl.set_friendly_warnings(False)          # restores the delegate
+    warnings.formatwarning = saved            # re-activate the friendly one by hand
+    out = warnings.formatwarning(
+        UserWarning("foreign"), UserWarning, "f.py", 1, "line")
+    assert "foreign" in out and not out.startswith("dplPy:")
 
 
 def test_filter_mutes_only_dplpy():

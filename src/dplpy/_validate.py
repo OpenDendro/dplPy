@@ -49,10 +49,12 @@ class DplpyWarning(UserWarning):
     """
 
 
-# The formatter that was in place before dplPy installed its friendly one, so
-# set_friendly_warnings(False) can restore it and non-dplPy warnings can be
-# delegated to it unchanged.
-_prev_formatwarning = None
+# The formatter in place when this module was first imported. Kept only as a
+# last-resort fallback for restoration; normal delegation uses the formatter
+# each install captures in its own closure (see set_friendly_warnings), so the
+# active friendly formatter always holds a valid callable to delegate to, even
+# if warnings.formatwarning is swapped around underneath it.
+_base_formatwarning = warnings.formatwarning
 
 
 def _friendly_installed():
@@ -88,13 +90,15 @@ def set_friendly_warnings(enable=True):
     This sets the process-global ``warnings.formatwarning``. It is written to be
     a good citizen: it never changes the *appearance* of warnings from other
     packages, and it delegates to -- rather than discards -- any formatter it
-    finds in place.
+    finds in place. Each install captures its predecessor in a closure (and on
+    the function as ``_dplpy_prev``), so the active formatter always has a valid
+    callable to delegate non-dplPy warnings to, even if ``warnings.formatwarning``
+    is reassigned elsewhere.
     """
-    global _prev_formatwarning
     if enable:
         if _friendly_installed():
             return
-        _prev_formatwarning = warnings.formatwarning
+        prev = warnings.formatwarning           # non-dplPy warnings delegate here
 
         def _dplpy_formatwarning(message, category, filename, lineno, line=None):
             try:
@@ -104,14 +108,16 @@ def set_friendly_warnings(enable=True):
             if mine:
                 return "dplPy: %s\n" % message
             # every other warning keeps the look it had before dplPy loaded
-            return _prev_formatwarning(message, category, filename, lineno, line)
+            return prev(message, category, filename, lineno, line)
 
         _dplpy_formatwarning._dplpy_friendly = True
+        _dplpy_formatwarning._dplpy_prev = prev
         warnings.formatwarning = _dplpy_formatwarning
     else:
-        if _friendly_installed():
-            warnings.formatwarning = _prev_formatwarning
-            _prev_formatwarning = None
+        active = warnings.formatwarning
+        if getattr(active, "_dplpy_friendly", False):
+            warnings.formatwarning = getattr(active, "_dplpy_prev",
+                                             _base_formatwarning)
 
 
 def _require_dataframe(x):
