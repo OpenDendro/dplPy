@@ -70,6 +70,8 @@ from numpy.lib.stride_tricks import sliding_window_view
 from scipy import stats
 from scipy.signal import lfilter
 
+from ._validate import _warn
+
 # Rejection-sampling tolerance / retry budget for surrogate generation (as in
 # moving_corr_sig; nothing has needed to override these).
 _TOL = 0.01
@@ -623,11 +625,10 @@ def moving_corr(crn, climate, end_month=9, season_length=1, season_lengths=None,
     finite = np.isfinite(xa) & np.isfinite(ca)
     run = _longest_consecutive(common[finite])
     if run.size < common.size:
-        import warnings
-        warnings.warn("moving_corr: %d of %d aligned years had gaps or missing "
-                      "values; using the longest unbroken run (%d-%d)."
-                      % (common.size - run.size, common.size,
-                         int(run[0]), int(run[-1])), UserWarning, stacklevel=2)
+        _warn("moving_corr: %d of %d aligned years had gaps or missing values; "
+              "using the longest unbroken run (%d-%d)."
+              % (common.size - run.size, common.size,
+                 int(run[0]), int(run[-1])), stacklevel=3)
     common = run
     xa = x.reindex(common).to_numpy(dtype=float)
     ca = clim.reindex(common).to_numpy(dtype=float)

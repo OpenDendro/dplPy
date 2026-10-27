@@ -14,6 +14,7 @@ _NOTEBOOKS = [
     "readers_demonstration",
     "crossdating_demonstration",
     "rcs_demonstration",
+    "moving_correlation_demonstration",
 ]
 
 _VERSION_PLACEHOLDER = "{{ dplpy_version }}"
@@ -40,6 +41,12 @@ def on_config(config):
         nb = src / (name + ".ipynb")
         if nb.exists():
             shutil.copy2(nb, dst / (name + ".ipynb"))
+    # carry any bundled example data (e.g. a small extracted climate grid cell)
+    # so a notebook can read it by the same relative path in notebooks/ and in
+    # the rendered docs
+    data_src = src / "data"
+    if data_src.is_dir():
+        shutil.copytree(data_src, dst / "data", dirs_exist_ok=True)
     config["extra"]["dplpy_version"] = _package_version(root)
     return config
 

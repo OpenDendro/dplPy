@@ -315,6 +315,9 @@ def test_sweep_covers_every_public_transform():
         "xdate_report",
         # standalone numerical helpers (take arrays/series or special tables)
         "ads", "autoreg", "po_to_wc", "wc_to_po", "yrs_to_pith", "sens2", "sgc",
+        # warning machinery: a warning category and the toggle for dplPy's
+        # friendly warning formatter -- neither takes or returns a frame.
+        "DplpyWarning", "set_friendly_warnings",
     }
     covered = {n.split("(")[0] for n in CASES}
     missing = [n for n in dpl.__all__ if n not in exempt and n not in covered]

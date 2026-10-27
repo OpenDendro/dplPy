@@ -1,5 +1,6 @@
 # IDE stuff
 .DS_Store
+Icon[[:cntrl:]]
 .vscode/
 tests/data/.DS_Store
 

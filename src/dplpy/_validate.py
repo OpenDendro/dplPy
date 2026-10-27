@@ -34,6 +34,86 @@ import warnings
 import pandas as pd
 
 
+class DplpyWarning(UserWarning):
+    """Category for warnings raised by dplPy itself.
+
+    Subclassing ``UserWarning`` keeps these warnings catchable by any filter
+    written against ``UserWarning`` (including dplPy's own internal ones), while
+    giving them a distinct type so that:
+
+    * dplPy can print them in a clean ``dplPy: <message>`` form without changing
+      how any other library's warnings look (see :func:`set_friendly_warnings`),
+      and
+    * you can silence only dplPy with
+      ``warnings.filterwarnings("ignore", category=dplpy.DplpyWarning)``.
+    """
+
+
+# The formatter that was in place before dplPy installed its friendly one, so
+# set_friendly_warnings(False) can restore it and non-dplPy warnings can be
+# delegated to it unchanged.
+_prev_formatwarning = None
+
+
+def _friendly_installed():
+    """True if dplPy's friendly warning formatter is the active one."""
+    return getattr(warnings.formatwarning, "_dplpy_friendly", False)
+
+
+def set_friendly_warnings(enable=True):
+    """Turn dplPy's clean, MATLAB-style warning output on or off.
+
+    When on -- which it is by default, from the moment you ``import dplpy`` -- a
+    warning raised by dplPy prints as::
+
+        dplPy: cana326.rwl: 14 short interior gaps ...
+
+    instead of Python's default three-line form (``file.py:433: DplpyWarning:``
+    followed by an echo of your own source line). Only dplPy's own warnings
+    (category :class:`DplpyWarning`) are reformatted; every other library's
+    warnings are handed to the formatter that was already in place, untouched.
+
+    Parameters
+    ----------
+    enable : bool, default True
+        ``True`` installs the friendly formatter; ``False`` restores whatever
+        formatter was active before dplPy installed its own (normally Python's
+        default), so dplPy warnings get the standard file/line/source display
+        again. The call is a no-op if the requested state is already in effect,
+        and if some other code has since replaced ``warnings.formatwarning``,
+        ``set_friendly_warnings(False)`` leaves that replacement alone.
+
+    Notes
+    -----
+    This sets the process-global ``warnings.formatwarning``. It is written to be
+    a good citizen: it never changes the *appearance* of warnings from other
+    packages, and it delegates to -- rather than discards -- any formatter it
+    finds in place.
+    """
+    global _prev_formatwarning
+    if enable:
+        if _friendly_installed():
+            return
+        _prev_formatwarning = warnings.formatwarning
+
+        def _dplpy_formatwarning(message, category, filename, lineno, line=None):
+            try:
+                mine = issubclass(category, DplpyWarning)
+            except TypeError:                       # category is not a class
+                mine = False
+            if mine:
+                return "dplPy: %s\n" % message
+            # every other warning keeps the look it had before dplPy loaded
+            return _prev_formatwarning(message, category, filename, lineno, line)
+
+        _dplpy_formatwarning._dplpy_friendly = True
+        warnings.formatwarning = _dplpy_formatwarning
+    else:
+        if _friendly_installed():
+            warnings.formatwarning = _prev_formatwarning
+            _prev_formatwarning = None
+
+
 def _require_dataframe(x):
     """Return ``x`` unchanged if it is a pandas DataFrame, else raise TypeError.
 
@@ -110,13 +190,21 @@ def _plot_kwarg(plot, kwargs):
 import numpy as np
 
 
-def _warn(msg, category=UserWarning, stacklevel=3):
+def _warn(msg, category=DplpyWarning, stacklevel=3):
     """warnings.warn that points at the USER's call, not a dplPy internal line.
+
+    The default category is :class:`DplpyWarning` (a ``UserWarning`` subclass),
+    so every dplPy warning routed through here prints in the clean
+    ``dplPy: <message>`` form while ``set_friendly_warnings`` is on, and can be
+    filtered as a group. Pass an explicit ``category`` (e.g. ``DeprecationWarning``)
+    only when the warning should stay a different, standard type.
 
     Default stacklevel=3 is right for a warning raised directly inside a public
     function (public function -> _warn). A helper called by a public function
     should pass stacklevel=4, and so on. (Audit G1: 60 of 62 warnings pointed
-    at library internals.)
+    at library internals.) The friendly formatter drops the echoed line, so
+    stacklevel affects only the standard display seen with
+    ``set_friendly_warnings(False)``.
     """
     warnings.warn(msg, category, stacklevel=stacklevel)
 

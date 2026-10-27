@@ -133,6 +133,7 @@ nav:
       - Reading data: examples/readers_demonstration.ipynb
       - Crossdating: examples/crossdating_demonstration.ipynb
       - Regional Curve Standardization: examples/rcs_demonstration.ipynb
+      - Moving correlation: examples/moving_correlation_demonstration.ipynb
   - API Reference:
       - Input & output: reference/io.md
       - Detrending & standardization: reference/detrending.md

@@ -41,9 +41,10 @@ __license__ = "GNU GPLv3"
 # >>> ids = dpl.read_ids(data, stc=(3, 2, 1))  # digit-core names, e.g. CAM031
 
 import re
-import warnings
 
 import pandas as pd
+
+from ._validate import _warn
 
 # leading letters (site) + digit run (tree number) + trailing remainder (core)
 _STC_PATTERN = re.compile(r"^([A-Za-z]+)(\d+)([A-Za-z0-9]*)$")
@@ -104,12 +105,12 @@ def read_ids(data, stc=None):
     if stc is None:
         trees, cores, unparsed = _parse_pattern(names)
         if unparsed:
-            warnings.warn(
+            _warn(
                 "read_ids could not parse these series names with the default "
                 "pattern (each was treated as its own single-core tree): "
                 + ", ".join(unparsed)
                 + ". If they use a digit core or a site code containing digits, "
-                "supply an stc=(site_len, tree_len, core_len) mask instead.\n"
+                "supply an stc=(site_len, tree_len, core_len) mask instead."
             )
     else:
         _validate_stc(stc)

@@ -50,13 +50,12 @@ __license__ = "GNU GPLv3"
 # >>> res["glk_mat"]
 # >>> dpl.sgc(data, overlap=30, prob=False)
 
-import warnings
 
 import numpy as np
 import pandas as pd
 from scipy.special import ndtr               # standard-normal CDF (== R's pnorm)
 
-from ._validate import _coerce_to_frame
+from ._validate import _coerce_to_frame, _warn
 
 
 def glk(data, overlap=50, prob=True):
@@ -209,8 +208,8 @@ def _check_overlap(overlap):
     if not ok:
         raise ValueError("'overlap' should be a single integer >= 3")
     if overlap < 50:
-        warnings.warn("The minimum number of overlap is lower than 50. This "
-                      "might lead to statistically insignificant matches.")
+        _warn("The minimum number of overlap is lower than 50. This might lead "
+              "to statistically insignificant matches.", stacklevel=5)
 
 
 def _overlap_counts(gc, overlap):

@@ -43,6 +43,14 @@ if _missing_dependencies:  # pragma: no cover
 del _hard_dependencies, _dependency, _missing_dependencies
 
 
+# Print dplPy's own warnings in a clean "dplPy: <message>" form by default,
+# instead of Python's file/line/source-echo chrome. This is scoped to dplPy's
+# own DplpyWarning category, so it never changes how other libraries' warnings
+# look; call dpl.set_friendly_warnings(False) to restore the standard display.
+from ._validate import DplpyWarning, set_friendly_warnings
+set_friendly_warnings(True)
+
+
 from .readers import readers
 from .readers import metadata
 from .readers_url import readers_url
@@ -169,6 +177,8 @@ __all__ = [
     "to_lipd",
     "from_lipd",
     "lipd_metadata",
+    "DplpyWarning",
+    "set_friendly_warnings",
 ]
 # dpl.help() and dpl.readme() stay available as attributes but are kept out of
 # __all__ so that "from dplpy import *" does not shadow the builtin help().

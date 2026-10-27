@@ -45,6 +45,7 @@ import numpy as np
 
 from ._plot_style import style_axes, finalize_font, ACCENT
 from .detrend import _finish_figure
+from ._validate import _warn
 
 _MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -93,16 +94,14 @@ def _resolve_seasons(result, seasons):
     or the strongest-per-length fallback (with a warning) when none are given."""
     g = result.grid
     if seasons is None:
-        import warnings
         picks = []
         for m in sorted(set(g["season_length"])):
             sub = g[(g["season_length"] == m) & (~g["prior"])]
             if len(sub):
                 picks.append(int(sub["overall_r"].abs().idxmax()))
-        warnings.warn("moving_corr: no seasons= given for the small-multiples "
-                      "view; showing the strongest ending month per season length. "
-                      "Pass seasons=[(length, end_month), ...] to choose.",
-                      UserWarning, stacklevel=3)
+        _warn("moving_corr: no seasons= given for the small-multiples view; "
+              "showing the strongest ending month per season length. Pass "
+              "seasons=[(length, end_month), ...] to choose.", stacklevel=4)
         return picks
     picks = []
     for item in seasons:
