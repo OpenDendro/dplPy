@@ -1,0 +1,4443 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dendrochronology Program Library for Python">
+      
+      
+        <meta name="author" content="Andy Bunn, Kevin Anchukaitis, Tyson Swetnam">
+      
+      
+        <link rel="canonical" href="https://opendendro.github.io/dplPy/reference/detrending/">
+      
+      
+        <link rel="prev" href="../io/">
+      
+      
+        <link rel="next" href="../disturbance/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/dplpy.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Detrending & standardization - dplPy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#detrending-standardization" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dplPy" class="md-header__button md-logo" aria-label="dplPy" data-md-component="logo">
+      
+  <img src="../../assets/dplpy.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dplPy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Detrending & standardization
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/OpenDendro/dplPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    OpenDendro/dplPy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dplPy" class="md-nav__button md-logo" aria-label="dplPy" data-md-component="logo">
+      
+  <img src="../../assets/dplpy.png" alt="logo">
+
+    </a>
+    dplPy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/OpenDendro/dplPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    OpenDendro/dplPy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/reading-writing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reading & writing data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/coorecorder-pos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CooRecorder .pos files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/detrending-standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detrending & standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/internal-gaps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handling internal gaps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/chronologies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building chronologies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/variance-stabilization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variance stabilization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/canopy-disturbance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canopy disturbance detrending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/crossdating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating & COFECHA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/floating-series/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dating a floating series
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/statistics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statistics & agreement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/seascorr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Climate–growth response
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/moving-correlation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moving correlation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/superposed-epoch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Superposed epoch analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/lipd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiPD interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/coming-from-dplr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from dplR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/readers_demonstration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reading tree-ring data with dplPy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/crossdating_demonstration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating tree-ring data with dplPy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/rcs_demonstration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regional Curve Standardization with dplPy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/moving_correlation_demonstration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moving correlation: is the climate signal stable?
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input & output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detrending & standardization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detrending & standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#detrend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        detrend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sfrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfmrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sfmrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ssf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ssf
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#powt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        powt
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../disturbance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canopy disturbance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chronology/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chronology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crossdating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../statistics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statistics & indices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../climate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Climate response
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Background
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Background
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/fidelity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fidelity & departures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/reconstruction-validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconstruction validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/crossdating-methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crossdating: dplR vs COFECHA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../background/references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#detrend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        detrend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sfrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfmrcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sfmrcs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ssf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ssf
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#powt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        powt
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="detrending-standardization">Detrending &amp; standardization<a class="headerlink" href="#detrending-standardization" title="Permanent link">&para;</a></h1>
+<p>Removing the biological growth trend to produce ring-width index (RWI) series.
+See the <a href="../../guide/detrending-standardization/">Detrending &amp; standardization</a>
+guide for when to use each method.</p>
+<h2 id="detrend">detrend<a class="headerlink" href="#detrend" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Detrend a series or dataframe to ring-width indices.</p>
+<p>Fit a growth curve to each series (a smoothing spline by default) and form the
+ring-width index as the ratio (<code>method="ratio"</code>, division, the default) or the
+difference (<code>method="difference"</code>, subtraction) of the data to the curve.</p>
+<p><code>fit</code> chooses the CURVE and <code>method</code> chooses the ARITHMETIC. This differs
+from dplR, where <code>method</code> selects the curve; passing a curve name to
+<code>method</code> raises a helpful error.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>data</code>
+            </td>
+            <td>
+                  <code>pandas dataframe or series</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring widths from <code>dpl.readers</code>, or a single series taken from one. Series
+with no measured values are dropped with a warning (a lone empty Series
+returns all-NaN).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span> or <span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the growth curve to fit (case-insensitive; dplR's names are canonical):
+<code>"Spline"</code> (smoothing spline), <code>"AgeDepSpline"</code> (age-dependent spline),
+<code>"ModNegExp"</code> and <code>"ModHugershoff"</code> (negative-exponential and Hugershoff
+curves fit by nonlinear least squares, with a linear-&gt;mean fallback),
+<code>"NegExp"</code> and <code>"Hugershoff"</code> (the same curves by ARSTAN's deterministic
+fit), <code>"GeneralExp"</code>, <code>"LinearAny"</code> (any-slope line), <code>"LinearNegative"</code>
+(non-positive-slope line, else the mean), and <code>"Mean"</code> (horizontal line at
+the series mean). A list of curves detrends by each and returns a comparison:
+a Series gives a DataFrame with one column per curve, a DataFrame gives a dict
+of them (not combinable with <code>return_info</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;Spline&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="dplpy.detrend.ratio">ratio</span>, <span title="dplpy.detrend.difference">difference</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how the index is formed: <code>"ratio"</code> divides the data by the curve,
+<code>"difference"</code> subtracts it.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ratio&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span> or <span title="sequential">sequential</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> draws one figure per series (the fitted curve and the detrended
+index) and leaves them all open under an interactive backend;
+<code>"sequential"</code> draws them one at a time, waiting for Enter between
+series; <code>False</code> (the default, as dplR's <code>make.plot=FALSE</code> for data
+frames) draws nothing. Figures are closed after display under a
+non-interactive backend.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>smoothing wavelength for <code>fit="Spline"</code> (<code>get_period</code> rule): a fraction of
+length in <code>(0, 1]</code>, a percent-of-length spline if negative, or a fixed
+wavelength in years if &gt; 1. None uses the dplR default (two thirds of length).
+The former name <code>period=</code> is accepted with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>initial spline stiffness for <code>fit="AgeDepSpline"</code> (see <code>dpl.ads</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+                  <code><span title="boolean">boolean</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>allow a positive slope at the old-age end: for <code>AgeDepSpline</code> the spline
+may rise at the end, and for <code>ModNegExp</code>, <code>NegExp</code> and <code>ModHugershoff</code>
+the straight-line fallback may slope upward (otherwise a rising line is
+rejected and the series mean is used). dplR uses <code>pos.slope=FALSE</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>f</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>spline frequency-response amplitude at <code>spline_period</code> (<code>fit="Spline"</code>
+only).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.5</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>verbose</code>
+            </td>
+            <td>
+                  <code><span title="boolean">boolean</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>print, per series, the curve fitted and the arithmetic used.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_info</code>
+            </td>
+            <td>
+                  <code><span title="boolean">boolean</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict (like dplR's <code>return.info</code>) instead of just the data::</p>
+<div class="highlight"><pre><span></span><code>{"rwi":        the detrended series (same shape as the input),
+ "curves":     the fitted detrending curves,
+ "model_info": per-series description of the fit actually used,
+ "data_info":  per-series {n_zeros, zero_years} of the input,
+ "dirty_dog":  True if any curve went non-positive or fell back to the mean}
+</code></pre></div>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>data</code></td>            <td>
+                  <code>pandas dataframe or series</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the detrended data, tagged <code>attrs["kind"] = "rwi"</code> and carrying the
+input's provenance attrs.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">"../tests/data/csv/file.csv"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">detrend</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>                     <span class="c1"># all series in a dataframe</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">dpl</span><span class="o">.</span><span class="n">detrend</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s2">"SeriesA"</span><span class="p">],</span> <span class="n">fit</span><span class="o">=</span><span class="s2">"ModNegExp"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"difference"</span><span class="p">)</span>
+</code></pre></div>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>Interior <code>NaN</code> are unmeasured rings. They are left out of the fit and stay
+NaN in the index, but they still count as rings: the position-based fits
+(every curve except <code>Spline</code> and <code>Mean</code>) are fitted on the true ring
+position, so a gap advances cambial age rather than compressing the axis
+after it (<code>AgeDepSpline</code> carries the previous ring's value across the gap
+for its fit). <code>Spline</code> is fit over calendar years and <code>Mean</code> is
+order-invariant. To fill gaps instead, use <code>dpl.fill_internal</code> first.</p>
+<p>A series too short for the requested curve (fewer than 2 to 4 rings,
+depending on the fit) is detrended by its mean with a warning -- dplR's
+"dirty dog".</p>
+</details>
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://opendendro.github.io/dplPy/reference/detrending/#detrend</p>
+</details>
+
+    </div>
+
+</div><h2 id="rcs">rcs<a class="headerlink" href="#rcs" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Regional Curve Standardization of a set of ring-width series.</p>
+<p>Align every series on a common cambial-age axis using its pith offset, average
+to form the regional curve, smooth it, and divide (ratio) or subtract
+(difference) the curve value at each ring's cambial age. This preserves the
+low-frequency growth signal that per-series detrending removes. Shares the
+<code>fit</code> / <code>method</code> / <code>spline_period</code> vocabulary of <code>detrend</code>. Analog of
+dplR's <code>rcs</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series, years as the index and series as columns.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>po</code>
+            </td>
+            <td>
+                  <code>(<span title="pandas.DataFrame">DataFrame</span>, <span title="dict">dict</span>, <span title="Series">Series</span> or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>pith offsets: a table with <code>series</code> and <code>pith_offset</code> columns (or a
+dict / Series keyed by series) giving the number of rings between the pith
+and the first measured ring, so 0 means the pith is present. None assumes 0
+for every series; a series missing from the table, or with an NA offset,
+is taken as 0 with a warning; negative or fractional offsets raise. (A dplR
+<code>po</code> table stores the cambial age of the first ring, where 1 = pith
+present, so subtract 1 first.)</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>curve fitted to the age-aligned mean, from the <code>detrend</code> vocabulary:
+<code>"AgeDepSpline"</code> (default; age-dependent spline, honours <code>pos_slope</code>),
+<code>"Spline"</code> (fixed-stiffness smoothing spline), <code>"ModNegExp"</code>, <code>"NegExp"</code>,
+<code>"ModHugershoff"</code>, <code>"Hugershoff"</code>, <code>"GeneralExp"</code>, <code>"LinearAny"</code>,
+<code>"LinearNegative"</code>, <code>"Mean"</code>, or <code>None</code> for no smoothing (the age-aligned
+mean itself is the regional curve). Case-insensitive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;AgeDepSpline&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="ratio">ratio</span>, <span title="difference">difference</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how each index is formed from the ring width and the regional-curve value at
+its cambial age: <code>"ratio"</code> divides, <code>"difference"</code> subtracts.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ratio&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>smoothing wavelength for <code>fit="Spline"</code> (<code>get_period</code> rule): a fraction of
+length in <code>(0, 1]</code> (default 0.1 = 10%), a percent-of-length spline if
+negative (-10 = 10%), or a fixed wavelength in years if &gt; 1. The former name
+<code>period=</code> is accepted with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.1</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>initial stiffness for <code>fit="AgeDepSpline"</code> (see <code>dpl.ads</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>f</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>frequency-response amplitude for <code>fit="Spline"</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.5</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>whether the regional curve may rise at the old-age end. False keeps a
+non-increasing end, avoiding an artefactual old-age upturn. Applies to
+<code>AgeDepSpline</code> and the <code>ModNegExp</code>/<code>NegExp</code>/<code>ModHugershoff</code> linear
+fallbacks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>biweight</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>build the regional curve with a Tukey biweight robust mean (else arithmetic).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_n</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>truncate the regional-curve tail where by-age sample depth falls below this.
+Raises if no cambial age reaches <code>min_n</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preset</code>
+            </td>
+            <td>
+                  <code>(None, <span title="crust">crust</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>None follows the parameters above. "crust" builds the regional curve the CRUST
+way (Melvin &amp; Briffa 2014): an age-dependent spline smoothed only where sample
+depth &gt;= 4 with the no-rise tail rule, gaps infilled, a 0.02 mm floor, and flat
+tail extension. When set, <code>fit</code>/<code>spline_period</code>/<code>nyrs0</code>/<code>f</code>/<code>pos_slope</code>
+are ignored. Case-insensitive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rescale_difference</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>used only when <code>method="difference"</code>. If True, rescale each series'
+difference index onto the mean and standard deviation of its own ratio index,
+so differences sit on the ~1 ratio scale. Default False returns residuals
+centred on ~0.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rc_out</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict with both the detrended <code>rwi</code> and the regional curve
+<code>rc</code>; otherwise return just <code>rwi</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>draw the regional-curve figure (series and curve vs cambial age). The former
+name <code>make_plot=</code> is accepted for now with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or <span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the detrended <code>rwi</code> (calendar-year indexed), or <code>{"rwi", "rc"}</code> when
+<code>rc_out</code> is True.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>An interior NaN is an unmeasured ring: it advances the series' cambial age
+and its index stays NaN, so the years after a gap keep their true age (as in
+CRUST and dplR). Where no series reaches a cambial age inside the curve's
+span, the parametric fits use the true age axis and the splines carry the
+previous age's mean forward (with a warning).</p>
+</details>
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://rdrr.io/cran/dplR/man/rcs.html
+.. [2] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 1, Signal-Free
+   RCS. Dendrochronologia, 32, 7-20.
+.. [3] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 2, Further RCS
+   options and recommendations. Dendrochronologia, 32, 343-356.</p>
+</details>
+
+    </div>
+
+</div><h2 id="sfrcs">sfrcs<a class="headerlink" href="#sfrcs" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Signal-Free Regional Curve Standardization of a set of ring-width series.</p>
+<p>Ordinary RCS lets the single regional curve absorb some of the common climate
+signal when the sample's age structure varies over time, biasing the low
+frequencies. Signal-Free RCS breaks that feedback: it iterates, each pass
+rebuilding the regional curve from measurements with the current chronology
+divided out, while still forming the tree indices from the original
+measurements. Iteration stops when the chronology stops changing (<code>tol</code>). Port
+of CRUST's single-curve signal-free RCS (Melvin &amp; Briffa 2014). The regional
+curve is built exactly as <code>rcs</code> builds it, so <code>sfrcs(max_iterations=1)</code>
+equals <code>rcs</code> (with the same curve settings) up to the signal-free
+normalisation of the chronology to mean 1.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series, years as the index and series as columns.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>po</code>
+            </td>
+            <td>
+                  <code>(<span title="pandas.DataFrame">DataFrame</span>, <span title="dict">dict</span>, <span title="Series">Series</span> or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>pith offsets (true offset, 0 = pith present), as in <code>rcs</code>. None assumes
+0 for all; a missing or NA offset is taken as 0 with a warning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>f</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_n</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>regional-curve settings, as in <code>rcs</code>; used when <code>preset</code> is None.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="ratio">ratio</span>, <span title="difference">difference</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how indices are formed: "ratio" divides, "difference" subtracts.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ratio&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>biweight</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>use a Tukey biweight robust mean both for the regional curve by cambial age
+and for the yearly chronology. Default False (arithmetic means) matches
+CRUST. The former pair <code>biweight_curve=</code>/<code>biweight_crn=</code> is accepted
+with a DeprecationWarning (if both are given, <code>biweight_crn</code> wins).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preset</code>
+            </td>
+            <td>
+                  <code>(None, <span title="crust">crust</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"crust" (the default, unlike <code>rcs</code>) builds the regional curve the CRUST way
+-- an age-dependent spline with per-point stiffness <code>ss + cambial age</code>
+smoothed only where sample depth &gt;= 4, the no-rise tail rule, gaps infilled,
+a 0.02 mm floor and flat tail extension -- ignoring <code>fit</code> and its
+companions. None uses the <code>fit</code> vocabulary of <code>rcs</code> instead.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ss</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>CRUST's age-dependent spline stiffness offset (<code>preset="crust"</code> only).</p>
+              </div>
+            </td>
+            <td>
+                  <code>10</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rise</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>allow the CRUST curve to rise in its final third. None uses CRUST's rule
+(allowed only for curves longer than 1500 years).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iterations</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>maximum signal-free iterations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>40</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>convergence threshold on the maximum chronology change between iterations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-3</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rescale_difference</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>method="difference"</code> only. False (as in <code>rcs</code>) returns raw residual
+indices centred on ~0. True rescales each series' residuals onto the mean
+and SD of its own ratio index, so difference indices sit on the ~1 ratio
+scale -- CRUST's residual mode (<code>ind==2</code>) and what signal-free difference
+indices need before the chronology is divided out, so prefer True for
+difference-mode signal-free work. (Before 0.9.0 sfrcs always rescaled.)</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>draw the regional-curve figure (series and final curve vs cambial age). The
+former name <code>make_plot=</code> is accepted for now with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_info</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict of diagnostics (see Returns) instead of just <code>rwi</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>verbose</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>print a convergence line.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or <span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the detrended <code>rwi</code> (calendar x series). With <code>return_info=True</code>, a dict::</p>
+<div class="highlight"><pre><span></span><code>{"rwi":        detrended series (calendar x series),
+ "sfc":        the signal-free chronology (Series + samp.depth),
+ "samp_depth": number of trees per calendar year,
+ "conv":       max absolute chronology change at each iteration,
+ "n_iter":     iterations run,
+ "converged":  whether tol was reached within max_iterations,
+ "rc":         the regional curve (by cambial age) that produced rwi}
+</code></pre></div>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>Single-curve case (CRUST <code>trc=1, src=1</code>); multiple-curve signal-free RCS is
+<code>sfmrcs</code>. There is no dplR reference for this method: the port follows CRUST's
+<code>stand.f90</code> and its spline smoother is validated against CRUST's compiled
+kernel, but the full iteration is not checked against a gold standard, so treat
+results as CRUST-faithful rather than machine-verified. An interior NaN is an
+unmeasured ring: it advances cambial age and stays NaN in the output.</p>
+</details>
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 1, Signal-Free
+   RCS. Dendrochronologia, 32, 7-20.
+.. [2] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 2, Further RCS
+   options and recommendations. Dendrochronologia, 32, 343-356.</p>
+</details>
+
+    </div>
+
+</div><h2 id="mrcs">mrcs<a class="headerlink" href="#mrcs" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Multiple-curve Regional Curve Standardisation.</p>
+<p>Sort trees by relative growth rate, split them into <code>n_curves</code> equal-count
+classes, build a regional curve for each class, and standardise each tree by its
+own class curve. This removes the modern-sample-bias slope that a single
+regional curve injects when the sample's growth-rate (or age) mix changes over
+time. Each class curve is built by <code>rcs()</code>, so <code>mrcs</code> shares its
+<code>fit</code>/<code>method</code>/<code>spline_period</code>/<code>nyrs0</code>/<code>f</code>/<code>pos_slope</code>/<code>preset</code>
+vocabulary, and <code>mrcs(rwl, n_curves=1)</code> is identical to <code>rcs(rwl)</code>. Port of
+CRUST's multiple RCS.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series, years as the index and series as columns.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>po</code>
+            </td>
+            <td>
+                  <code>(<span title="pandas.DataFrame">DataFrame</span>, <span title="dict">dict</span>, <span title="Series">Series</span> or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>pith offsets (<code>series</code> and <code>pith_offset</code>; a true offset, 0 = pith
+present), as in <code>rcs()</code>. None assumes 0 for every series.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>n_curves</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>number of regional curves. <code>1</code> reduces exactly to <code>rcs()</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>2</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>sort</code>
+            </td>
+            <td>
+                  <code>(<span title="growth">growth</span>, <span title="age">age</span>, <span title="diameter">diameter</span>, <span title="none">none</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how trees are ranked before the equal-count split: "growth" by relative
+growth rate, "age" by cambial age, "diameter" by total radius, "none" keeps
+input order. Case-insensitive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;growth&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>f</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>biweight</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_n</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preset</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rescale_difference</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>passed through to <code>rcs()</code> to build each class curve; see <code>rcs()</code>.
+Defaults match <code>rcs()</code>. The former name <code>period=</code> is accepted with a
+DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reset_means</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True (ratios only), rescale each tree's indices to the mean it would have
+had under one-curve RCS, recovering the low-frequency variance multiple RCS
+removes. Skipped with a warning for <code>method="difference"</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rc_out</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict <code>{"rwi", "rc", "alloc"}</code> -- the indices, the list of
+per-class regional curves (by cambial age), and the series-&gt;class map.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>draw the per-class regional-curve figure. <code>make_plot=</code> is accepted as a
+deprecated alias.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or <span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the detrended <code>rwi</code> (calendar-year indexed), or <code>{"rwi", "rc", "alloc"}</code>
+when <code>rc_out</code> is True.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 2, Further
+   RCS options and recommendations. Dendrochronologia, 32, 343-356.</p>
+</details>
+
+    </div>
+
+</div><h2 id="sfmrcs">sfmrcs<a class="headerlink" href="#sfmrcs" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Signal-Free multiple-curve Regional Curve Standardisation.</p>
+<p>Combine <code>sfrcs()</code> (signal-free iteration) with <code>mrcs()</code> (multiple
+curves): sort trees by growth rate into <code>n_curves</code> equal-count classes, then
+iteratively rebuild each class's regional curve from measurements that have had
+the current chronology divided out, while forming the tree indices from the
+original measurements, until the chronology converges. <code>reset_means</code> (ratios
+only) restores each tree's one-curve mean to recover the low-frequency variance
+multiple RCS removes. <code>sfmrcs(rwl, n_curves=1)</code> is identical to
+<code>sfrcs(rwl)</code>. Port of CRUST's signal-free multiple RCS.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series, years as the index and series as columns.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>po</code>
+            </td>
+            <td>
+                  <code>(<span title="pandas.DataFrame">DataFrame</span>, <span title="dict">dict</span>, <span title="Series">Series</span> or None)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>pith offsets (true offset, 0 = pith present), as in <code>rcs()</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>n_curves</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>number of regional curves. <code>1</code> reduces exactly to <code>sfrcs()</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>2</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>sort</code>
+            </td>
+            <td>
+                  <code>(<span title="growth">growth</span>, <span title="age">age</span>, <span title="diameter">diameter</span>, <span title="none">none</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how trees are ranked before the equal-count split (see <code>mrcs()</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;growth&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>f</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_n</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preset</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ss</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rise</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the regional-curve settings, identical to <code>sfrcs()</code> (<code>preset="crust"</code>
+by default; <code>period=</code> is a deprecated alias of <code>spline_period</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;AgeDepSpline&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="ratio">ratio</span>, <span title="difference">difference</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ratio (division) or difference (subtraction) indices.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ratio&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>biweight</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the signal-free settings, identical to <code>sfrcs()</code> (<code>biweight_curve=</code> /
+<code>biweight_crn=</code> are deprecated aliases of <code>biweight</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iterations</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the signal-free settings, identical to <code>sfrcs()</code> (<code>biweight_curve=</code> /
+<code>biweight_crn=</code> are deprecated aliases of <code>biweight</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the signal-free settings, identical to <code>sfrcs()</code> (<code>biweight_curve=</code> /
+<code>biweight_crn=</code> are deprecated aliases of <code>biweight</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>verbose</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the signal-free settings, identical to <code>sfrcs()</code> (<code>biweight_curve=</code> /
+<code>biweight_crn=</code> are deprecated aliases of <code>biweight</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reset_means</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>restore each tree's one-curve mean (ratios only; skipped with a warning
+for <code>method="difference"</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rescale_difference</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>method="difference"</code> only: rescale residual indices onto the ratio
+scale, as in <code>sfrcs()</code> (needed for signal-free difference indices; see
+there). Before 0.9.0 the rescale was always applied.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>draw the per-class regional-curve figure (<code>make_plot=</code> is a deprecated
+alias).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_info</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict of diagnostics (see Returns) instead of <code>rwi</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or <span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the detrended <code>rwi</code> (calendar-year indexed), or, with
+<code>return_info=True</code>, a dict with <code>rwi</code>, <code>sfc</code> (the signal-free
+chronology + sample depth), <code>samp_depth</code>, <code>conv</code> (per-iteration max
+change), <code>n_iter</code>, <code>converged</code>, <code>rc</code> (list of per-class regional
+curves that produced <code>rwi</code>) and <code>alloc</code> (series -&gt; class).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 2, Further
+   RCS options and recommendations. Dendrochronologia, 32, 343-356.</p>
+</details>
+
+    </div>
+
+</div><h2 id="ssf">ssf<a class="headerlink" href="#ssf" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Simple signal-free chronology (dplR's ssf()).</p>
+<p>Build a signal-free chronology (Melvin &amp; Briffa 2008): form an initial
+chronology, divide every series by it to strip the common signal, rescale and
+re-detrend the resulting signal-free measurements, and build a new chronology,
+repeating until the high-frequency chronology stops changing (the sample-depth-
+weighted median absolute difference falls below <code>tol</code>) or <code>max_iterations</code>
+is reached. Reproduces dplR's ssf(); for data with many absent rings that the
+basic method cannot standardise, use <code>preset="crust"</code> (see the note below).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series (raw), years as the index and series as columns. Series
+with no measured values are dropped with a warning.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit</code>
+            </td>
+            <td>
+                  <code>(<span title="Spline">Spline</span>, <span title="AgeDepSpline">AgeDepSpline</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>detrending curve used at each iteration (the <code>detrend</code> vocabulary,
+case-insensitive): a cubic smoothing spline or an age-dependent spline
+(<code>dpl.ads</code>, fit with <code>pos_slope=True</code> as in dplR's ssf). Any other
+name raises. Before 0.9.0 this was called <code>method=</code>; a curve name passed
+to <code>method</code> is still honoured with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;Spline&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="ratio">ratio</span>, <span title="difference">difference</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>how indices are formed: <code>"ratio"</code> divides series by curve, <code>"difference"</code>
+subtracts (the former <code>difference=True</code> flag, accepted with a
+DeprecationWarning).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;ratio&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spline_period</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="float">float</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>stiffness of the curve. For <code>fit="Spline"</code> it is the spline wavelength
+(<code>get_period</code> rule): None uses dplR ssf's 0.6667 of each series' length,
+a value in <code>(0, 1]</code> a fraction of length, a negative value a percent of
+length, and a value &gt; 1 a fixed wavelength in years. For
+<code>fit="AgeDepSpline"</code> it is the initial stiffness <code>nyrs0</code> (None = 50)
+and must be an integer &gt; 1 -- a fraction is only valid for <code>Spline</code>.
+The former name <code>nyrs=</code> is accepted with a DeprecationWarning.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iterations</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>maximum signal-free iterations before giving up. Under <code>preset="crust"</code>
+it is raised to at least 40 (CRUST's limit), as difficult sites can need
+more than 25 iterations to converge.</p>
+              </div>
+            </td>
+            <td>
+                  <code>25</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>convergence threshold on the median absolute difference of the
+high-frequency chronology between successive iterations (dplR's
+<code>mad.threshold</code>; the former name <code>mad_threshold=</code> is accepted with a
+DeprecationWarning).</p>
+              </div>
+            </td>
+            <td>
+                  <code>5e-4</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>recode_zeros</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>recode zero ring-widths to 0.001 before processing (avoids div-by-zero
+from literal zero rings). The input frame is not modified. Note this does
+not help a chronology that is low but positive in a severe pointer year
+(the usual cause of a non-positive signal-free curve); use <code>preset="crust"</code>
+for that.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_info</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a dict of the full iteration history (chronologies,
+signal-free measurements and curves, MAD vector, ...) instead of just the
+final chronology.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>verbose</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>print progress and the per-iteration convergence diagnostics.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preset</code>
+            </td>
+            <td>
+                  <code>(None, <span title="crust">crust</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>None reproduces the basic signal-free method (dplR's ssf; Melvin &amp; Briffa
+2008). "crust" adds CRUST's robustness guards (Melvin &amp; Briffa 2014):
+multiplicative rescaling of the signal-free measurements, the raw
+measurement kept in any year where the chronology is near zero (&lt; 0.01),
+the fitted curves floored at 0.02 mm, and up to 40 iterations. These make
+ssf robust to sensitive sites with many absent rings (e.g. co021) that the
+basic method cannot standardise, and keep every series in the chronology.
+Case-insensitive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the signal-free chronology with columns <code>sfc</code> and <code>samp_depth</code>,
+indexed by year. If <code>return_info</code> is True, a dict of intermediates is
+returned instead (see above).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>The basic method stops with an error when a signal-free curve goes to zero or
+below -- typically in a year dominated by absent (zero-width) rings, which
+drives the chronology near zero so that dividing by it inflates the signal-free
+measurements and the refitted spline dips below zero. This afflicts the whole
+collection at that pointer year rather than a few individual series (on co021,
+for example, trying to drop the offending series would cascade to nearly all of
+them), so ssf does not drop series; it reports the cause and directs you to
+<code>preset="crust"</code>, which floors the curve and standardises such data with
+every series retained. dplPy's error is more specific than dplR's but stops in
+the same place.</p>
+</details>
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://rdrr.io/cran/dplR/man/ssf.html
+.. [2] Melvin, T. M. &amp; Briffa, K. R. (2008) A "signal-free" approach to
+   dendroclimatic standardisation. Dendrochronologia, 26(2), 71-86.
+.. [3] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 1,
+   Signal-Free RCS. Dendrochronologia, 32, 7-20.
+.. [4] Melvin, T. M. &amp; Briffa, K. R. (2014) CRUST: Software for the
+   implementation of Regional Chronology Standardisation: Part 2, Further
+   RCS options and recommendations. Dendrochronologia, 32, 343-356.</p>
+</details>
+
+    </div>
+
+</div><h2 id="ads">ads<a class="headerlink" href="#ads" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Age-dependent smoothing spline of a single series (dplR's ads()).</p>
+<p>Fit a smoothing spline whose stiffness increases with cambial age: the i-th
+ring is fit with an (nyrs0 + i - 1)-year spline, so young rings are smoothed
+least and the curve grows stiffer with age. Ports dplR's ads().</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>y</code>
+            </td>
+            <td>
+                  <code><span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>a single ring-width series (no missing values, at least 4 rings), oldest
+ring first.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>nyrs0</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>initial spline stiffness (wavelength, in years) at the first ring.</p>
+              </div>
+            </td>
+            <td>
+                  <code>50</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos_slope</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if False (the default, as in dplR's detrend() and every dplPy detrender),
+once the spline stops decreasing its tail is held flat and the spline is
+refit, preventing an artefactual upturn at the end of the series. True
+lets the curve rise (dplR's standalone ads() default).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the fitted spline curve, same length as <code>y</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">rwl</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">"../tests/data/csv/ca533.csv"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">curve</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">ads</span><span class="p">(</span><span class="n">rwl</span><span class="p">[</span><span class="s2">"CAM011"</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">nyrs0</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</code></pre></div>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://rdrr.io/cran/dplR/man/ads.html
+.. [2] Melvin, T. M. (2004) Historical Growth Rates and Changing Climatic
+   Sensitivity of Boreal Conifers. PhD Thesis, Climatic Research Unit,
+   University of East Anglia.
+.. [3] Melvin, T. M., Briffa, K. R., Nicolussi, K. &amp; Grabner, M. (2007)
+   Time-varying-response smoothing. Dendrochronologia, 25(2), 65-69.
+.. [4] Cook, E. R. &amp; Peters, K. (1981) The Smoothing Spline: A New Approach
+   to Standardizing Forest Interior Tree-Ring Width Series for Dendroclimatic
+   Studies. Tree-Ring Bulletin, 41, 45-53.</p>
+</details>
+
+    </div>
+
+</div><h2 id="powt">powt<a class="headerlink" href="#powt" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+
+    <div class="doc doc-contents first">
+
+        <p>Adaptive power transformation of ring-width series (variance stabilising).</p>
+<p>Stabilise the variance of ring-width series by raising each value to a
+data-driven power p. For adjacent rings, level M = (x[t] + x[t-1]) / 2 and
+spread S = |x[t] - x[t-1]|; regressing log(S) on log(M) gives a slope b, and
+p = |1 - b| removes the level-spread dependence. Port of dplR's powt (Cook &amp;
+Peters 1997).</p>
+<p>Two methods are offered:</p>
+<ul>
+<li><code>"cook"</code> (default) estimates p independently for each series.</li>
+<li><code>"universal"</code> estimates a single p for the whole data set with a linear
+  mixed-effects model (random intercept per year), matching dplR's default.
+  Requires statsmodels; a log transform is used if the estimate is p &lt;= 0.</li>
+</ul>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>rwl</code>
+            </td>
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or <span title="pandas.Series">Series</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ring-width series (raw, non-negative), years as the index. A Series is
+allowed only with method='cook'. Series with no measured values are dropped
+with a warning.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code>(<span title="cook">cook</span>, <span title="universal">universal</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>per-series ('cook') or single mixed-model power ('universal').
+Case-insensitive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#34;cook&#34;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rescale</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, rescale each transformed series back to its original mean and
+standard deviation.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_power</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, return a (transformed, power) tuple; <code>power</code> is a Series over
+series for 'cook' or a single float for 'universal'.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, draw the data-transform-statistics diagnostic: per-series skew and
+spread-vs-level correlation, before and after the transform. A successful
+transform drives the after values toward zero.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>return_stats</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>if True, also return a per-series diagnostics DataFrame with columns
+<code>skew_before</code>, <code>skew_after</code>, <code>r_before</code>, <code>r_after</code> and <code>power</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>transformed data of the same type as ``rwl`` (tagged ``attrs[&#34;kind&#34;] =</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code>&#34;rwl_powt&#34;`` and carrying the input&#39;s provenance attrs). With</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code>``return_power`` and/or ``return_stats`` the return becomes a tuple:</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code>``(data, power)``, ``(data, stats)``, or ``(data, power, stats)`` (power</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code>first, stats last).</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>dplPy reproduces dplR's power exactly. A given series' power can differ slightly
+from ARSTAN's, which uses the trailing ring as the level and clamps p to
+<code>[0, 1]</code>.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">dplpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dpl</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">rwl</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">readers</span><span class="p">(</span><span class="s2">"../tests/data/csv/ca533.csv"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">pt</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">powt</span><span class="p">(</span><span class="n">rwl</span><span class="p">)</span>                          <span class="c1"># per-series (cook)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">pt</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">powt</span><span class="p">(</span><span class="n">rwl</span><span class="p">,</span> <span class="n">return_power</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">rwi</span> <span class="o">=</span> <span class="n">dpl</span><span class="o">.</span><span class="n">detrend</span><span class="p">(</span><span class="n">pt</span><span class="p">,</span> <span class="n">plot</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>           <span class="c1"># transform, then detrend</span>
+</code></pre></div>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>.. [1] https://rdrr.io/cran/dplR/man/powt.html
+.. [2] Cook &amp; Peters (1997), The Holocene, 7, 361-370.</p>
+</details>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2021 - 2026 OpenDendro
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/opendendro" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.indexes", "toc.follow", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script>
+      
+    
+  <script data-mkdocs-jupyter-mathjax="{&quot;url&quot;: &quot;https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-mml-chtml.js&quot;, &quot;version&quot;: 4}">
+/* Shared by full pages and Material's instant navigation. */
+(() => {
+  const config = JSON.parse(document.currentScript.dataset.mkdocsJupyterMathjax);
+  if (window.mkdocsJupyterMathJax) return;
+
+  let loading;
+  let queue = Promise.resolve();
+  let previous = [];
+
+  const ready = async () => {
+    if (!loading) {
+      loading = (async () => {
+        let math = window.MathJax;
+        if (!math?.typesetPromise) {
+          const url = new URL(config.url, document.baseURI).href;
+          const existing = Array.from(document.scripts).find(script =>
+            script.src && (script.src === url || script.id === 'MathJax-script' ||
+              (/mathjax/i.test(script.src) &&
+               /\/(?:MathJax|latest|(?:tex|mml)(?:-mml)?-(?:chtml|svg))\.js(?:[?#]|$)/i.test(script.src))));
+          if (existing) {
+            if (!math?.startup?.promise) {
+              await new Promise((resolve, reject) => {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+              });
+            }
+          } else {
+            // Keep site macros, delimiters and startup hooks when supplied.
+            const options = math || {};
+            window.MathJax = {
+              ...options,
+              loader: {
+                ...options.loader,
+                load: Array.from(new Set(['ui/safe', ...(options.loader?.load || [])]))
+              },
+              startup: { typeset: false, ...options.startup },
+              tex: {
+                tags: 'ams',
+                useLabelIds: true,
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true,
+                ...options.tex
+              }
+            };
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = config.url;
+              script.id = 'MathJax-script';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+        }
+        math = window.MathJax;
+        await math.startup.promise;
+        return math;
+      })();
+    }
+    const math = await loading;
+    // A site owner can extend the v3 queue again on each navigation.
+    await math.startup.promise;
+    return math;
+  };
+
+  const unrendered = node => {
+    if (node.matches('mjx-container')) return [];
+    if (!node.querySelector('mjx-container')) return [node];
+    // In v3, scanning generated assistive MathML again produces nested output.
+    return Array.from(node.children).flatMap(unrendered);
+  };
+
+  const refresh = () => {
+    // A separate chain also serializes v3, without changing v4's startup promise.
+    queue = queue.then(async () => {
+      const notebooks = Array.from(document.querySelectorAll('.jupyter-wrapper'));
+      if (!notebooks.length && !previous.length) return;
+      if (notebooks.length === previous.length &&
+          notebooks.every((node, index) => node === previous[index])) return;
+      const math = await ready();
+      if (previous.length) {
+        math.typesetClear(previous);
+        math.texReset();
+      }
+      previous = notebooks.filter(node => node.isConnected);
+      const pending = previous.flatMap(unrendered);
+      if (pending.length) await math.typesetPromise(pending);
+    }).catch(error => console.error('mkdocs-jupyter: MathJax rendering failed', error));
+    return queue;
+  };
+
+  window.mkdocsJupyterMathJax = { refresh };
+  const start = () => {
+    if (typeof document$ !== 'undefined') document$.subscribe(refresh);
+    else refresh();
+  };
+  // Theme bundles and user-provided MathJax scripts can follow notebook content.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else start();
+})();
+
+</script>
+</body>
+</html>
