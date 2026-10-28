@@ -306,6 +306,7 @@ def test_sweep_covers_every_public_transform():
         # ring-width fixtures this sweep uses -- each carries its own
         # non-mutation test in its own module.
         "seascorr", "SeascorrResult",
+        "climate_response", "ClimateResponseResult",
         "pcreg", "PcregResult",
         "sea", "SeaResult",
         "moving_corr", "MovingCorrResult", "MovingCorrGridResult",

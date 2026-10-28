@@ -85,6 +85,7 @@ from .agedepspline import ads
 from .pith import po_to_wc, wc_to_po, yrs_to_pith
 from .read_pos import read_pos, PosCollection
 from .climate import seascorr, SeascorrResult
+from .climate_response import climate_response, ClimateResponseResult
 from .pcreg import pcreg, PcregResult
 from .sea import sea, SeaResult
 from .moving_corr import moving_corr, MovingCorrResult, MovingCorrGridResult
@@ -147,6 +148,8 @@ __all__ = [
     "read_pos",
     "PosCollection",
     "seascorr",
+    "climate_response",
+    "ClimateResponseResult",
     "pcreg",
     "sea",
     "SeaResult",
