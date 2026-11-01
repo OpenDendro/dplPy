@@ -154,6 +154,31 @@ Two foundational texts underpin the field and the methods dplPy implements:
 - Meko, D.M., Touchan, R., Anchukaitis, K.J. (2011). Seascorr: A MATLAB program
   for identifying the seasonal climate signal in an annual tree-ring time series.
   *Computers & Geosciences* 37(9), 1234–1241. *(the method behind `seascorr`)*
+- Fritts, H.C., Blasing, T.J., Hayden, B.P., Kutzbach, J.E. (1971). Multivariate
+  techniques for specifying tree-growth and climate relationships and for
+  reconstructing anomalies in paleoclimate. *Journal of Applied Meteorology*
+  10(5), 845–864. *(the response function behind `climate_response`)*
+- Guiot, J. (1991). The bootstrapped response function. *Tree-Ring Bulletin* 51,
+  39–41. *(bootstrapping the response-function coefficients and the PVP component
+  criterion)*
+- Biondi, F., Waikul, K. (2004). DENDROCLIM2002: A C++ program for statistical
+  calibration of climate signals in tree-ring chronologies. *Computers &
+  Geosciences* 30(3), 303–311. *(the moving/bootstrapped correlation- and
+  response-function program `climate_response` follows)*
+- Dixon, P.M. (2001). Bootstrap resampling. In: *The Encyclopedia of
+  Environmetrics*, Wiley, New York. *(the percentile significance method for the
+  resampling bootstraps)*
+- Politis, D.N., Romano, J.P. (1994). The stationary bootstrap. *Journal of the
+  American Statistical Association* 89(428), 1303–1313. *(the `boot="stationary"`
+  block resampler)*
+- Politis, D.N., White, H. (2004). Automatic block-length selection for the
+  dependent bootstrap. *Econometric Reviews* 23(1), 53–70; with the correction by
+  Patton, A., Politis, D.N., White, H. (2009), *Econometric Reviews* 28(4),
+  372–375. *(the automatic stationary-bootstrap block length)*
+- Percival, D.B., Constantine, W.L.B. (2006). Exact simulation of Gaussian time
+  series from nonparametric spectral estimates with application to bootstrapping.
+  *Statistics and Computing* 16(1), 25–35. *(the exact spectral simulation behind
+  `boot="exact"`)*
 - Fritts, H.C. (1976). *Tree Rings and Climate.* Academic Press. *(reduction of
   error and the verification/validation statistics)*
 - Oreskes, N., Shrader-Frechette, K., Belitz, K. (1994). Verification, validation,
