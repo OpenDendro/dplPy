@@ -203,9 +203,13 @@ def ssf(rwl,
         2008). "crust" adds CRUST's robustness guards (Melvin & Briffa 2014):
         multiplicative rescaling of the signal-free measurements, the raw
         measurement kept in any year where the chronology is near zero (< 0.01),
-        the fitted curves floored at 0.02 mm, and up to 40 iterations. These make
-        ssf robust to sensitive sites with many absent rings (e.g. co021) that the
-        basic method cannot standardise, and keep every series in the chronology.
+        every fitted curve floored at 0.02 mm -- including the initial detrend,
+        as in CRUST's det_sf_cur, not only the signal-free curves -- an
+        all-absent-ring year carried raw (via the < 0.01 guard) rather than
+        rejected, and up to 40 iterations. These make ssf robust to sensitive
+        sites with many absent rings (e.g. co021) and to collections the basic
+        method cannot standardise (e.g. nm046's non-positive initial curve,
+        ca533's all-absent-ring year), and keep every series in the chronology.
         Case-insensitive.
 
     Returns
@@ -295,8 +299,11 @@ def ssf(rwl,
     # Input validation (once, on the full collection).
     if dat.isna().all(axis=1).any():
         raise ValueError(inputNAmsg)   # unconnected floaters
-    if dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1).any():
-        raise ValueError(input0Msg)    # an all-zero year -> chron can be zero -> div0
+    if not crust and dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1).any():
+        # an all-zero (all-absent-ring) year -> chron can be zero -> div0. Under
+        # preset="crust" the chron<0.01 keep-raw guard carries such a year, as
+        # CRUST does, so it is not rejected here.
+        raise ValueError(input0Msg)
     if dat.apply(lambda x: x.sum(skipna=True) == 0, axis=0).any():
         raise ValueError(zeroColMsg)   # an all-zero series
 
@@ -367,6 +374,9 @@ def ssf(rwl,
 
         # STEP 1 - initial chronology
         datCurves = apply_getCurve(dat, method=method2, nyrs=nyrs)
+        if crust:   # CRUST floors every fitted curve at 0.02, including this
+            # initial pass (stand.f90 det_sf_cur), not only the signal-free curves
+            datCurves = np.maximum(datCurves, 0.02)
         bad = _bad_curve_cols(datCurves, dat.columns)
         if bad:                                      # raw series cannot be fit positive
             raise ValueError(_neg_curve_error(bad, None, None, difference, crust))
@@ -381,7 +391,10 @@ def ssf(rwl,
         # back to the straight mean, then error if zeros persist (bunk data).
         if any((iter0Crn.iloc[:, 0]) == 0):
             iter0Crn = chron(datRWI, biweight=False, plot=False)
-        if any((iter0Crn.iloc[:, 0]) == 0):
+        if not crust and any((iter0Crn.iloc[:, 0]) == 0):
+            # a zero initial chronology (an all-absent-ring year) would divide to
+            # inf; under preset="crust" the chron<0.01 keep-raw guard carries it,
+            # so it is not an error there.
             raise ValueError(crn0Msg)
 
         datSampDepth = iter0Crn.iloc[:, 1]

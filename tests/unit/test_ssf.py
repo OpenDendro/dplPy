@@ -121,9 +121,12 @@ def test_ssf_crust_survives_interior_absent_ring():
 
 
 def test_ssf_negative_curve_names_offending_series():
-    # A series whose fitted curve goes <= 0 (here an isolated spike on a flat-tiny
-    # series) stops the run with a clear error that names it and points to crust.
-    # ssf does not drop series -- "a few" is arbitrary and dropping can cascade.
+    # Under the basic method a series whose fitted curve goes <= 0 (here an
+    # isolated spike on a flat-tiny series) stops the run with a clear error that
+    # names it and points to crust. ssf does not drop series -- "a few" is
+    # arbitrary and dropping can cascade. (Under preset="crust" the curve is
+    # floored instead, so it does not raise here -- see
+    # test_ssf_crust_floors_initial_curve.)
     rng = np.random.default_rng(2)
     years = np.arange(1900, 2001)
     n = len(years)
@@ -140,10 +143,34 @@ def test_ssf_negative_curve_names_offending_series():
         _ssf_quiet(rwl, spline_period=10)
     assert "V00a" in str(e.value)
     assert "crust" in str(e.value)
-    with pytest.raises(ValueError) as e2:
-        _ssf_quiet(rwl, spline_period=10, preset="crust")
-    assert "V00a" in str(e2.value)
-    assert "dividing" not in str(e2.value)  # raw-curve case, not a division cause
+
+
+def test_ssf_crust_floors_initial_curve():
+    # Tier-1 CRUST parity: nm046 has a series whose initial raw spline dips <= 0.
+    # The basic method raises [1] naming it; preset="crust" floors every fitted
+    # curve at 0.02 -- including the initial pass, as CRUST's det_sf_cur does --
+    # and builds a finite, positive chronology instead of raising.
+    data = _read_quiet("tests/data/rwl/nm046.rwl")
+    with pytest.raises(ValueError) as e:
+        _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67)
+    assert "<= 0" in str(e.value)
+    out = _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67, preset="crust")
+    vals = out["sfc"].to_numpy()
+    vals = vals[~np.isnan(vals)]
+    assert np.all(np.isfinite(vals)) and (vals > 0).all()
+
+
+def test_ssf_crust_carries_all_absent_ring_year():
+    # Tier-1 CRUST parity: ca533 has an all-absent-ring year (645). The basic
+    # method raises [4]; preset="crust" carries it raw via the chron<0.01 keep-raw
+    # guard, as CRUST does, and returns a finite chronology for every year.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    with pytest.raises(ValueError) as e:
+        _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67)
+    assert "[4]" in str(e.value)
+    out = _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67, preset="crust")
+    vals = out["sfc"].to_numpy()
+    assert np.all(np.isfinite(vals[~np.isnan(vals)]))
 
 
 def test_ssf_difference_message_wording():
