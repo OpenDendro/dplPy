@@ -232,6 +232,22 @@ def test_ssf_crust_rescale_is_multiplicative():
                        [0.0, 2.0, 4.0])
 
 
+def test_ssf_crust_rescale_masks_single_series_years():
+    # CRUST computes the rescale factor from the years with more than one series
+    # (qok, depth > 1) only; dplPy's crust path now matches that. Year 0 here is a
+    # single-series year with an outlier that the mask must exclude.
+    from dplpy.simplesignalfree import _sf_rescale
+    sf = np.array([[9.0], [2.0], [4.0], [6.0]])    # signal-free measurements
+    dat = np.array([[9.0], [1.0], [2.0], [3.0]])   # raw
+    mask = np.array([False, True, True, True])     # qok: exclude year 0
+    # factor over qok years only = sum(dat[1:]) / sum(sf[1:]) = 6 / 12 = 0.5
+    out = _sf_rescale(sf, dat, crust=True, difference=False, mask=mask)
+    assert np.allclose(out[:, 0], sf[:, 0] * 0.5)
+    # no mask -> every year, including the outlier year 0: factor = 15 / 21
+    out_all = _sf_rescale(sf, dat, crust=True, difference=False)
+    assert np.allclose(out_all[:, 0], sf[:, 0] * (15.0 / 21.0))
+
+
 def test_ssf_crust_preset_default_unchanged():
     # preset=None must remain the exact basic method (already validated vs dplR)
     data = _read_quiet("tests/data/csv/ca533.csv")

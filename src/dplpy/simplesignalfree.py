@@ -118,18 +118,34 @@ def _sf_measurements(dat_vals, chron, difference, crust):
     return sf
 
 
-def _sf_rescale(sf, dat_vals, crust, difference):
+def _sf_rescale(sf, dat_vals, crust, difference, mask=None):
     """STEP 3: put each signal-free series back on its original mean. The basic
     (dplR) method shifts additively; CRUST rescales multiplicatively -- the
     model-consistent "mean offset" of Melvin & Briffa (2008, 2014), where tree
-    growth is multiplicative and indices are fractional deviations."""
+    growth is multiplicative and indices are fractional deviations.
+
+    Under crust the factor is CRUST's ratio of sums over the years with more than
+    one series in the collection (``mask``, CRUST's qok = depth > 1), computed and
+    applied per series only where that series has such years, and a series with at
+    most one is left unscaled (CRUST's COUNT(qok) > 1 guard). ``mask=None`` falls
+    back to every year, which is the pre-0.9 crust behaviour and the dplR/basic
+    additive path's behaviour."""
+    if crust and not difference:
+        if mask is None:
+            m = np.ones(dat_vals.shape[0], dtype=bool)
+        else:
+            m = np.asarray(mask, dtype=bool)
+        # per series, sum raw and signal-free over its qok (>1-series) years only
+        valid = m[:, None] & ~np.isnan(dat_vals) & ~np.isnan(sf)
+        nqok = valid.sum(axis=0)
+        sum_dat = np.where(valid, dat_vals, 0.0).sum(axis=0)
+        sum_sf = np.where(valid, sf, 0.0).sum(axis=0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            factor = np.where((nqok > 1) & (sum_sf != 0), sum_dat / sum_sf, 1.0)
+        return sf * factor
     mean_dat = np.nanmean(dat_vals, axis=0)
     with np.errstate(invalid="ignore"):
         mean_sf = np.nanmean(sf, axis=0)
-    if crust and not difference:
-        with np.errstate(invalid="ignore", divide="ignore"):
-            factor = np.where(mean_sf != 0, mean_dat / mean_sf, 1.0)
-        return sf * factor
     return (sf - mean_sf) + mean_dat
 
 
@@ -202,8 +218,10 @@ def ssf(rwl,
     preset : {None, "crust"}, default None
         None reproduces the basic signal-free method (dplR's ssf; Melvin & Briffa
         2008). "crust" adds CRUST's robustness guards (Melvin & Briffa 2014):
-        multiplicative rescaling of the signal-free measurements, the raw
-        measurement kept in any year where the chronology is near zero (< 0.01),
+        multiplicative rescaling of the signal-free measurements (with the mean
+        offset taken over the years that have more than one series, as CRUST
+        does, not every year), the raw measurement kept in any year where the
+        chronology is near zero (< 0.01),
         every fitted curve floored at 0.02 mm -- including the initial detrend,
         as in CRUST's det_sf_cur, not only the signal-free curves -- an
         all-absent-ring year carried raw (via the < 0.01 guard) rather than
@@ -375,7 +393,8 @@ def ssf(rwl,
             (zero-width) ring is kept -- getCurve recodes it to a small positive
             -- rather than being turned into an illegal interior NaN, which was
             the bug that broke the crust path on any absent ring."""
-            tmp = _sf_rescale(sf, dat.values, crust, difference)
+            qok = np.asarray(datSampDepth) > 1   # CRUST's >1-series (qok) mask
+            tmp = _sf_rescale(sf, dat.values, crust, difference, mask=qok)
             tmp[datSampDepth == 1, :] = dat.values[datSampDepth == 1, :]
             tmp[na_mask] = np.nan
             stray = np.isnan(tmp) & ~na_mask
