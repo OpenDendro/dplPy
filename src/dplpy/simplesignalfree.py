@@ -309,7 +309,7 @@ def ssf(rwl,
     method2 = fit  # the curve name, as the iteration history reports it
 
     if max_iterations > 25:
-        _warn("Having to set max_iterations > 25 may indicate non-ideal data for "
+        _warn("Setting max_iterations > 25 may indicate non-ideal data for "
               "signal-free detrending.")
     if not (1e-04 < mad_threshold < 1e-03):
         _warn("The stopping criteria (tol) should probably be between 1e-4 and 1e-3 "
@@ -351,9 +351,9 @@ def ssf(rwl,
     def getCurve(y, method=method2, nyrs=None, posSlope=True):
         good_y = np.where(~np.isnan(y))[0]           # NAs are reinserted later
         if len(good_y) == 0:
-            raise ValueError("All values are 'NA'")
+            raise ValueError("All values are 'NaN'")
         elif any(np.diff(good_y) != 1):
-            raise ValueError("'NA's are not allowed in the middle of the series")
+            raise ValueError("'NaN's are not allowed in the middle of the series.")
         y2 = y.iloc[good_y] if isinstance(y, (pd.Series, pd.DataFrame)) else y[good_y]
         y2[y2 == 0] = 0.001                          # recode zero rings to avoid div0
 
