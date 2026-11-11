@@ -111,11 +111,16 @@ def _sf_measurements(dat_vals, chron, difference, crust):
     failure mode). dplR divides unconditionally."""
     if difference:
         return dat_vals - chron[:, None]
-    sf = dat_vals / chron[:, None]
     if crust:
+        # the chronology can be ~0 at an all-absent-ring year; that division is
+        # overwritten with the raw measurement just below, so silence the expected
+        # divide-by-zero from those cells (the non-crust path is guarded upstream).
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sf = dat_vals / chron[:, None]
         guard = chron < 0.01
         sf[guard, :] = dat_vals[guard, :]
-    return sf
+        return sf
+    return dat_vals / chron[:, None]
 
 
 def _sf_rescale(sf, dat_vals, crust, difference, mask=None):
@@ -160,6 +165,7 @@ def ssf(rwl,
         verbose=True,
         preset=None,
         return_unconverged=False,
+        biweight=True,
         **kwargs):
     """Simple signal-free chronology (dplR's ssf()).
 
@@ -239,6 +245,11 @@ def ssf(rwl,
         returned chronology is not a converged result and may be unstable. When
         ``return_info`` is also True, ``info["infoList"]["converged"]`` records
         whether it converged and ``["n_iterations"]`` how many iterations ran.
+    biweight : bool, default True
+        the between-series average that forms the chronology at each iteration.
+        True uses Tukey's biweight robust mean (dplR's ``tbrm``), which downweights
+        outlier series; False uses a simple arithmetic mean. The default matches
+        dplR and the basic method.
 
     Returns
     -------
@@ -415,7 +426,7 @@ def ssf(rwl,
         datRWI.insert(0, "Years", dat.index)
         datRWI.set_index("Years", inplace=True)
 
-        iter0Crn = chron(datRWI, biweight=True, plot=False)
+        iter0Crn = chron(datRWI, biweight=biweight, plot=False)
         # Zeros in a biweight chron (very sensitive sites) cause div0 later; fall
         # back to the straight mean, then error if zeros persist (bunk data).
         if any((iter0Crn.iloc[:, 0]) == 0):
@@ -450,8 +461,9 @@ def ssf(rwl,
         else:
             sfRWI_Array[:, :, 0] = dat.values / sfRWRescaledCurves_Array[:, :, 0]
 
-        # STEP 7 - first signal-free chronology (biweight mean per year)
-        sfCrn_Mat[:, 0] = tbrm_rows(sfRWI_Array[:, :, 0])
+        # STEP 7 - first signal-free chronology (robust or arithmetic mean per year)
+        sfCrn_Mat[:, 0] = (tbrm_rows(sfRWI_Array[:, :, 0]) if biweight
+                           else np.nanmean(sfRWI_Array[:, :, 0], axis=1))
         if any(sfCrn_Mat[:, 0] == 0):
             sfCrn_Mat[:, 0] = chron(pd.DataFrame(sfRWI_Array[:, :, 0]), biweight=False, plot=False).iloc[:, 0]
 
@@ -483,7 +495,8 @@ def ssf(rwl,
             else:
                 sfRWI_Array[:, :, k] = dat.values / sfRWRescaledCurves_Array[:, :, k]
 
-            sfCrn_Mat[:, k] = tbrm_rows(sfRWI_Array[:, :, k])
+            sfCrn_Mat[:, k] = (tbrm_rows(sfRWI_Array[:, :, k]) if biweight
+                               else np.nanmean(sfRWI_Array[:, :, k], axis=1))
             if any(sfCrn_Mat[:, k] == 0):
                 sfCrn_Mat[:, k] = chron(pd.DataFrame(sfRWI_Array[:, :, k]), biweight=False, plot=False).iloc[:, 0]
 

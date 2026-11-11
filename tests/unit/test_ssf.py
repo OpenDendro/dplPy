@@ -248,6 +248,24 @@ def test_ssf_crust_rescale_masks_single_series_years():
     assert np.allclose(out_all[:, 0], sf[:, 0] * (15.0 / 21.0))
 
 
+def test_ssf_biweight_vs_arithmetic_mean():
+    # biweight=True (default) forms the chronology with Tukey's robust mean;
+    # biweight=False uses a plain arithmetic mean. The default is unchanged, and
+    # the arithmetic chronology equals the per-year nanmean of the final indices.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    default = _ssf_quiet(data, method="Spline", recode_zeros=True)
+    tukey = _ssf_quiet(data, method="Spline", recode_zeros=True, biweight=True)
+    arith = _ssf_quiet(data, method="Spline", recode_zeros=True, biweight=False,
+                       return_info=True)
+    assert np.array_equal(default["sfc"].to_numpy(), tukey["sfc"].to_numpy(),
+                          equal_nan=True)
+    manual = np.nanmean(arith["sfRWI_Array"][:, :, -1], axis=1)
+    assert np.allclose(arith["ssfCrn"]["sfc"].to_numpy(), manual, equal_nan=True)
+    # the robust and arithmetic means differ on real data (outlier series)
+    assert not np.allclose(tukey["sfc"].to_numpy(),
+                           arith["ssfCrn"]["sfc"].to_numpy(), equal_nan=True)
+
+
 def test_ssf_crust_preset_default_unchanged():
     # preset=None must remain the exact basic method (already validated vs dplR)
     data = _read_quiet("tests/data/csv/ca533.csv")
