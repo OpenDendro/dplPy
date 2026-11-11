@@ -29,7 +29,7 @@ __license__ = "GNU GPLv3"
 #              re-detrended, and a new chronology is built; this repeats until
 #              the high-frequency chronology stops changing (median absolute
 #              difference below a threshold). Ports dplR's ssf() algorithm
-#              (preset=None path); the CRUST-derived options depart from it as
+#              (preset=None path). The CRUST-derived options depart from it as
 #              documented on those parameters.
 
 import numpy as np
@@ -63,7 +63,7 @@ def _bad_curve_cols(curves, columns):
 def _curve_cause(chron, years, difference):
     """The explanatory clause for a non-positive-curve message: the pointer-year
     value of the driving chronology, worded for the ratio or the difference
-    method (difference does not divide, so it must not say "dividing by it")."""
+    method """
     if chron is None or years is None:
         return ""
     with np.errstate(invalid="ignore"):
