@@ -173,6 +173,41 @@ def test_ssf_crust_carries_all_absent_ring_year():
     assert np.all(np.isfinite(vals[~np.isnan(vals)]))
 
 
+def test_ssf_return_unconverged():
+    # co021 does not converge under the signal-free iteration. By default ssf
+    # raises [2]; return_unconverged=True returns the unconverged chronology with
+    # a warning and records convergence status in the info (for runaway studies).
+    data = _read_quiet("tests/data/rwl/co021.rwl")
+    with pytest.raises(ValueError) as e:
+        _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67,
+                   preset="crust", max_iterations=40)
+    assert "[2]" in str(e.value)
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            out = dpl.ssf(data, fit="Spline", method="ratio", spline_period=-67,
+                          preset="crust", max_iterations=40,
+                          return_unconverged=True, verbose=False)
+    assert any("did not converge" in str(w.message) for w in rec)
+    assert list(out.columns) == ["sfc", "samp_depth"]
+    vals = out["sfc"].to_numpy()
+    assert np.all(np.isfinite(vals[~np.isnan(vals)]))
+    info = _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67,
+                      preset="crust", max_iterations=40,
+                      return_unconverged=True, return_info=True)
+    assert info["infoList"]["converged"] is False
+
+
+def test_ssf_converged_flag_true_when_converged():
+    # a collection that converges reports converged=True and an iteration count;
+    # return_unconverged has no effect on a converged run.
+    data = _read_quiet("tests/data/csv/ca533.csv")
+    info = _ssf_quiet(data, method="Spline", recode_zeros=True, return_info=True)
+    assert info["infoList"]["converged"] is True
+    assert isinstance(info["infoList"]["n_iterations"], int)
+
+
 def test_ssf_difference_message_wording():
     # the non-positive-curve explanation must not talk about division in
     # difference mode (which subtracts), and must in ratio mode.

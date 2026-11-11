@@ -143,6 +143,7 @@ def ssf(rwl,
         return_info=False,
         verbose=True,
         preset=None,
+        return_unconverged=False,
         **kwargs):
     """Simple signal-free chronology (dplR's ssf()).
 
@@ -211,6 +212,15 @@ def ssf(rwl,
         method cannot standardise (e.g. nm046's non-positive initial curve,
         ca533's all-absent-ring year), and keep every series in the chronology.
         Case-insensitive.
+    return_unconverged : bool, default False
+        if the signal-free iteration reaches ``max_iterations`` without meeting
+        ``tol``, ssf normally raises. With ``return_unconverged=True`` it instead
+        returns the final, unconverged chronology and issues a warning. This is
+        for studying the conditions under which ssf converges or runs away (e.g.
+        the diverging recent-period inflation on sensitive sites like co021); the
+        returned chronology is not a converged result and may be unstable. When
+        ``return_info`` is also True, ``info["infoList"]["converged"]`` records
+        whether it converged and ``["n_iterations"]`` how many iterations ran.
 
     Returns
     -------
@@ -471,7 +481,17 @@ def ssf(rwl,
                       f"({round(mad_threshold / medianAbsDiff * 100, 5)}% of threshold)")
 
             if k == (max_iterations - 1) and medianAbsDiff > mad_threshold:
-                raise ValueError(maxIterMsg)
+                if not return_unconverged:
+                    raise ValueError(maxIterMsg)
+                # return_unconverged=True: hand back the unconverged chronology for
+                # analysis (convergence / runaway studies) with a clear warning,
+                # instead of raising. The caller can read info["infoList"]["converged"].
+                _warn("ssf did not converge in %d iterations (median abs diff "
+                      "%.4g, still above tol %.4g). Returning the unconverged "
+                      "chronology because return_unconverged=True; it is not a "
+                      "converged signal-free chronology and may be unstable."
+                      % (max_iterations, medianAbsDiff, mad_threshold))
+                break
             iterationNumber += 1
 
         # keep columns 0..k (slice :k+1); slicing :k would drop the final iteration
@@ -481,6 +501,7 @@ def ssf(rwl,
             "iter0_std": iter0Crn_col0,
             "samp_depth": datSampDepth,
             "k": k,
+            "converged": bool(medianAbsDiff <= mad_threshold),
             "sfRW_Array": sfRW_Array[:, :, :k + 1],
             "sfRWRescaled_Array": sfRWRescaled_Array[:, :, :k + 1],
             "sfRWRescaledCurves_Array": sfRWRescaledCurves_Array[:, :, :k + 1],
@@ -505,7 +526,8 @@ def ssf(rwl,
     finalCrn = pd.DataFrame({"sfc": core["sfCrn_Mat"][:, k], "samp_depth": samp_depth}, index=idx)
 
     infoList = {"fit": method2, "method": method, "spline_period": nyrs,
-                "max_iterations": max_iterations, "tol": mad_threshold}
+                "max_iterations": max_iterations, "tol": mad_threshold,
+                "converged": core["converged"], "n_iterations": k}
     if method2 == "AgeDepSpline":
         infoList["pos_slope"] = True
 
