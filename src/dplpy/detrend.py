@@ -41,6 +41,7 @@ from ._validate import (_warn, _alias_kwarg, _reject_kwargs, _normalize_choice,
                         _drop_allnan_columns, _carry_attrs)
 from .smoothingspline import spline, get_period
 from .agedepspline import ads
+from .supsmu import supsmu
 from . import curvefit
 
 
@@ -78,7 +79,7 @@ def _normalize_plot(plot):
 
 def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
             plot=False, spline_period=None, nyrs0=50, pos_slope=False, f=0.5,
-            verbose=False, return_info=False, **kwargs):
+            verbose=False, return_info=False, span="cv", bass=0.0, **kwargs):
     """Detrend a series or dataframe to ring-width indices.
 
     Fit a growth curve to each series (a smoothing spline by default) and form the
@@ -101,9 +102,11 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         ``"ModNegExp"`` and ``"ModHugershoff"`` (negative-exponential and Hugershoff
         curves fit by nonlinear least squares, with a linear->mean fallback),
         ``"NegExp"`` and ``"Hugershoff"`` (the same curves by ARSTAN's deterministic
-        fit), ``"GeneralExp"``, ``"LinearAny"`` (any-slope line), ``"LinearNegative"``
-        (non-positive-slope line, else the mean), and ``"Mean"`` (horizontal line at
-        the series mean). A list of curves detrends by each and returns a comparison:
+        fit), ``"GeneralExp"``, ``"Friedman"`` (Friedman's variable-span super
+        smoother, as dplR's ``supsmu``; see ``span`` and ``bass``), ``"LinearAny"``
+        (any-slope line), ``"LinearNegative"`` (non-positive-slope line, else the
+        mean), and ``"Mean"`` (horizontal line at the series mean). A list of curves
+        detrends by each and returns a comparison:
         a Series gives a DataFrame with one column per curve, a DataFrame gives a dict
         of them (not combinable with ``return_info``).
     method : {"ratio", "difference"}, default "ratio"
@@ -131,6 +134,15 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     f : float, default 0.5
         spline frequency-response amplitude at ``spline_period`` (``fit="Spline"``
         only).
+    span : "cv" or float, default "cv"
+        super-smoother span for ``fit="Friedman"`` (passed to ``supsmu``): ``"cv"``
+        selects the span locally by cross-validation (dplR's default), and a float
+        in ``(0, 1]`` fixes it to that fraction of the series length. Ignored by the
+        other curves.
+    bass : float, default 0.0
+        super-smoother bass (tone) control for ``fit="Friedman"`` under
+        cross-validated span, in ``[0, 10]``: larger values bias toward smoother
+        fits. 0 (dplR's default) applies no enhancement. Ignored by the other curves.
     verbose : boolean, default False
         print, per series, the curve fitted and the arithmetic used.
     return_info : boolean, default False
@@ -193,13 +205,15 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
                                  "a list of fit methods; request one method at a time.")
             if isinstance(data, pd.Series):
                 cols = {m: detrend_series(data, m, method, plot, spline_period,
-                                          nyrs0, pos_slope, f, verbose)
+                                          nyrs0, pos_slope, f, verbose,
+                                          span=span, bass=bass)
                         for m in methods}
                 return pd.DataFrame(cols)
             elif isinstance(data, pd.DataFrame):
                 data = _drop_allnan_columns(data, "data")
                 return {col: detrend(data[col], methods, method, plot,
-                                     spline_period, nyrs0, pos_slope, f, verbose)
+                                     spline_period, nyrs0, pos_slope, f, verbose,
+                                     span=span, bass=bass)
                         for col in data.columns}
             else:
                 raise TypeError("argument should be either pandas dataframe or pandas series.")
@@ -216,7 +230,7 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
             for column in data.columns:
                 r, c, mi, di, dd = detrend_series(
                     data[column], fit, method, plot, spline_period, nyrs0,
-                    pos_slope, f, verbose, return_info=True)
+                    pos_slope, f, verbose, return_info=True, span=span, bass=bass)
                 rwis.append(r)
                 curves.append(c)
                 model_info[column] = mi
@@ -230,7 +244,8 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         to_add = [base]
         for column in data.columns:
             to_add.append(detrend_series(data[column], fit, method, plot,
-                                         spline_period, nyrs0, pos_slope, f, verbose))
+                                         spline_period, nyrs0, pos_slope, f, verbose,
+                                         span=span, bass=bass))
         output_df = pd.concat(to_add, axis=1).rename_axis(data.index.name)
         return _carry_attrs(src, output_df, kind="rwi")
 
@@ -238,11 +253,11 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         if return_info:
             r, c, mi, di, dd = detrend_series(
                 data, fit, method, plot, spline_period, nyrs0, pos_slope, f,
-                verbose, return_info=True)
+                verbose, return_info=True, span=span, bass=bass)
             return {"rwi": r, "curves": c, "model_info": mi,
                     "data_info": di, "dirty_dog": dd}
         return detrend_series(data, fit, method, plot, spline_period, nyrs0,
-                              pos_slope, f, verbose)
+                              pos_slope, f, verbose, span=span, bass=bass)
     else:
         raise TypeError("argument should be either pandas dataframe or pandas series.")
 
@@ -294,7 +309,7 @@ def _empty_rwi(data, series_name, return_info):
 
 def detrend_series(data: pd.Series, fit, method, plot=False, spline_period=None,
                    nyrs0=50, pos_slope=False, f=0.5, verbose=False,
-                   return_info=False, **kwargs):
+                   return_info=False, span="cv", bass=0.0, **kwargs):
     spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period,
                                  "detrend_series")
     _reject_kwargs(kwargs)
@@ -377,6 +392,18 @@ def detrend_series(data: pd.Series, fit, method, plot=False, spline_period=None,
         yi, model_info = curvefit.hugershoff_arstan(x, y, series_name, info=True, t=t)
     elif fit == "GeneralExp":
         yi, model_info = curvefit.general_exp(x, y, series_name, info=True, t=t)
+    elif fit == "Friedman":
+        # Friedman's super smoother over ring POSITION (1..n over the measured
+        # rings), as dplR's detrend.series does: supsmu(x=seq_len(n), y, ...).
+        sp = 0.0 if (isinstance(span, str) and span.strip().lower() == "cv") \
+            else float(span)
+        yi = supsmu(np.arange(1, n + 1, dtype=float), y, span=sp, bass=float(bass))
+        # a super-smoother curve can dip non-positive; fall back to the series
+        # mean for ratio detrending (dplR's "dirty dog"), as the splines do.
+        yi, mi_fb, fell_back = _nonpositive_spline_fallback(
+            yi, y, method, "Friedman", series_name, return_info)
+        model_info = mi_fb if fell_back else {
+            "method": "Friedman", "span": span, "bass": float(bass)}
     elif fit == "LinearAny":
         yi = curvefit.linear(x, y)
         model_info = curvefit._line_info(x, yi)
@@ -455,6 +482,7 @@ _FIT_CANON = {
     "modhugershoff": "ModHugershoff",
     "hugershoff": "Hugershoff",
     "generalexp": "GeneralExp", "genexp": "GeneralExp",
+    "friedman": "Friedman", "supsmu": "Friedman", "supersmoother": "Friedman",
     "mean": "Mean", "horizontal": "Mean",
     # 'Linear' kept as an alias of the any-slope line for back-compatibility;
     # ARSTAN's two linear options are 'LinearAny' (opt 4) and 'LinearNegative'
@@ -469,10 +497,10 @@ _FIT_CANON = {
 # count, a line 2. Shorter series fall back to the mean with a warning.
 _MIN_N = {"Spline": 3, "AgeDepSpline": 4, "ModNegExp": 3, "NegExp": 2,
           "ModHugershoff": 4, "Hugershoff": 3, "GeneralExp": 3,
-          "LinearAny": 2, "LinearNegative": 2, "Mean": 1}
+          "LinearAny": 2, "LinearNegative": 2, "Friedman": 3, "Mean": 1}
 
 _FIT_OPTIONS = ("Spline, AgeDepSpline, ModNegExp, NegExp, ModHugershoff, "
-                "Hugershoff, GeneralExp, Mean, LinearAny, LinearNegative")
+                "Hugershoff, GeneralExp, Friedman, Mean, LinearAny, LinearNegative")
 
 
 def _normalize_fit(fit):

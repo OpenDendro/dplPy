@@ -858,3 +858,64 @@ def test_detrend_period_alias_and_attrs():
     assert s.attrs["kind"] == "rwi"
     with pytest.raises(TypeError):
         dpl.detrend(data, bogus=1, plot=False)
+
+
+# --- Friedman super smoother (fit="Friedman"), validated vs R's stats::supsmu ---
+
+def _friedman_test_series():
+    # a fully deterministic series (matches the one used to generate the golden
+    # values below from R 4.3.3 stats::supsmu).
+    t = np.arange(30)
+    y = 1.0 + 0.4 * np.sin(t / 3.0) + 0.1 * np.cos(t / 1.7) + 0.02 * t
+    return pd.Series(y, index=pd.Index(np.arange(1900, 1930), name="Year"),
+                     name="t1")
+
+
+def test_detrend_friedman_matches_r_supsmu():
+    # curve from dpl.detrend(fit="Friedman") vs R's supsmu(seq_len(n), y, ...).
+    s = _friedman_test_series()
+    # R supsmu, span=0.3, bass=0 (fixed span -> machine precision)
+    R_s03 = [1.27528634, 1.28294661, 1.29060689, 1.29826717,
+             1.30592744, 1.31358772, 1.31520029, 1.29470997]
+    info = dpl.detrend(s, fit="Friedman", span=0.3, return_info=True, plot=False)
+    curve = info["curves"].to_numpy()
+    assert np.allclose(curve[:8], R_s03, atol=1e-6)
+    # R supsmu, span="cv", bass=0 (cross-validated; float-order tolerance)
+    R_cv = [1.15042625, 1.21171108, 1.27299591, 1.32277659,
+            1.35635809, 1.37086682, 1.36599622, 1.34390633]
+    info_cv = dpl.detrend(s, fit="Friedman", return_info=True, plot=False)
+    assert np.allclose(info_cv["curves"].to_numpy()[:8], R_cv, atol=1e-5)
+
+
+def test_detrend_friedman_name_aliases():
+    s = _friedman_test_series()
+    base = dpl.detrend(s, fit="Friedman", span=0.3, plot=False).to_numpy()
+    for name in ("friedman", "Friedman", "supsmu", "supersmoother"):
+        got = dpl.detrend(s, fit=name, span=0.3, plot=False).to_numpy()
+        assert np.allclose(got, base, equal_nan=True)
+
+
+def test_detrend_friedman_ratio_and_difference():
+    s = _friedman_test_series()
+    r = dpl.detrend(s, fit="Friedman", method="ratio", plot=False).dropna().to_numpy()
+    d = dpl.detrend(s, fit="Friedman", method="difference", plot=False).dropna().to_numpy()
+    assert np.all(np.isfinite(r)) and 0.9 < r.mean() < 1.1
+    assert np.all(np.isfinite(d)) and abs(d.mean()) < 0.05
+
+
+def test_detrend_friedman_bass_smooths():
+    # higher bass biases toward the smoother (woofer) span, so the curve varies
+    # less. Compare the std of the fitted curve at bass 0 vs bass 8 under CV.
+    s = _friedman_test_series()
+    c0 = dpl.detrend(s, fit="Friedman", bass=0, return_info=True, plot=False)["curves"].to_numpy()
+    c8 = dpl.detrend(s, fit="Friedman", bass=8, return_info=True, plot=False)["curves"].to_numpy()
+    assert np.nanstd(np.diff(c8)) <= np.nanstd(np.diff(c0))
+
+
+def test_detrend_friedman_too_few_rings_falls_back_to_mean():
+    s = pd.Series([1.2, 0.8], index=pd.Index([1901, 1902], name="Year"), name="t1")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        info = dpl.detrend(s, fit="Friedman", return_info=True, plot=False)
+    assert info["model_info"]["method"] == "Mean"
+    assert info["dirty_dog"] is True
