@@ -325,6 +325,14 @@ def test_sweep_covers_every_public_transform():
         "fhx", "as_fhx", "is_fhx", "make_rec_type", "read_fhx", "write_fhx",
         "series_names", "year_range", "get_year", "get_series",
         "get_event_years", "delete", "sort_fhx", "violates_canon",
+        # fire-history analyses and interval statistics: also operate on fhx
+        # event frames, not ca533; covered by test_fhx_stats.py (which includes
+        # its own non-mutation checks).
+        "series_stats", "first_year", "last_year", "count_year_span",
+        "inner_type", "outer_type", "count_scar", "count_injury",
+        "count_recording", "series_mean_interval", "sample_depth",
+        "percent_scarred", "yearly_recording", "summary_fhx", "composite",
+        "intervals", "FireIntervals",
     }
     covered = {n.split("(")[0] for n in CASES}
     missing = [n for n in dpl.__all__ if n not in exempt and n not in covered]
