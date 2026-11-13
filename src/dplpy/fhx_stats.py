@@ -5,19 +5,18 @@ A port of the series-statistics and compositing layer of the R package burnr
 doi:10.1016/j.dendro.2018.02.005), operating on the ``fhx`` event frames built by
 :mod:`dplpy.fhx`.
 
-Public functions mirror burnr's verbs: :func:`series_stats` and its per-series
-pieces (:func:`first_year`, :func:`last_year`, :func:`count_year_span`,
-:func:`inner_type`, :func:`outer_type`, :func:`count_scar`, :func:`count_injury`,
-:func:`count_recording`, :func:`series_mean_interval`), :func:`sample_depth`,
-:func:`percent_scarred`, :func:`yearly_recording`, :func:`summary_fhx`, and
-:func:`composite`.
+Public functions mirror burnr's verbs: :func:`series_stats` (and the standalone
+event counts :func:`count_scar`, :func:`count_injury`, :func:`count_recording`,
+:func:`series_mean_interval`), :func:`sample_depth`, :func:`percent_scarred`,
+:func:`yearly_recording`, :func:`summary_fhx`, and :func:`composite`. The trivial
+per-series pieces behind ``series_stats`` (``_first_year``, ``_last_year``,
+``_count_year_span``, ``_inner_type``, ``_outer_type``) are kept internal, since
+:func:`dplpy.year_range` already covers the first/last year publicly.
 
 The "recording" rule (:func:`_find_recording`) is ported verbatim from burnr's
 internal ``find_recording`` so that recording counts, composites, and
 percent-scarred series match burnr exactly.
 """
-import re
-
 import numpy as np
 import pandas as pd
 
@@ -26,33 +25,33 @@ from .fhx import (_require_fhx, series_names, get_event_years, fhx,
                   make_rec_type)
 
 
-# --- per-series scalar pieces ---------------------------------------------
+# --- per-series scalar pieces (internal; exposed via series_stats) --------
 
-def first_year(x):
+def _first_year(x):
     """Earliest year in an ``fhx`` object (or one of its series)."""
     _require_fhx(x)
     return int(x["year"].min())
 
 
-def last_year(x):
+def _last_year(x):
     """Latest year in an ``fhx`` object (or one of its series)."""
     _require_fhx(x)
     return int(x["year"].max())
 
 
-def count_year_span(x):
+def _count_year_span(x):
     """Number of years spanned, ``last_year - first_year + 1``."""
     _require_fhx(x)
     return int(x["year"].max() - x["year"].min() + 1)
 
 
-def inner_type(x):
+def _inner_type(x):
     """``rec_type`` (a string) of the earliest observation in ``x``."""
     _require_fhx(x)
     return str(x["rec_type"].iloc[int(np.asarray(x["year"]).argmin())])
 
 
-def outer_type(x):
+def _outer_type(x):
     """``rec_type`` (a string) of the latest observation in ``x``."""
     _require_fhx(x)
     return str(x["rec_type"].iloc[int(np.asarray(x["year"]).argmax())])
@@ -145,6 +144,85 @@ def _find_recording(x, injury_event=False):
     return np.array(sorted(rec_set | active), dtype="int64")
 
 
+def _intersect(a, b_set):
+    """R's ``intersect(a, b)``: the unique elements of ``a`` that are in ``b``,
+    in order of first appearance in ``a``."""
+    seen = set()
+    out = []
+    for v in a:
+        v = int(v)
+        if v in b_set and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def _recording_union_ordered(x, injury_event=False):
+    """burnr's ``find_recording`` union *in burnr's order* (recorder/scar years
+    first, then boundary- and injury-adjacent years appended). The resulting
+    order is what :func:`_recording_segments` depends on; the order-independent
+    set is the same as :func:`_find_recording`."""
+    df = x.sort_values("year")
+    yrs = df["year"].to_numpy()
+    rt = df["rec_type"].astype(str).to_numpy()
+
+    recorder = list(RECORDER) + (list(INJURY) if injury_event else [])
+    rec = np.unique(yrs[np.isin(rt, recorder)])           # sorted unique
+    inj_set = set(int(v) for v in np.unique(yrs[np.isin(rt, list(INJURY))]))
+    end_set = set(int(v) for v in np.unique(yrs[np.isin(rt, list(ENDS))]))
+
+    active = list(int(v) for v in rec)
+    active += _intersect(rec - 1, end_set)                # ends just below a rec yr
+    active += _intersect(rec + 1, end_set)                # ends just above a rec yr
+    active += _intersect([a - 1 for a in active], inj_set)
+    active += _intersect([a + 1 for a in active], inj_set)
+
+    # union(rec, active), first-occurrence order (rec already leads `active`)
+    seen = set()
+    out = []
+    for v in list(int(v) for v in rec) + active:
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def _recording_segments(x, injury_event=False):
+    """Continuous recording-period segments for each series, as a list of
+    ``(series, first, last)`` tuples in series order.
+
+    Faithful port of burnr's internal ``get_rec_tbl``: for each series the
+    recording-year vector (in burnr's union order) is split into maximal runs of
+    consecutive years via the same run-length rule, dropping single-year runs. A
+    year appended out of order by ``find_recording`` (a boundary or injury year
+    outside the recorder run) falls in its own one-element run and is dropped,
+    exactly as in burnr -- so segment ends and gap-driven splits match. A series
+    may yield more than one segment when its recording period has gaps.
+    """
+    out = []
+    for s in series_names(x):
+        df = x[x["series"].astype(str) == s]
+        rec = _recording_union_ordered(df, injury_event=injury_event)
+        if len(rec) < 1:
+            continue
+        # runs where each step is +1 (burnr's rle on lag %in% c(NA, 1)); the
+        # leading NA makes the first element start a run
+        mask = [True] + [(rec[i] - rec[i - 1]) == 1 for i in range(1, len(rec))]
+        i = 0
+        while i < len(rec):
+            if not mask[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(rec) and mask[j + 1]:
+                j += 1
+            first, last = rec[i], rec[j]
+            if last - first > 0:                 # drop single-year runs
+                out.append((s, first, last))
+            i = j + 1
+    return out
+
+
 # --- series-level table ---------------------------------------------------
 
 def series_stats(x):
@@ -161,11 +239,11 @@ def series_stats(x):
         df = x[x["series"].astype(str) == s]
         rows.append({
             "series": s,
-            "first": first_year(df),
-            "last": last_year(df),
-            "years": count_year_span(df),
-            "inner_type": inner_type(df),
-            "outer_type": outer_type(df),
+            "first": _first_year(df),
+            "last": _last_year(df),
+            "years": _count_year_span(df),
+            "inner_type": _inner_type(df),
+            "outer_type": _outer_type(df),
             "number_scars": count_scar(df),
             "number_injuries": count_injury(df),
             "recording_years": count_recording(df),
@@ -182,8 +260,8 @@ def summary_fhx(x):
     _require_fhx(x)
     return {
         "number_series": len(series_names(x)),
-        "first_year": first_year(x),
-        "last_year": last_year(x),
+        "first_year": _first_year(x),
+        "last_year": _last_year(x),
         "number_scars": count_scar(x),
         "number_injuries": count_injury(x),
     }

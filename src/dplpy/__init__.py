@@ -108,12 +108,12 @@ from .cli import help as help, readme as readme
 from .fhx import (fhx, as_fhx, is_fhx, make_rec_type, read_fhx, write_fhx,
                   series_names, year_range, get_year, get_series,
                   get_event_years, delete, sort_fhx, violates_canon)
-from .fhx_stats import (series_stats, first_year, last_year, count_year_span,
-                        inner_type, outer_type, count_scar, count_injury,
+from .fhx_stats import (series_stats, count_scar, count_injury,
                         count_recording, series_mean_interval, sample_depth,
                         percent_scarred, yearly_recording, summary_fhx,
                         composite)
 from .fhx_intervals import intervals, FireIntervals
+from .fhx_plot import plot_demograph, plot_intervals_dist
 
 __all__ = [
     "readers",
@@ -206,11 +206,6 @@ __all__ = [
     "sort_fhx",
     "violates_canon",
     "series_stats",
-    "first_year",
-    "last_year",
-    "count_year_span",
-    "inner_type",
-    "outer_type",
     "count_scar",
     "count_injury",
     "count_recording",
@@ -222,6 +217,8 @@ __all__ = [
     "composite",
     "intervals",
     "FireIntervals",
+    "plot_demograph",
+    "plot_intervals_dist",
 ]
 # dpl.help() and dpl.readme() stay available as attributes but are kept out of
 # __all__ so that "from dplpy import *" does not shadow the builtin help().

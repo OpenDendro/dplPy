@@ -33,17 +33,18 @@ def pgm():
 # --- per-series scalar pieces (burnr test-stats.R golden) ------------------
 
 def test_scalar_pieces_single_and_multi(lgr2):
+    from dplpy import fhx_stats as _fs     # trivial span pieces are internal
     single = dpl.get_series(lgr2, "LGR53")
-    assert dpl.first_year(single) == 1772
-    assert dpl.first_year(lgr2) == 1366
-    assert dpl.last_year(single) == 1843
-    assert dpl.last_year(lgr2) == 2012
-    assert dpl.count_year_span(single) == 72
-    assert dpl.count_year_span(lgr2) == 647
-    assert dpl.outer_type(single) == "outer_year"
-    assert dpl.outer_type(lgr2) == "bark_year"
-    assert dpl.inner_type(single) == "pith_year"
-    assert dpl.inner_type(lgr2) == "inner_year"
+    assert _fs._first_year(single) == 1772
+    assert _fs._first_year(lgr2) == 1366
+    assert _fs._last_year(single) == 1843
+    assert _fs._last_year(lgr2) == 2012
+    assert _fs._count_year_span(single) == 72
+    assert _fs._count_year_span(lgr2) == 647
+    assert _fs._outer_type(single) == "outer_year"
+    assert _fs._outer_type(lgr2) == "bark_year"
+    assert _fs._inner_type(single) == "pith_year"
+    assert _fs._inner_type(lgr2) == "inner_year"
     assert dpl.count_scar(single) == 1
     assert dpl.count_scar(lgr2) == 9
     assert dpl.count_injury(single) == 0
@@ -133,8 +134,9 @@ def test_composite_is_one_series_fhx(pgm):
     assert len(dpl.series_names(comp)) == 1
     assert dpl.series_names(comp)[0] == "COMP"
     # composite names the scar years unknown_fs, the ends inner/outer
-    assert dpl.inner_type(comp) == "inner_year"
-    assert dpl.outer_type(comp) == "outer_year"
+    from dplpy import fhx_stats as _fs
+    assert _fs._inner_type(comp) == "inner_year"
+    assert _fs._outer_type(comp) == "outer_year"
 
 
 def test_composite_empty_when_nothing_qualifies(lgr2):

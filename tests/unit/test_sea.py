@@ -121,6 +121,29 @@ def test_sea_accepts_series_or_pair():
     assert np.allclose(a.composite, b.composite)
 
 
+def test_sea_accepts_fhx_composite():
+    # a one-series fire composite can be passed directly as the events; its fire
+    # years drive the SEA, equivalently to passing those years explicitly
+    ser, _ = _synthetic()
+    comp = dpl.fhx(
+        [1104, 1258, 1453, 1601, 1641, 1695, 1200, 1900],
+        ["COMP"] * 8,
+        ["unknown_fs", "unknown_fs", "unknown_fs", "unknown_fs", "unknown_fs",
+         "unknown_fs", "inner_year", "outer_year"])
+    years = sorted(int(v) for v in dpl.get_event_years(comp)["COMP"])
+    a = dpl.sea(ser, comp, pre=5, post=10, double_bootstrap=False, seed=1)
+    b = dpl.sea(ser, years, pre=5, post=10, double_bootstrap=False, seed=1)
+    assert np.allclose(a.composite, b.composite)
+    assert set(a.events.astype(int)).issubset(set(years))
+
+
+def test_sea_rejects_multiseries_fhx():
+    ser, _ = _synthetic()
+    multi = dpl.fhx([1104, 1258], ["A", "B"], ["unknown_fs", "unknown_fs"])
+    with pytest.raises(ValueError):
+        dpl.sea(ser, multi)
+
+
 def test_sea_random_null_runs():
     ser, events = _synthetic()
     res = dpl.sea(ser, events, pre=5, post=10, n_sample=6, n_subsets=300,

@@ -312,6 +312,7 @@ def test_sweep_covers_every_public_transform():
         "moving_corr", "MovingCorrResult", "MovingCorrGridResult",
         # plotting only
         "plot", "xdate_plot", "disturbance_plot",
+        "plot_demograph", "plot_intervals_dist",
         # file-driven report
         "xdate_report",
         # standalone numerical helpers (take arrays/series or special tables)
@@ -328,8 +329,7 @@ def test_sweep_covers_every_public_transform():
         # fire-history analyses and interval statistics: also operate on fhx
         # event frames, not ca533; covered by test_fhx_stats.py (which includes
         # its own non-mutation checks).
-        "series_stats", "first_year", "last_year", "count_year_span",
-        "inner_type", "outer_type", "count_scar", "count_injury",
+        "series_stats", "count_scar", "count_injury",
         "count_recording", "series_mean_interval", "sample_depth",
         "percent_scarred", "yearly_recording", "summary_fhx", "composite",
         "intervals", "FireIntervals",
