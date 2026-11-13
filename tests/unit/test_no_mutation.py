@@ -319,6 +319,12 @@ def test_sweep_covers_every_public_transform():
         # warning machinery: a warning category and the toggle for dplPy's
         # friendly warning formatter -- neither takes or returns a frame.
         "DplpyWarning", "set_friendly_warnings",
+        # fire-history (FHX2) layer: operates on fhx event frames
+        # (year/series/rec_type), not the ca533 ring-width fixtures this sweep
+        # uses; covered by test_fhx.py (read/write round-trip + accessors).
+        "fhx", "as_fhx", "is_fhx", "make_rec_type", "read_fhx", "write_fhx",
+        "series_names", "year_range", "get_year", "get_series",
+        "get_event_years", "delete", "sort_fhx", "violates_canon",
     }
     covered = {n.split("(")[0] for n in CASES}
     missing = [n for n in dpl.__all__ if n not in exempt and n not in covered]

@@ -105,6 +105,9 @@ from .site_metadata import SiteMetadata
 from .tridas import read_tridas, write_tridas, TridasProject, TridasMetadata
 from .lipd import to_lipd, from_lipd, lipd_metadata
 from .cli import help as help, readme as readme
+from .fhx import (fhx, as_fhx, is_fhx, make_rec_type, read_fhx, write_fhx,
+                  series_names, year_range, get_year, get_series,
+                  get_event_years, delete, sort_fhx, violates_canon)
 
 __all__ = [
     "readers",
@@ -182,6 +185,20 @@ __all__ = [
     "lipd_metadata",
     "DplpyWarning",
     "set_friendly_warnings",
+    "fhx",
+    "as_fhx",
+    "is_fhx",
+    "make_rec_type",
+    "read_fhx",
+    "write_fhx",
+    "series_names",
+    "year_range",
+    "get_year",
+    "get_series",
+    "get_event_years",
+    "delete",
+    "sort_fhx",
+    "violates_canon",
 ]
 # dpl.help() and dpl.readme() stay available as attributes but are kept out of
 # __all__ so that "from dplpy import *" does not shadow the builtin help().
