@@ -29,7 +29,7 @@ from ._fhx_vocab import (REC_TYPE_LEVELS, REC_TYPE_ABRV, REC_TYPE_ALL,
 
 # --- the rec_type factor --------------------------------------------------
 
-def make_rec_type(x):
+def make_fhx_rec_type(x):
     """Turn a rec_type name (or iterable of names) into an ordered Categorical
     with burnr's canonical levels. Raises on an unknown name."""
     vals = [x] if isinstance(x, str) else list(x)
@@ -48,7 +48,7 @@ def fhx(year, series, rec_type):
     year = np.asarray(list(year), dtype="int64")
     series = np.asarray([str(s) for s in series], dtype=object)
     if not isinstance(rec_type, pd.Categorical):
-        rec_type = make_rec_type(list(rec_type))
+        rec_type = make_fhx_rec_type(list(rec_type))
     else:
         rec_type = pd.Categorical(rec_type, categories=REC_TYPE_LEVELS)
     if not (len(year) == len(series) == len(rec_type)):
@@ -91,7 +91,7 @@ def _check_duplicates(x):
               + bad.to_string(index=False))
 
 
-def violates_canon(x):
+def fhx_violates_canon(x):
     """True if any rec_type is outside the original FHX2 canon (others may not be
     readable by older software)."""
     _require_fhx(x)
@@ -157,7 +157,7 @@ def _parse_fhx(text):
             years.append(yr)
             series_out.append(names[j])
             codes.append(name)
-    return fhx(years, series_out, make_rec_type(codes))
+    return fhx(years, series_out, make_fhx_rec_type(codes))
 
 
 # --- writer ---------------------------------------------------------------
@@ -166,10 +166,10 @@ def write_fhx(x, fname):
     """Write an ``fhx`` object to an FHX2 ``.fhx`` file. Round-trips with
     :func:`read_fhx`. Warns if any rec_type falls outside the FHX2 canon."""
     _require_fhx(x)
-    if violates_canon(x):
+    if fhx_violates_canon(x):
         _warn("write_fhx: object has rec_types outside the FHX2 canon; other "
               "software may not read the output.")
-    series = series_names(x)
+    series = fhx_series_names(x)
     n = len(series)
     id_len = max((len(s) for s in series), default=1)
     ymin, ymax = int(x["year"].min()), int(x["year"].max())
@@ -189,33 +189,33 @@ def write_fhx(x, fname):
 
 # --- accessors ------------------------------------------------------------
 
-def series_names(x):
+def fhx_series_names(x):
     """The series ids in ``x``, in order of first appearance."""
     _require_fhx(x)
     return list(pd.unique(x["series"].astype(str)))
 
 
-def year_range(x):
+def fhx_year_range(x):
     """``(first_year, last_year)`` spanned by ``x``."""
     _require_fhx(x)
     return (int(x["year"].min()), int(x["year"].max()))
 
 
-def get_year(x, yr):
+def fhx_get_year(x, yr):
     """Rows of ``x`` in year ``yr`` (an int or iterable of ints)."""
     _require_fhx(x)
     yrs = [yr] if np.isscalar(yr) else list(yr)
     return as_fhx(x[x["year"].isin(yrs)])
 
 
-def get_series(x, s):
+def fhx_get_series(x, s):
     """Rows of ``x`` for series ``s`` (a str or iterable of strs)."""
     _require_fhx(x)
     ss = [s] if isinstance(s, str) else list(s)
     return as_fhx(x[x["series"].astype(str).isin(ss)])
 
 
-def delete(x, series=None, year=None):
+def fhx_delete(x, series=None, year=None):
     """A copy of ``x`` with observations removed: by ``series``, by ``year``, or
     (both given) only where series and year both match."""
     _require_fhx(x)
@@ -235,7 +235,7 @@ def delete(x, series=None, year=None):
     return as_fhx(x[keep])
 
 
-def get_event_years(x, scar_event=True, injury_event=False, custom_search=None):
+def fhx_get_events(x, scar_event=True, injury_event=False, custom_search=None):
     """Per-series event years, as ``{series: [years]}``. By default a fire scar
     (``_fs``) is an event; set ``injury_event=True`` to also count injuries
     (``_fi``). ``custom_search`` overrides with a regex matched against rec_type.
@@ -249,13 +249,13 @@ def get_event_years(x, scar_event=True, injury_event=False, custom_search=None):
     rt = x["rec_type"].astype(str)
     hit = rt.str.contains(pat, regex=True)
     out = {}
-    for s in series_names(x):
+    for s in fhx_series_names(x):
         m = hit & (x["series"].astype(str) == s)
         out[s] = x.loc[m, "year"].to_numpy()
     return out
 
 
-def sort_fhx(x, by="first_year", decreasing=False):
+def fhx_sort(x, by="first_year", decreasing=False):
     """Reorder the series of ``x`` by their first (or last) year. ``by`` is
     ``"first_year"`` or ``"last_year"``."""
     _require_fhx(x)

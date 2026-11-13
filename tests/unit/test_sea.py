@@ -130,7 +130,7 @@ def test_sea_accepts_fhx_composite():
         ["COMP"] * 8,
         ["unknown_fs", "unknown_fs", "unknown_fs", "unknown_fs", "unknown_fs",
          "unknown_fs", "inner_year", "outer_year"])
-    years = sorted(int(v) for v in dpl.get_event_years(comp)["COMP"])
+    years = sorted(int(v) for v in dpl.fhx_get_events(comp)["COMP"])
     a = dpl.sea(ser, comp, pre=5, post=10, double_bootstrap=False, seed=1)
     b = dpl.sea(ser, years, pre=5, post=10, double_bootstrap=False, seed=1)
     assert np.allclose(a.composite, b.composite)

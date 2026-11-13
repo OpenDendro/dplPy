@@ -5,7 +5,7 @@ A port of burnr's ``intervals`` (Malevich, Guiterman & Margolis; Malevich et al.
 fire ``composite`` (see :func:`dplpy.composite`), :func:`intervals` computes the
 gaps between successive fire years, fits a Weibull or lognormal distribution by
 maximum likelihood, and runs Kolmogorov-Smirnov and Shapiro-Wilk goodness-of-fit
-tests. It returns a :class:`FireIntervals` result with the observed summary
+tests. It returns a :class:`FhxIntervals` result with the observed summary
 statistics and fit quantiles (the lower/median/upper exceedance intervals).
 
 The Weibull fit solves the MLE shape score equation directly (matching R's
@@ -18,7 +18,7 @@ import warnings
 import numpy as np
 from scipy import optimize, stats
 
-from .fhx import _require_fhx, series_names, get_event_years
+from .fhx import _require_fhx, fhx_series_names, fhx_get_events
 
 
 def _weibull_mle(x):
@@ -55,7 +55,7 @@ def _lognormal_mle(x):
     return meanlog, sdlog
 
 
-class FireIntervals:
+class FhxIntervals:
     """Result of a fire-interval analysis (see :func:`intervals`).
 
     Attributes
@@ -157,6 +157,13 @@ class FireIntervals:
             "shapiro_pvalue": self.shapirotest["pvalue"],
         }
 
+    def plot(self, binwidth=None, ax=None, show=True):
+        """Histogram (with a rug) of the observed intervals. Returns
+        ``(fig, ax)``; see :func:`dplpy.fhx_demograph` for the plotting
+        convention."""
+        from .fhx_plot import _plot_intervals_dist
+        return _plot_intervals_dist(self, binwidth=binwidth, ax=ax, show=show)
+
     def __repr__(self):
         s = self.summary()
         if self.densfun == "weibull":
@@ -185,7 +192,7 @@ class FireIntervals:
                s["shapiro_statistic"], s["shapiro_pvalue"]))
 
 
-def intervals(comp, densfun="weibull"):
+def fhx_intervals(comp, densfun="weibull"):
     """Fire-interval analysis of a one-series fire ``composite``.
 
     Parameters
@@ -197,7 +204,7 @@ def intervals(comp, densfun="weibull"):
 
     Returns
     -------
-    FireIntervals
+    FhxIntervals
         the observed intervals, the fitted distribution, goodness-of-fit tests,
         and summary/quantile helpers.
 
@@ -210,11 +217,11 @@ def intervals(comp, densfun="weibull"):
     _require_fhx(comp)
     if densfun not in ("weibull", "lognormal"):
         raise ValueError("densfun must be 'weibull' or 'lognormal'.")
-    names = series_names(comp)
+    names = fhx_series_names(comp)
     if len(names) > 1:
         raise ValueError("found multiple series in comp; there can only be one.")
 
-    ev = get_event_years(comp)
+    ev = fhx_get_events(comp)
     event_years = np.sort(np.asarray(ev[names[0]], dtype="int64"))
     iv = np.diff(event_years)
     if len(iv) < 2:
@@ -240,7 +247,7 @@ def intervals(comp, densfun="weibull"):
                                  for v in ev.values()]) if ev else event_years
     event_range = (int(all_events.min()), int(all_events.max()))
 
-    return FireIntervals(
+    return FhxIntervals(
         intervals=iv,
         densfun=densfun,
         fit=fit,

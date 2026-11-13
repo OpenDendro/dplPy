@@ -5,7 +5,7 @@ Golden values are burnr's own: the series-statistics, sample-depth, and
 percent-scarred figures match the assertions in burnr's test-stats.R on lgr2,
 and the pgm composite years plus interval statistics match burnr's
 test-intervals.R and a direct burnr run (composite(pgm) -> intervals()). The full
-series_stats table, sample_depth, percent_scarred, and composite year lists were
+fhx_stats table, fhx_sample_depth, percent_scarred, and composite year lists were
 confirmed identical to burnr during development.
 """
 import copy
@@ -14,7 +14,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import importlib
+
 import dplpy as dpl
+fs = importlib.import_module("dplpy.fhx_stats")  # module, not the fhx_stats() fn
 
 LGR2 = "tests/data/fhx/lgr2.fhx"
 PGM = "tests/data/fhx/pgm.fhx"
@@ -33,37 +36,36 @@ def pgm():
 # --- per-series scalar pieces (burnr test-stats.R golden) ------------------
 
 def test_scalar_pieces_single_and_multi(lgr2):
-    from dplpy import fhx_stats as _fs     # trivial span pieces are internal
-    single = dpl.get_series(lgr2, "LGR53")
-    assert _fs._first_year(single) == 1772
-    assert _fs._first_year(lgr2) == 1366
-    assert _fs._last_year(single) == 1843
-    assert _fs._last_year(lgr2) == 2012
-    assert _fs._count_year_span(single) == 72
-    assert _fs._count_year_span(lgr2) == 647
-    assert _fs._outer_type(single) == "outer_year"
-    assert _fs._outer_type(lgr2) == "bark_year"
-    assert _fs._inner_type(single) == "pith_year"
-    assert _fs._inner_type(lgr2) == "inner_year"
-    assert dpl.count_scar(single) == 1
-    assert dpl.count_scar(lgr2) == 9
-    assert dpl.count_injury(single) == 0
-    assert dpl.count_injury(lgr2) == 6
-    assert dpl.count_recording(single) == 38
-    assert dpl.count_recording(lgr2) == 514
-    assert dpl.count_recording(single, injury_event=True) == 38
-    assert dpl.count_recording(lgr2, injury_event=True) == 514
+    single = dpl.fhx_get_series(lgr2, "LGR53")
+    assert fs._first_year(single) == 1772
+    assert fs._first_year(lgr2) == 1366
+    assert fs._last_year(single) == 1843
+    assert fs._last_year(lgr2) == 2012
+    assert fs._count_year_span(single) == 72
+    assert fs._count_year_span(lgr2) == 647
+    assert fs._outer_type(single) == "outer_year"
+    assert fs._outer_type(lgr2) == "bark_year"
+    assert fs._inner_type(single) == "pith_year"
+    assert fs._inner_type(lgr2) == "inner_year"
+    assert fs._count_scar(single) == 1
+    assert fs._count_scar(lgr2) == 9
+    assert fs._count_injury(single) == 0
+    assert fs._count_injury(lgr2) == 6
+    assert fs._count_recording(single) == 38
+    assert fs._count_recording(lgr2) == 514
+    assert fs._count_recording(single, injury_event=True) == 38
+    assert fs._count_recording(lgr2, injury_event=True) == 514
 
 
 def test_series_mean_interval(lgr2):
-    assert np.isnan(dpl.series_mean_interval(dpl.get_series(lgr2, "LGR53")))
-    assert dpl.series_mean_interval(dpl.get_series(lgr2, "LGR46")) == 16.5
+    assert np.isnan(fs._series_mean_interval(dpl.fhx_get_series(lgr2, "LGR53")))
+    assert fs._series_mean_interval(dpl.fhx_get_series(lgr2, "LGR46")) == 16.5
     with pytest.warns(dpl.DplpyWarning):          # warns on multiple series
-        assert dpl.series_mean_interval(lgr2) == 47.9
+        assert fs._series_mean_interval(lgr2) == 47.9
 
 
 def test_series_stats_table(lgr2):
-    ss = dpl.series_stats(lgr2)
+    ss = dpl.fhx_stats(lgr2)
     assert list(ss.columns) == [
         "series", "first", "last", "years", "inner_type", "outer_type",
         "number_scars", "number_injuries", "recording_years", "mean_interval"]
@@ -78,7 +80,7 @@ def test_series_stats_table(lgr2):
 
 
 def test_summary_fhx(lgr2):
-    assert dpl.summary_fhx(lgr2) == {
+    assert dpl.fhx_summary(lgr2) == {
         "number_series": 26, "first_year": 1366, "last_year": 2012,
         "number_scars": 9, "number_injuries": 6}
 
@@ -86,61 +88,60 @@ def test_summary_fhx(lgr2):
 # --- sample depth ----------------------------------------------------------
 
 def test_sample_depth(lgr2):
-    sd = dpl.sample_depth(lgr2).set_index("year")["samp_depth"]
+    sd = dpl.fhx_sample_depth(lgr2).set_index("year")["samp_depth"]
     assert [int(sd.loc[y]) for y in (1366, 1436, 2011, 2012)] == [1, 2, 13, 2]
-    single = dpl.sample_depth(dpl.get_series(lgr2, "LGR53")).set_index("year")
+    single = dpl.fhx_sample_depth(dpl.fhx_get_series(lgr2, "LGR53")).set_index("year")
     assert int(single.loc[1800, "samp_depth"]) == 1
 
 
 # --- percent scarred -------------------------------------------------------
 
 def test_percent_scarred(lgr2):
-    ps = dpl.percent_scarred(lgr2).set_index("year")["percent_scarred"]
+    ps = dpl.fhx_percent_scarred(lgr2).set_index("year")["percent_scarred"]
     assert ps.loc[1773] == 50
     assert ps.loc[1774] == 0
-    psi = dpl.percent_scarred(lgr2, injury_event=True).set_index(
+    psi = dpl.fhx_percent_scarred(lgr2, injury_event=True).set_index(
         "year")["percent_scarred"]
     assert psi.loc[1806] == 88
     # columns and recording denominator
-    cols = list(dpl.percent_scarred(lgr2).columns)
+    cols = list(dpl.fhx_percent_scarred(lgr2).columns)
     assert cols == ["year", "num_rec", "num_scars", "percent_scarred"]
 
 
 # --- composite -------------------------------------------------------------
 
 def _comp_years(comp):
-    name = dpl.series_names(comp)[0]
-    return sorted(int(v) for v in dpl.get_event_years(comp)[name])
+    name = dpl.fhx_series_names(comp)[0]
+    return sorted(int(v) for v in dpl.fhx_get_events(comp)[name])
 
 
 def test_composite_lgr2(lgr2):
-    assert _comp_years(dpl.composite(lgr2)) == [1423, 1448, 1773, 1786, 1806]
+    assert _comp_years(dpl.fhx_composite(lgr2)) == [1423, 1448, 1773, 1786, 1806]
 
 
 def test_composite_pgm(pgm):
-    assert _comp_years(dpl.composite(pgm)) == [
+    assert _comp_years(dpl.fhx_composite(pgm)) == [
         1636, 1648, 1664, 1674, 1685, 1714, 1724, 1737, 1746, 1748, 1752,
         1782, 1789, 1795, 1798, 1806, 1818, 1824, 1842, 1863, 1871]
     # non-default thresholds with injuries
-    assert _comp_years(dpl.composite(pgm, filter_prop=0.1, filter_min_rec=3,
+    assert _comp_years(dpl.fhx_composite(pgm, filter_prop=0.1, filter_min_rec=3,
                                      injury_event=True)) == [
         1664, 1737, 1746, 1748, 1752, 1782, 1789, 1795, 1798, 1801, 1806,
         1818, 1824, 1829, 1842, 1863, 1871, 1993]
 
 
 def test_composite_is_one_series_fhx(pgm):
-    comp = dpl.composite(pgm)
+    comp = dpl.fhx_composite(pgm)
     assert dpl.is_fhx(comp)
-    assert len(dpl.series_names(comp)) == 1
-    assert dpl.series_names(comp)[0] == "COMP"
+    assert len(dpl.fhx_series_names(comp)) == 1
+    assert dpl.fhx_series_names(comp)[0] == "COMP"
     # composite names the scar years unknown_fs, the ends inner/outer
-    from dplpy import fhx_stats as _fs
-    assert _fs._inner_type(comp) == "inner_year"
-    assert _fs._outer_type(comp) == "outer_year"
+    assert fs._inner_type(comp) == "inner_year"
+    assert fs._outer_type(comp) == "outer_year"
 
 
 def test_composite_empty_when_nothing_qualifies(lgr2):
-    comp = dpl.composite(lgr2, filter_min_rec=9999)
+    comp = dpl.fhx_composite(lgr2, filter_min_rec=9999)
     assert dpl.is_fhx(comp)
     assert len(comp) == 0
 
@@ -148,7 +149,7 @@ def test_composite_empty_when_nothing_qualifies(lgr2):
 # --- intervals (burnr test-intervals.R golden on pgm) ----------------------
 
 def test_intervals_observed_stats(pgm):
-    iv = dpl.intervals(dpl.composite(pgm))
+    iv = dpl.fhx_intervals(dpl.fhx_composite(pgm))
     assert iv.intervals.size == 20
     assert iv.mean() == 11.75
     assert iv.median() == 10
@@ -159,7 +160,7 @@ def test_intervals_observed_stats(pgm):
 
 
 def test_intervals_weibull_fit_and_quantiles(pgm):
-    iv = dpl.intervals(dpl.composite(pgm))
+    iv = dpl.fhx_intervals(dpl.fhx_composite(pgm))
     assert iv.densfun == "weibull"
     assert iv.fit["shape"] == pytest.approx(1.656521, abs=1e-4)
     assert iv.fit["scale"] == pytest.approx(13.21254, abs=1e-3)
@@ -173,7 +174,7 @@ def test_intervals_weibull_fit_and_quantiles(pgm):
 
 
 def test_intervals_lognormal_fit(pgm):
-    iv = dpl.intervals(dpl.composite(pgm), densfun="lognormal")
+    iv = dpl.fhx_intervals(dpl.fhx_composite(pgm), densfun="lognormal")
     assert iv.fit["meanlog"] == pytest.approx(2.25387, abs=1e-4)
     assert iv.fit["sdlog"] == pytest.approx(0.6779964, abs=1e-5)
     q = np.atleast_1d(iv.quantile())
@@ -181,7 +182,7 @@ def test_intervals_lognormal_fit(pgm):
 
 
 def test_intervals_summary_and_repr(pgm):
-    iv = dpl.intervals(dpl.composite(pgm))
+    iv = dpl.fhx_intervals(dpl.fhx_composite(pgm))
     s = iv.summary()
     assert s["total_intervals"] == 20
     assert s["mean_interval"] == 11.8          # rounded to 1 dp
@@ -191,14 +192,14 @@ def test_intervals_summary_and_repr(pgm):
 
 
 def test_intervals_guards(pgm):
-    comp = dpl.composite(pgm)
+    comp = dpl.fhx_composite(pgm)
     with pytest.raises(ValueError):
-        dpl.intervals(comp, densfun="bogus")
+        dpl.fhx_intervals(comp, densfun="bogus")
     with pytest.raises(ValueError):            # multiple series
-        dpl.intervals(dpl.fhx([1900, 1901], ["A", "B"],
+        dpl.fhx_intervals(dpl.fhx([1900, 1901], ["A", "B"],
                               ["unknown_fs", "unknown_fs"]))
     with pytest.raises(ValueError):            # too few events
-        dpl.intervals(dpl.fhx([1900, 1905], ["C", "C"],
+        dpl.fhx_intervals(dpl.fhx([1900, 1905], ["C", "C"],
                               ["unknown_fs", "unknown_fs"]))
 
 
@@ -207,10 +208,10 @@ def test_intervals_guards(pgm):
 def test_fhx_stats_do_not_mutate_input(pgm):
     before = pgm.copy(deep=True)
     attrs = copy.deepcopy(dict(pgm.attrs))
-    dpl.series_stats(pgm)
-    dpl.sample_depth(pgm)
-    dpl.percent_scarred(pgm, injury_event=True)
-    dpl.yearly_recording(pgm)
-    dpl.intervals(dpl.composite(pgm))
+    dpl.fhx_stats(pgm)
+    dpl.fhx_sample_depth(pgm)
+    dpl.fhx_percent_scarred(pgm, injury_event=True)
+    fs._yearly_recording(pgm)
+    dpl.fhx_intervals(dpl.fhx_composite(pgm))
     pd.testing.assert_frame_equal(pgm, before, check_exact=True)
     assert dict(pgm.attrs) == attrs

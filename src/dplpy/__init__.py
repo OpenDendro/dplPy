@@ -105,15 +105,13 @@ from .site_metadata import SiteMetadata
 from .tridas import read_tridas, write_tridas, TridasProject, TridasMetadata
 from .lipd import to_lipd, from_lipd, lipd_metadata
 from .cli import help as help, readme as readme
-from .fhx import (fhx, as_fhx, is_fhx, make_rec_type, read_fhx, write_fhx,
-                  series_names, year_range, get_year, get_series,
-                  get_event_years, delete, sort_fhx, violates_canon)
-from .fhx_stats import (series_stats, count_scar, count_injury,
-                        count_recording, series_mean_interval, sample_depth,
-                        percent_scarred, yearly_recording, summary_fhx,
-                        composite)
-from .fhx_intervals import intervals, FireIntervals
-from .fhx_plot import plot_demograph, plot_intervals_dist
+from .fhx import (fhx, as_fhx, is_fhx, make_fhx_rec_type, read_fhx, write_fhx,
+                  fhx_series_names, fhx_year_range, fhx_get_year, fhx_get_series,
+                  fhx_get_events, fhx_delete, fhx_sort, fhx_violates_canon)
+from .fhx_stats import (fhx_stats, fhx_summary, fhx_sample_depth,
+                        fhx_percent_scarred, fhx_composite)
+from .fhx_intervals import fhx_intervals, FhxIntervals
+from .fhx_plot import fhx_demograph
 
 __all__ = [
     "readers",
@@ -194,31 +192,25 @@ __all__ = [
     "fhx",
     "as_fhx",
     "is_fhx",
-    "make_rec_type",
+    "make_fhx_rec_type",
     "read_fhx",
     "write_fhx",
-    "series_names",
-    "year_range",
-    "get_year",
-    "get_series",
-    "get_event_years",
-    "delete",
-    "sort_fhx",
-    "violates_canon",
-    "series_stats",
-    "count_scar",
-    "count_injury",
-    "count_recording",
-    "series_mean_interval",
-    "sample_depth",
-    "percent_scarred",
-    "yearly_recording",
-    "summary_fhx",
-    "composite",
-    "intervals",
-    "FireIntervals",
-    "plot_demograph",
-    "plot_intervals_dist",
+    "fhx_series_names",
+    "fhx_year_range",
+    "fhx_get_year",
+    "fhx_get_series",
+    "fhx_get_events",
+    "fhx_delete",
+    "fhx_sort",
+    "fhx_violates_canon",
+    "fhx_stats",
+    "fhx_summary",
+    "fhx_sample_depth",
+    "fhx_percent_scarred",
+    "fhx_composite",
+    "fhx_intervals",
+    "FhxIntervals",
+    "fhx_demograph",
 ]
 # dpl.help() and dpl.readme() stay available as attributes but are kept out of
 # __all__ so that "from dplpy import *" does not shadow the builtin help().

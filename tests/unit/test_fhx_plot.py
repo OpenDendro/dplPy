@@ -16,7 +16,9 @@ import pandas as pd
 import pytest
 
 import dplpy as dpl
-from dplpy import fhx_stats as fs
+import importlib
+fs = importlib.import_module("dplpy.fhx_stats")
+fp = importlib.import_module("dplpy.fhx_plot")
 
 LGR2 = "tests/data/fhx/lgr2.fhx"
 PGM = "tests/data/fhx/pgm.fhx"
@@ -51,32 +53,32 @@ def test_recording_segments_counts(lgr2, pgm):
     assert len(fs._recording_segments(pgm)) == 45
 
 
-# --- plot_demograph smoke tests --------------------------------------------
+# --- fhx_demograph smoke tests --------------------------------------------
 
 def test_plot_demograph_returns_fig_ax(lgr2):
-    fig, ax = dpl.plot_demograph(lgr2, show=False)
+    fig, ax = dpl.fhx_demograph(lgr2, show=False)
     assert isinstance(fig, plt.Figure)
     assert isinstance(ax, plt.Axes)
-    n = len(dpl.series_names(lgr2))
+    n = len(dpl.fhx_series_names(lgr2))
     # one dashed baseline per series + one solid line per recording segment
     assert len(ax.lines) >= n + len(fs._recording_segments(lgr2))
     # three event-marker scatter collections (scars, injuries, pith/bark present)
     assert len(ax.collections) == 3
     # y labels are the series names
-    assert [t.get_text() for t in ax.get_yticklabels()] == dpl.series_names(lgr2)
+    assert [t.get_text() for t in ax.get_yticklabels()] == dpl.fhx_series_names(lgr2)
     plt.close(fig)
 
 
 def test_plot_demograph_scar_marker_count(lgr2):
-    fig, ax = dpl.plot_demograph(lgr2, show=False)
-    # the scar scatter has one point per fire scar (count_scar == 9 for lgr2)
+    fig, ax = dpl.fhx_demograph(lgr2, show=False)
+    # the scar scatter has one point per fire scar (_count_scar == 9 for lgr2)
     scar_coll = ax.collections[0]
-    assert len(scar_coll.get_offsets()) == dpl.count_scar(lgr2)
+    assert len(scar_coll.get_offsets()) == fs._count_scar(lgr2)
     plt.close(fig)
 
 
 def test_plot_demograph_composite_rug_and_legend(pgm):
-    fig, ax = dpl.plot_demograph(pgm, composite_rug=True, plot_legend=True,
+    fig, ax = dpl.fhx_demograph(pgm, composite_rug=True, plot_legend=True,
                                  ylabels=False, show=False)
     assert ax.get_legend() is not None
     assert ax.get_ylim()[0] <= -1.0            # room made for the rug
@@ -85,10 +87,10 @@ def test_plot_demograph_composite_rug_and_legend(pgm):
 
 
 def test_plot_demograph_color_group_accepts_series(lgr2):
-    names = dpl.series_names(lgr2)
+    names = dpl.fhx_series_names(lgr2)
     groups = pd.Series({s: ("odd" if i % 2 else "even")
                         for i, s in enumerate(names)})
-    fig, ax = dpl.plot_demograph(lgr2, color_group=groups, plot_legend=True,
+    fig, ax = dpl.fhx_demograph(lgr2, color_group=groups, plot_legend=True,
                                  show=False)
     # two distinct line colors used for the two groups
     colors = {tuple(l.get_color()) if not isinstance(l.get_color(), str)
@@ -100,22 +102,22 @@ def test_plot_demograph_color_group_accepts_series(lgr2):
 def test_plot_demograph_does_not_mutate(lgr2):
     before = lgr2.copy(deep=True)
     attrs = copy.deepcopy(dict(lgr2.attrs))
-    fig, _ = dpl.plot_demograph(lgr2, composite_rug=True, show=False)
+    fig, _ = dpl.fhx_demograph(lgr2, composite_rug=True, show=False)
     plt.close(fig)
     pd.testing.assert_frame_equal(lgr2, before, check_exact=True)
     assert dict(lgr2.attrs) == attrs
 
 
-# --- plot_intervals_dist ---------------------------------------------------
+# --- _plot_intervals_dist ---------------------------------------------------
 
 def test_plot_intervals_dist(pgm):
-    iv = dpl.intervals(dpl.composite(pgm))
-    fig, ax = dpl.plot_intervals_dist(iv, binwidth=5, show=False)
+    iv = dpl.fhx_intervals(dpl.fhx_composite(pgm))
+    fig, ax = iv.plot(binwidth=5, show=False)   # FhxIntervals.plot()
     assert isinstance(fig, plt.Figure)
     assert len(ax.patches) > 0                 # histogram bars
     assert ax.get_xlabel() == "Interval (years)"
     plt.close(fig)
-    # also accepts the raw interval array
-    fig2, ax2 = dpl.plot_intervals_dist(iv.intervals, show=False)
+    # the underlying helper also accepts a raw interval array
+    fig2, ax2 = fp._plot_intervals_dist(iv.intervals, show=False)
     assert len(ax2.patches) > 0
     plt.close(fig2)

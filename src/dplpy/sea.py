@@ -47,7 +47,7 @@ import numpy as np
 import pandas as pd
 
 from ._validate import _warn
-from .fhx import is_fhx, series_names, get_event_years
+from .fhx import is_fhx, fhx_series_names, fhx_get_events
 
 _P_SVAL = [5, 50, 95]                       # envelope percentiles (double bootstrap)
 _P_CI = [1, 5, 10, 90, 95, 99]              # null-distribution percentiles
@@ -256,7 +256,7 @@ def sea(series, events, pre=5, post=5, double_bootstrap=True, n_sample=None,
         1-D arrays).
     events : array-like or fhx
         the event (key) years. A one-series fire composite (an fhx, e.g. from
-        ``dpl.composite``) may be passed directly and its fire years are used.
+        ``dpl.fhx_composite``) may be passed directly and its fire years are used.
         Events whose window would run past either end of the series are dropped
         with a warning.
     pre, post : int, default 5
@@ -303,13 +303,13 @@ def sea(series, events, pre=5, post=5, double_bootstrap=True, n_sample=None,
     if boot_method not in ("block", "random"):
         raise ValueError("boot_method must be 'block' or 'random'.")
     y, yr = _as_series(series)
-    # a fire composite (one-series fhx, e.g. from dpl.composite) may be passed
+    # a fire composite (one-series fhx, e.g. from dpl.fhx_composite) may be passed
     # directly as the events; its fire years become the SEA event years
     if is_fhx(events):
-        if len(series_names(events)) > 1:
+        if len(fhx_series_names(events)) > 1:
             raise ValueError("sea: an fhx event object must have a single series; "
-                             "pass a one-series fire composite (dpl.composite).")
-        events = get_event_years(events)[series_names(events)[0]]
+                             "pass a one-series fire composite (dpl.fhx_composite).")
+        events = fhx_get_events(events)[fhx_series_names(events)[0]]
     events = np.sort(np.unique(np.asarray(events, dtype=float)))
     rng = np.random.default_rng(seed)
 
