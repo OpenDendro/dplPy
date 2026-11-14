@@ -1,11 +1,11 @@
 """Fire-history plots: the fire-chart (demograph) and interval distribution.
 
-A matplotlib port of burnr's ``fhx_demograph`` and ``_plot_intervals_dist``
+A matplotlib port of burnr's ``demograph`` and ``_plot_intervals_dist``
 (Malevich, Guiterman & Margolis; Malevich et al. 2018, Dendrochronologia,
 doi:10.1016/j.dendro.2018.02.005), following dplPy's plotting convention: each
 function accepts an existing ``ax`` and ``show`` flag and returns ``(fig, ax)``.
 
-:func:`fhx_demograph` draws one horizontal line per series over its span (a
+:func:`demograph` draws one horizontal line per series over its span (a
 dashed non-recording baseline with solid recording periods on top), marks fire
 scars, injuries, and pith/bark years, and can add a composite rug along the
 bottom. Faceting (burnr's ``facet_group``/``facet_id``) is not yet implemented;
@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .fhx import _require_fhx, fhx_series_names, fhx_get_events
-from .fhx_stats import _recording_segments, fhx_composite
+from .fhx_model import _require_fhx, _series_names, events
+from .fhx_stats import _recording_segments, composite
 
 # event markers, mirroring burnr's shapes (scar bar, open down-triangle, dot)
 _MARKERS = {"Scar": "|", "Injury": "v", "Pith/Bark": "o"}
@@ -49,7 +49,7 @@ def _series_groups(color_group, names):
     return mapping, labels
 
 
-def fhx_demograph(x, color_group=None, composite_rug=False, filter_prop=0.25,
+def demograph(x, color_group=None, composite_rug=False, filter_prop=0.25,
                    filter_min_rec=2, filter_min_events=1, injury_event=False,
                    plot_legend=False, event_size=None, ylabels=True,
                    yearlims=None, ax=None, show=True):
@@ -64,7 +64,7 @@ def fhx_demograph(x, color_group=None, composite_rug=False, filter_prop=0.25,
         lines are coloured by group. ``None`` draws every series in one colour.
     composite_rug : bool
         if True, add a rug of composite fire years along the bottom (using the
-        ``filter_*`` and ``injury_event`` arguments, as in :func:`dplpy.composite`).
+        ``filter_*`` and ``injury_event`` arguments, as in :func:`dplpy.fhx.composite`).
     filter_prop, filter_min_rec, filter_min_events, injury_event
         composite parameters, used only when ``composite_rug`` is True.
     plot_legend : bool
@@ -87,7 +87,7 @@ def fhx_demograph(x, color_group=None, composite_rug=False, filter_prop=0.25,
     (fig, ax) : tuple of matplotlib Figure and Axes
     """
     _require_fhx(x)
-    names = fhx_series_names(x)
+    names = _series_names(x)
     n = len(names)
     ypos = {s: i for i, s in enumerate(names)}       # first series at the bottom
     sizes = dict(_DEFAULT_EVENT_SIZE)
@@ -148,11 +148,11 @@ def fhx_demograph(x, color_group=None, composite_rug=False, filter_prop=0.25,
 
     ymin = -0.5
     if composite_rug:
-        comp = fhx_composite(x, filter_prop=filter_prop, filter_min_rec=filter_min_rec,
+        comp = composite(x, filter_prop=filter_prop, filter_min_rec=filter_min_rec,
                          filter_min_events=filter_min_events,
                          injury_event=injury_event)
-        cnames = fhx_series_names(comp)
-        comp_years = (fhx_get_events(comp)[cnames[0]] if cnames else np.array([]))
+        cnames = _series_names(comp)
+        comp_years = (events(comp)[cnames[0]] if cnames else np.array([]))
         divider = -1.0
         ymin = -2.0
         ax.axhline(divider, color="grey", linewidth=0.8, zorder=1)
@@ -196,8 +196,8 @@ def _plot_intervals_dist(x, binwidth=None, ax=None, show=True):
 
     Parameters
     ----------
-    x : FhxIntervals or array-like
-        a result from :func:`dplpy.intervals`, or the intervals themselves.
+    x : Intervals or array-like
+        a result from :func:`dplpy.fhx.intervals`, or the intervals themselves.
     binwidth : int or None
         histogram bin width in years; if ``None``, matplotlib's default binning
         is used.

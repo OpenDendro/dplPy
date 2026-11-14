@@ -2,10 +2,10 @@
 
 A port of burnr's ``intervals`` (Malevich, Guiterman & Margolis; Malevich et al.
 2018, Dendrochronologia, doi:10.1016/j.dendro.2018.02.005). Given a one-series
-fire ``composite`` (see :func:`dplpy.composite`), :func:`intervals` computes the
+fire ``composite`` (see :func:`dplpy.fhx.composite`), :func:`intervals` computes the
 gaps between successive fire years, fits a Weibull or lognormal distribution by
 maximum likelihood, and runs Kolmogorov-Smirnov and Shapiro-Wilk goodness-of-fit
-tests. It returns a :class:`FhxIntervals` result with the observed summary
+tests. It returns a :class:`Intervals` result with the observed summary
 statistics and fit quantiles (the lower/median/upper exceedance intervals).
 
 The Weibull fit solves the MLE shape score equation directly (matching R's
@@ -18,7 +18,7 @@ import warnings
 import numpy as np
 from scipy import optimize, stats
 
-from .fhx import _require_fhx, fhx_series_names, fhx_get_events
+from .fhx_model import _require_fhx, _series_names, events
 
 
 def _weibull_mle(x):
@@ -55,7 +55,7 @@ def _lognormal_mle(x):
     return meanlog, sdlog
 
 
-class FhxIntervals:
+class Intervals:
     """Result of a fire-interval analysis (see :func:`intervals`).
 
     Attributes
@@ -159,7 +159,7 @@ class FhxIntervals:
 
     def plot(self, binwidth=None, ax=None, show=True):
         """Histogram (with a rug) of the observed intervals. Returns
-        ``(fig, ax)``; see :func:`dplpy.fhx_demograph` for the plotting
+        ``(fig, ax)``; see :func:`dplpy.demograph` for the plotting
         convention."""
         from .fhx_plot import _plot_intervals_dist
         return _plot_intervals_dist(self, binwidth=binwidth, ax=ax, show=show)
@@ -192,19 +192,19 @@ class FhxIntervals:
                s["shapiro_statistic"], s["shapiro_pvalue"]))
 
 
-def fhx_intervals(comp, densfun="weibull"):
+def intervals(comp, densfun="weibull"):
     """Fire-interval analysis of a one-series fire ``composite``.
 
     Parameters
     ----------
     comp : fhx
-        a fire composite (one series), usually from :func:`dplpy.composite`.
+        a fire composite (one series), usually from :func:`dplpy.fhx.composite`.
     densfun : str
         distribution to fit, ``"weibull"`` (default) or ``"lognormal"``.
 
     Returns
     -------
-    FhxIntervals
+    Intervals
         the observed intervals, the fitted distribution, goodness-of-fit tests,
         and summary/quantile helpers.
 
@@ -217,11 +217,11 @@ def fhx_intervals(comp, densfun="weibull"):
     _require_fhx(comp)
     if densfun not in ("weibull", "lognormal"):
         raise ValueError("densfun must be 'weibull' or 'lognormal'.")
-    names = fhx_series_names(comp)
+    names = _series_names(comp)
     if len(names) > 1:
         raise ValueError("found multiple series in comp; there can only be one.")
 
-    ev = fhx_get_events(comp)
+    ev = events(comp)
     event_years = np.sort(np.asarray(ev[names[0]], dtype="int64"))
     iv = np.diff(event_years)
     if len(iv) < 2:
@@ -247,7 +247,7 @@ def fhx_intervals(comp, densfun="weibull"):
                                  for v in ev.values()]) if ev else event_years
     event_range = (int(all_events.min()), int(all_events.max()))
 
-    return FhxIntervals(
+    return Intervals(
         intervals=iv,
         densfun=densfun,
         fit=fit,

@@ -1,4 +1,4 @@
-"""Tests for the FHX2 fire-history layer (dplpy.fhx).
+"""Tests for the FHX2 fire-history model and I/O (the dpl.fhx namespace).
 
 The read/write path is validated against burnr: lgr2.fhx is burnr's own example
 file, and the structural facts asserted here (row count, series, year range, and
@@ -6,13 +6,14 @@ specific events) match burnr's canonical parse of it (burnr::read_fhx -> the lgr
 dataset). The full (year, series, rec_type) table was confirmed identical to
 burnr during development.
 """
-import warnings
+import importlib
 
-import numpy as np
 import pandas as pd
 import pytest
 
 import dplpy as dpl
+
+_model = importlib.import_module("dplpy.fhx_model")  # internal helpers
 
 LGR2 = "tests/data/fhx/lgr2.fhx"
 
@@ -31,32 +32,36 @@ U| 1902
 """
 
 
-def test_read_fhx_matches_burnr_structure():
-    x = dpl.read_fhx(LGR2)
-    assert dpl.is_fhx(x)
+def _series(x):
+    return list(x["series"].unique())
+
+
+def test_read_matches_burnr_structure():
+    x = dpl.fhx.read(LGR2)
+    assert dpl.fhx.is_fhx(x)
     assert len(x) == 2681
-    assert len(dpl.fhx_series_names(x)) == 26
-    assert dpl.fhx_year_range(x) == (1366, 2012)
+    assert len(_series(x)) == 26
+    assert (int(x["year"].min()), int(x["year"].max())) == (1366, 2012)
     # series order is first-appearance, as in burnr
-    assert dpl.fhx_series_names(x)[:4] == ["LGR54", "LGR44", "LGR47", "LGR48"]
+    assert _series(x)[:4] == ["LGR54", "LGR44", "LGR47", "LGR48"]
 
 
-def test_read_fhx_specific_events():
-    x = dpl.read_fhx(LGR2)
-    lgr46 = dpl.fhx_get_series(x, "LGR46")
+def test_read_specific_events():
+    x = dpl.fhx.read(LGR2)
+    lgr46 = x[x["series"] == "LGR46"]
     assert len(lgr46) == 78
-    assert dpl.fhx_year_range(lgr46) == (1705, 1849)
-    scars = dpl.fhx_get_events(x)["LGR46"]
+    assert (int(lgr46["year"].min()), int(lgr46["year"].max())) == (1705, 1849)
+    scars = dpl.fhx.events(x)["LGR46"]
     assert list(scars[:3]) == [1773, 1786, 1806]
     # the 1773 scar is a dormant-season fire scar
-    row = dpl.fhx_get_year(lgr46, 1773)
+    row = lgr46[lgr46["year"] == 1773]
     assert str(row["rec_type"].iloc[0]) == "dormant_fs"
 
 
-def test_read_fhx_parses_codes(tmp_path):
+def test_read_parses_codes(tmp_path):
     f = tmp_path / "mini.fhx"
     f.write_text(_MINI)
-    x = dpl.read_fhx(str(f))
+    x = dpl.fhx.read(str(f))
     got = {(int(r.year), r.series, str(r.rec_type)) for r in x.itertuples(index=False)}
     assert got == {
         (1900, "FOO", "inner_year"),
@@ -67,10 +72,10 @@ def test_read_fhx_parses_codes(tmp_path):
 
 
 def test_write_read_roundtrip(tmp_path):
-    x = dpl.read_fhx(LGR2)
+    x = dpl.fhx.read(LGR2)
     out = tmp_path / "rt.fhx"
-    dpl.write_fhx(x, str(out))
-    y = dpl.read_fhx(str(out))
+    dpl.fhx.write(x, str(out))
+    y = dpl.fhx.read(str(out))
     a = x[["year", "series", "rec_type"]].astype(str).sort_values(
         ["series", "year"]).reset_index(drop=True)
     b = y[["year", "series", "rec_type"]].astype(str).sort_values(
@@ -79,54 +84,44 @@ def test_write_read_roundtrip(tmp_path):
 
 
 def test_make_rec_type_validates():
-    rt = dpl.make_fhx_rec_type(["unknown_fs", "recorder_year"])
+    rt = _model._make_rec_type(["unknown_fs", "recorder_year"])
     assert list(rt.categories) == list(
         __import__("dplpy._fhx_vocab", fromlist=["x"]).REC_TYPE_LEVELS)
     with pytest.raises(ValueError):
-        dpl.make_fhx_rec_type(["not_a_real_type"])
+        _model._make_rec_type(["not_a_real_type"])
 
 
-def test_fhx_constructor_and_is_as_fhx():
-    x = dpl.fhx([1900, 1901], ["A", "A"], ["recorder_year", "unknown_fs"])
-    assert dpl.is_fhx(x)
+def test_constructor_and_is_as_frame():
+    x = dpl.fhx.frame([1900, 1901], ["A", "A"], ["recorder_year", "unknown_fs"])
+    assert dpl.fhx.is_fhx(x)
     assert x.attrs.get("kind") == "fhx"
-    # a plain frame casts via as_fhx
+    # a plain frame casts via as_frame
     plain = pd.DataFrame({"year": [1900], "series": ["A"],
                           "rec_type": ["unknown_fs"]})
-    assert not dpl.is_fhx(plain)            # rec_type not categorical yet
-    assert dpl.is_fhx(dpl.as_fhx(plain))
+    assert not dpl.fhx.is_fhx(plain)            # rec_type not categorical yet
+    assert dpl.fhx.is_fhx(dpl.fhx.as_frame(plain))
     with pytest.raises(ValueError):
-        dpl.as_fhx(pd.DataFrame({"year": [1900]}))
+        dpl.fhx.as_frame(pd.DataFrame({"year": [1900]}))
 
 
-def test_accessors_get_delete_sort():
-    x = dpl.read_fhx(LGR2)
-    # fhx_get_year / fhx_get_series
-    assert set(dpl.fhx_get_year(x, 1800)["year"]) == {1800}
-    assert set(dpl.fhx_get_series(x, "LGR46")["series"].astype(str)) == {"LGR46"}
-    # delete by series
-    d = dpl.fhx_delete(x, series="LGR46")
-    assert "LGR46" not in dpl.fhx_series_names(d)
-    assert len(d) == len(x) - 78
-    # delete by year
-    assert (dpl.fhx_delete(x, year=1800)["year"] == 1800).sum() == 0
-    # sort by first year: series ordered by earliest year
-    s = dpl.fhx_sort(x, by="first_year")
-    firsts = [int(dpl.fhx_get_series(s, n)["year"].min()) for n in dpl.fhx_series_names(s)]
+def test_sort():
+    x = dpl.fhx.read(LGR2)
+    s = dpl.fhx.sort(x, by="first_year")
+    firsts = [int(s[s["series"] == n]["year"].min()) for n in _series(s)]
     assert firsts == sorted(firsts)
 
 
-def test_get_event_years_injury_toggle():
-    x = dpl.read_fhx(LGR2)
-    scars_only = dpl.fhx_get_events(x, scar_event=True, injury_event=False)
-    with_injury = dpl.fhx_get_events(x, scar_event=True, injury_event=True)
+def test_events_injury_toggle():
+    x = dpl.fhx.read(LGR2)
+    scars_only = dpl.fhx.events(x, scar_event=True, injury_event=False)
+    with_injury = dpl.fhx.events(x, scar_event=True, injury_event=True)
     # adding injuries can only add event years
-    for s in dpl.fhx_series_names(x):
+    for s in _series(x):
         assert set(scars_only[s]).issubset(set(with_injury[s]))
 
 
-def test_violates_canon():
-    canon = dpl.fhx([1900], ["A"], ["unknown_fs"])
-    assert not dpl.fhx_violates_canon(canon)
-    noncanon = dpl.fhx([1900], ["A"], ["latelw_fs"])   # outside the FHX2 canon
-    assert dpl.fhx_violates_canon(noncanon)
+def test_violates_canon_internal():
+    canon = dpl.fhx.frame([1900], ["A"], ["unknown_fs"])
+    assert not _model._violates_canon(canon)
+    noncanon = dpl.fhx.frame([1900], ["A"], ["latelw_fs"])   # outside FHX2 canon
+    assert _model._violates_canon(noncanon)

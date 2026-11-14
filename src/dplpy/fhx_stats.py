@@ -5,13 +5,13 @@ A port of the series-statistics and compositing layer of the R package burnr
 doi:10.1016/j.dendro.2018.02.005), operating on the ``fhx`` event frames built by
 :mod:`dplpy.fhx`.
 
-Public functions mirror burnr's verbs: :func:`fhx_stats` (and the standalone
+Public functions mirror burnr's verbs: :func:`stats` (and the standalone
 event counts :func:`_count_scar`, :func:`_count_injury`, :func:`_count_recording`,
-:func:`_series_mean_interval`), :func:`fhx_sample_depth`, :func:`percent_scarred`,
-:func:`_yearly_recording`, :func:`fhx_summary`, and :func:`composite`. The trivial
-per-series pieces behind ``fhx_stats`` (``_first_year``, ``_last_year``,
+:func:`_series_mean_interval`), :func:`sample_depth`, :func:`percent_scarred`,
+:func:`_yearly_recording`, :func:`summary`, and :func:`composite`. The trivial
+per-series pieces behind ``stats`` (``_first_year``, ``_last_year``,
 ``_count_year_span``, ``_inner_type``, ``_outer_type``) are kept internal, since
-:func:`dplpy.fhx_year_range` already covers the first/last year publicly.
+:func:`dplpy._year_range` already covers the first/last year publicly.
 
 The "recording" rule (:func:`_find_recording`) is ported verbatim from burnr's
 internal ``find_recording`` so that recording counts, composites, and
@@ -21,11 +21,11 @@ import numpy as np
 import pandas as pd
 
 from ._fhx_vocab import RECORDER, INJURY, SCAR, ENDS
-from .fhx import (_require_fhx, fhx_series_names, fhx_get_events, fhx,
-                  make_fhx_rec_type)
+from .fhx_model import (_require_fhx, _series_names, events, frame,
+                  _make_rec_type)
 
 
-# --- per-series scalar pieces (internal; exposed via fhx_stats) --------
+# --- per-series scalar pieces (internal; exposed via stats) --------
 
 def _first_year(x):
     """Earliest year in an ``fhx`` object (or one of its series)."""
@@ -80,10 +80,10 @@ def _series_mean_interval(x, injury_event=False):
 
     The mean of the gaps between successive scar years (plus injury years if
     ``injury_event``), rounded to one decimal. Returns ``nan`` with fewer than
-    two events. Prefer :func:`dplpy.intervals` for real interval analysis.
+    two events. Prefer :func:`dplpy.fhx.intervals` for real interval analysis.
     """
     _require_fhx(x)
-    if len(fhx_series_names(x)) > 1:
+    if len(_series_names(x)) > 1:
         from ._validate import _warn
         _warn("_series_mean_interval run on an object with multiple series; "
               "results may not be meaningful.")
@@ -200,7 +200,7 @@ def _recording_segments(x, injury_event=False):
     may yield more than one segment when its recording period has gaps.
     """
     out = []
-    for s in fhx_series_names(x):
+    for s in _series_names(x):
         df = x[x["series"].astype(str) == s]
         rec = _recording_union_ordered(df, injury_event=injury_event)
         if len(rec) < 1:
@@ -225,17 +225,17 @@ def _recording_segments(x, injury_event=False):
 
 # --- series-level table ---------------------------------------------------
 
-def fhx_stats(x):
+def stats(x):
     """Per-series descriptive statistics for an ``fhx`` object.
 
     Returns a DataFrame with one row per series (in first-appearance order) and
     columns ``series``, ``first``, ``last``, ``years``, ``inner_type``,
     ``outer_type``, ``number_scars``, ``number_injuries``, ``recording_years``,
-    ``mean_interval`` -- mirroring burnr's :func:`fhx_stats`.
+    ``mean_interval`` -- mirroring burnr's :func:`stats`.
     """
     _require_fhx(x)
     rows = []
-    for s in fhx_series_names(x):
+    for s in _series_names(x):
         df = x[x["series"].astype(str) == s]
         rows.append({
             "series": s,
@@ -254,12 +254,12 @@ def fhx_stats(x):
         "number_scars", "number_injuries", "recording_years", "mean_interval"])
 
 
-def fhx_summary(x):
+def summary(x):
     """Brief summary of an ``fhx`` object as a dict: number of series, first and
     last year, and total scar and injury counts (burnr's ``summary.fhx``)."""
     _require_fhx(x)
     return {
-        "number_series": len(fhx_series_names(x)),
+        "number_series": len(_series_names(x)),
         "first_year": _first_year(x),
         "last_year": _last_year(x),
         "number_scars": _count_scar(x),
@@ -269,12 +269,12 @@ def fhx_summary(x):
 
 # --- sample depth ----------------------------------------------------------
 
-def fhx_sample_depth(x):
+def sample_depth(x):
     """Sample depth of an ``fhx`` object as a DataFrame of ``year`` and
     ``samp_depth`` -- the number of series whose first-to-last span covers each
     year, over the full year range."""
     _require_fhx(x)
-    ss = fhx_stats(x)
+    ss = stats(x)
     years = np.arange(int(ss["first"].min()), int(ss["last"].max()) + 1)
     depth = np.zeros(len(years), dtype="int64")
     base = years[0]
@@ -290,7 +290,7 @@ def _yearly_recording(x, injury_event=False):
     ``Freq`` (burnr's :func:`_yearly_recording`)."""
     _require_fhx(x)
     all_years = []
-    for s in fhx_series_names(x):
+    for s in _series_names(x):
         df = x[x["series"].astype(str) == s]
         all_years.append(_find_recording(df, injury_event=injury_event))
     if all_years:
@@ -302,7 +302,7 @@ def _yearly_recording(x, injury_event=False):
                          "Freq": counts.astype("int64")})
 
 
-def fhx_percent_scarred(x, injury_event=False):
+def percent_scarred(x, injury_event=False):
     """Percent-scarred time series for an ``fhx`` object.
 
     Returns a DataFrame with columns ``year``, ``num_rec`` (recording trees),
@@ -313,7 +313,7 @@ def fhx_percent_scarred(x, injury_event=False):
     _require_fhx(x)
     # recording count per year -- burnr always passes injury_event=TRUE here
     rec_years = []
-    for s in fhx_series_names(x):
+    for s in _series_names(x):
         df = x[x["series"].astype(str) == s]
         rec_years.append(_find_recording(df, injury_event=True))
     rec_years = (np.concatenate(rec_years) if rec_years
@@ -340,7 +340,7 @@ def fhx_percent_scarred(x, injury_event=False):
 
 # --- compositing -----------------------------------------------------------
 
-def fhx_composite(x, filter_prop=0.25, filter_min_rec=2, filter_min_events=1,
+def composite(x, filter_prop=0.25, filter_min_rec=2, filter_min_events=1,
               injury_event=False, comp_name="COMP"):
     """Composite fire record of an ``fhx`` object.
 
@@ -383,11 +383,11 @@ def fhx_composite(x, filter_prop=0.25, filter_min_rec=2, filter_min_events=1,
     out_year += recorder
     out_rec += ["recorder_year"] * len(recorder)
     out_series = [str(comp_name)] * len(out_year)
-    return fhx(out_year, out_series, make_fhx_rec_type(out_rec))
+    return frame(out_year, out_series, _make_rec_type(out_rec))
 
 
 def _empty_fhx():
-    out = fhx([], [], make_fhx_rec_type([]))
+    out = frame([], [], _make_rec_type([]))
     return out
 
 

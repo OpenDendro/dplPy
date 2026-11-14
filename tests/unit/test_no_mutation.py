@@ -312,7 +312,6 @@ def test_sweep_covers_every_public_transform():
         "moving_corr", "MovingCorrResult", "MovingCorrGridResult",
         # plotting only
         "plot", "xdate_plot", "disturbance_plot",
-        "fhx_demograph",
         # file-driven report
         "xdate_report",
         # standalone numerical helpers (take arrays/series or special tables)
@@ -320,17 +319,11 @@ def test_sweep_covers_every_public_transform():
         # warning machinery: a warning category and the toggle for dplPy's
         # friendly warning formatter -- neither takes or returns a frame.
         "DplpyWarning", "set_friendly_warnings",
-        # fire-history (FHX2) layer: operates on fhx event frames
-        # (year/series/rec_type), not the ca533 ring-width fixtures this sweep
-        # uses; covered by test_fhx.py (read/write round-trip + accessors).
-        "fhx", "as_fhx", "is_fhx", "make_fhx_rec_type", "read_fhx", "write_fhx",
-        "fhx_series_names", "fhx_year_range", "fhx_get_year", "fhx_get_series",
-        "fhx_get_events", "fhx_delete", "fhx_sort", "fhx_violates_canon",
-        # fire-history analyses and interval statistics: also operate on fhx
-        # event frames, not ca533; covered by test_fhx_stats.py (which includes
-        # its own non-mutation checks).
-        "fhx_stats", "fhx_summary", "fhx_sample_depth",
-        "fhx_percent_scarred", "fhx_composite", "fhx_intervals", "FhxIntervals",
+        # fire history (FHX2) is a single namespace, dpl.fhx.*, operating on fhx
+        # event frames (year/series/rec_type) rather than the ca533 ring-width
+        # fixtures this sweep uses; covered by test_fhx*.py (which include their
+        # own non-mutation checks).
+        "fhx",
     }
     covered = {n.split("(")[0] for n in CASES}
     missing = [n for n in dpl.__all__ if n not in exempt and n not in covered]

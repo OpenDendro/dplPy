@@ -105,13 +105,10 @@ from .site_metadata import SiteMetadata
 from .tridas import read_tridas, write_tridas, TridasProject, TridasMetadata
 from .lipd import to_lipd, from_lipd, lipd_metadata
 from .cli import help as help, readme as readme
-from .fhx import (fhx, as_fhx, is_fhx, make_fhx_rec_type, read_fhx, write_fhx,
-                  fhx_series_names, fhx_year_range, fhx_get_year, fhx_get_series,
-                  fhx_get_events, fhx_delete, fhx_sort, fhx_violates_canon)
-from .fhx_stats import (fhx_stats, fhx_summary, fhx_sample_depth,
-                        fhx_percent_scarred, fhx_composite)
-from .fhx_intervals import fhx_intervals, FhxIntervals
-from .fhx_plot import fhx_demograph
+# Fire history (FHX2) is exposed as a single namespace, dpl.fhx.* (read, write,
+# frame, events, sort, stats, summary, sample_depth, percent_scarred, composite,
+# intervals/Intervals, demograph), rather than many top-level names.
+from . import fhx
 
 __all__ = [
     "readers",
@@ -190,27 +187,6 @@ __all__ = [
     "DplpyWarning",
     "set_friendly_warnings",
     "fhx",
-    "as_fhx",
-    "is_fhx",
-    "make_fhx_rec_type",
-    "read_fhx",
-    "write_fhx",
-    "fhx_series_names",
-    "fhx_year_range",
-    "fhx_get_year",
-    "fhx_get_series",
-    "fhx_get_events",
-    "fhx_delete",
-    "fhx_sort",
-    "fhx_violates_canon",
-    "fhx_stats",
-    "fhx_summary",
-    "fhx_sample_depth",
-    "fhx_percent_scarred",
-    "fhx_composite",
-    "fhx_intervals",
-    "FhxIntervals",
-    "fhx_demograph",
 ]
 # dpl.help() and dpl.readme() stay available as attributes but are kept out of
 # __all__ so that "from dplpy import *" does not shadow the builtin help().
