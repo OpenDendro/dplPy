@@ -43,6 +43,7 @@ from .tbrm import tbrm_rows
 from .smoothingspline import spline, get_period, _caps
 from .agedepspline import ads
 from .detrend import _normalize_fit, _normalize_method, _FIT_CANON
+from .powt import powt
 
 # dplR's ssf() default spline is 0.6667 of the series length (detrend's is 0.67);
 # both resolve through smoothingspline.get_period (audit E20).
@@ -221,9 +222,18 @@ def ssf(rwl,
         final chronology.
     verbose : bool, default True
         print progress and the per-iteration convergence diagnostics.
-    preset : {None, "crust"}, default None
+    preset : {None, "crust", "cook"}, default None
         None reproduces the basic signal-free method (dplR's ssf; Melvin & Briffa
-        2008). "crust" adds CRUST's robustness guards (Melvin & Briffa 2014):
+        2008). "cook" is the Cook & Peters (1997) power-transform-and-subtract
+        standardisation: every series is variance-stabilised with dpl.powt (the
+        adaptive power transform) and the signal-free index is formed by
+        subtraction (difference) rather than a ratio. Because nothing is divided,
+        there is no divide-by-zero to guard against -- no curve floor is applied
+        and no non-positive-curve error is raised -- so the near-zero-curve
+        runaway that the ratio method produces at the record ends cannot occur.
+        It overrides method to "difference"; the resulting chronology is a
+        residual index (centred near the series mean, not 1). "crust" adds
+        CRUST's robustness guards (Melvin & Briffa 2014):
         multiplicative rescaling of the signal-free measurements (with the mean
         offset taken over the years that have more than one series, as CRUST
         does, not every year), the raw measurement kept in any year where the
@@ -302,8 +312,16 @@ def ssf(rwl,
                          + str(fit) + "'.")
     method = _normalize_method(method)
     difference = (method == "difference")
-    preset = _normalize_choice(preset, ("crust",), "preset", none_ok=True)
+    preset = _normalize_choice(preset, ("crust", "cook"), "preset", none_ok=True)
     crust = preset == "crust"
+    cook = preset == "cook"
+    if cook:
+        # preset="cook": Cook & Peters (1997) power-transform + subtract. Division
+        # by a near-zero signal-free curve is what makes indices run away, so cook
+        # indexes by subtraction (difference) on power-transformed measurements --
+        # no ratio, no divide-by-zero, no floor needed, nothing to run away.
+        difference = True
+        method = "difference"
     nyrs = spline_period
     mad_threshold = float(tol)
     method2 = fit  # the curve name, as the iteration history reports it
@@ -330,6 +348,10 @@ def ssf(rwl,
     # work on a copy so the caller's frame is never modified (audit A2)
     dat = _require_dataframe(rwl).copy()
     dat = _drop_allnan_columns(dat, "rwl")
+    if cook:
+        # variance-stabilising adaptive power transform per series (dpl.powt,
+        # Cook & Peters 1997), before the signal-free subtraction.
+        dat = powt(dat, method="cook")
 
     # recode zeros to 0.001 if asked.
     if recode_zeros:
@@ -338,7 +360,7 @@ def ssf(rwl,
     # Input validation (once, on the full collection).
     if dat.isna().all(axis=1).any():
         raise ValueError(inputNAmsg)   # unconnected floaters
-    if not crust and dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1).any():
+    if not crust and not cook and dat.apply(lambda x: x.sum(skipna=True) == 0, axis=1).any():
         # an all-zero (all-absent-ring) year -> chron can be zero -> div0. Under
         # preset="crust" the chron<0.01 keep-raw guard carries such a year, as
         # CRUST does, so it is not rejected here.
@@ -418,7 +440,7 @@ def ssf(rwl,
             # initial pass (stand.f90 det_sf_cur), not only the signal-free curves
             datCurves = np.maximum(datCurves, 0.02)
         bad = _bad_curve_cols(datCurves, dat.columns)
-        if bad:                                      # raw series cannot be fit positive
+        if bad and not cook:                         # raw series cannot be fit positive
             raise ValueError(_neg_curve_error(bad, None, None, difference, crust))
 
         datRWI = (dat.values - datCurves) if difference else (dat.values / datCurves)
@@ -431,7 +453,7 @@ def ssf(rwl,
         # back to the straight mean, then error if zeros persist (bunk data).
         if any((iter0Crn.iloc[:, 0]) == 0):
             iter0Crn = chron(datRWI, biweight=False, plot=False)
-        if not crust and any((iter0Crn.iloc[:, 0]) == 0):
+        if not crust and not cook and any((iter0Crn.iloc[:, 0]) == 0):
             # a zero initial chronology (an all-absent-ring year) would divide to
             # inf; under preset="crust" the chron<0.01 keep-raw guard carries it,
             # so it is not an error there.
@@ -451,7 +473,7 @@ def ssf(rwl,
         if crust:                                    # CRUST: floor the curve at 1 ring
             sfRWRescaledCurves_Array[:, :, 0] = np.maximum(sfRWRescaledCurves_Array[:, :, 0], 0.02)
         bad = _bad_curve_cols(sfRWRescaledCurves_Array[:, :, 0], dat.columns)
-        if bad:
+        if bad and not cook:
             raise ValueError(_neg_curve_error(bad, iter0Crn_col0, dat.index.to_numpy(),
                                               difference, crust))
 
@@ -486,7 +508,7 @@ def ssf(rwl,
             if crust:
                 sfRWRescaledCurves_Array[:, :, k] = np.maximum(sfRWRescaledCurves_Array[:, :, k], 0.02)
             bad = _bad_curve_cols(sfRWRescaledCurves_Array[:, :, k], dat.columns)
-            if bad:
+            if bad and not cook:
                 raise ValueError(_neg_curve_error(bad, sfCrn_Mat[:, k - 1],
                                                   dat.index.to_numpy(), difference, crust))
 

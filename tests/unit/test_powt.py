@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import importlib
+
 import dplpy as dpl
+_powt_mod = importlib.import_module("dplpy.powt")
 
 
 def _read_quiet(path):
@@ -17,8 +20,10 @@ def _read_quiet(path):
             return dpl.readers(path)
 
 
-# dplR powt(method='cook') per-series powers for the first few ca533 series
-# (dplR 1.7.9). Cook is deterministic OLS, so dplPy reproduces these exactly.
+# Cook powers for the first few ca533 series. dplPy's cook carries ARSTAN's guard
+# (signed p = 1 - b, p < 0.05 -> 0/log, p clamped to 1), which dplR's cook lacks;
+# these particular series all fall in the unguarded range (0.05 < 1 - b < 1), so
+# the guard leaves them unchanged and they still equal dplR/ARSTAN here.
 _DPLR_COOK_CA533 = {
     "CAM011": 0.71236143893634,
     "CAM021": 0.770498860140902,
@@ -37,6 +42,33 @@ def test_powt_cook_matches_dplR_powers():
     x = rwl["CAM011"].dropna().to_numpy()
     assert np.allclose(pt["CAM011"].dropna().to_numpy(),
                        x ** power["CAM011"], atol=1e-10)
+
+
+def test_powt_cook_applies_arstan_guard():
+    # cook must apply ARSTAN's guard to the signed slope p = 1 - b for EVERY
+    # series: p < 0.05 collapses to 0 (log), and p is clamped above at 1. Verify
+    # the guarded power equals the explicit formula applied to the raw signed
+    # slope, and that every power lands in {0} U [0.05, 1].
+    rwl = _read_quiet("tests/data/csv/ca533.csv")
+    prec = _powt_mod._getprec(rwl.to_numpy())
+    _, power = dpl.powt(rwl, method="cook", return_power=True)
+    for c in rwl.columns:
+        xs = rwl[c].dropna().to_numpy()
+        raw = _powt_mod._fit_slope(xs, prec)          # signed 1 - b
+        expected = 0.0 if raw < 0.05 else min(raw, 1.0)
+        assert power[c] == pytest.approx(expected, abs=1e-9)
+        assert power[c] == 0.0 or 0.05 <= power[c] <= 1.0
+
+
+def test_powt_cook_clamps_amplifying_series():
+    # a series whose spread grows with level (b < 0 -> 1 - b > 1) must be clamped
+    # to p = 1, never amplified; one whose spread grows super-linearly (b > ~0.95)
+    # must collapse to the log branch (p = 0). Build both deterministically.
+    n = 200
+    # spread shrinks relative to level -> slope b < 0 -> 1 - b > 1 -> clamp to 1
+    amp = np.abs(np.sin(np.arange(n)) * 0.02) + np.linspace(1.0, 20.0, n)
+    prec = _powt_mod._getprec(amp)
+    assert _powt_mod._cook_power(amp, prec) == pytest.approx(1.0, abs=1e-9)
 
 
 def test_powt_cook_default_method():

@@ -110,20 +110,33 @@ def _fit_slope(series, prec):
 
 
 def _cook_power(col, prec):
-    """Cook's per-series power p = |1 - b| from the NaN-omitted series."""
+    """Cook's per-series power with ARSTAN's guard (ARSTAN option 4 -- Cook's own
+    program -- not dplR's unguarded form). p = 1 - b (signed, where b is the
+    spread-vs-level slope); p < 0.05 collapses to 0 (a log transform); p is clamped
+    above at 1. The clamp matters: p > 1 *amplifies* variance instead of stabilising
+    it (the opposite of the transform's purpose), which is what produced the
+    signal-free runaways on high-spread collections. NB this intentionally departs
+    from dplR's cook (unsigned |1 - b|, no guard); the dplR form is a faithful but
+    unguarded copy of ARSTAN, and the guard is what ARSTAN (and Cook) actually use."""
     x = np.asarray(col, dtype=float)
     x = x[~np.isnan(x)]
-    return abs(_fit_slope(x, prec))
+    p = _fit_slope(x, prec)        # 1 - b (signed)
+    if p < 0.05:
+        p = 0.0
+    return min(p, 1.0)
 
 
-def _apply_power(col, p):
+def _apply_power(col, p, floor=None):
     """Transform a column x -> x**p at its non-NaN positions (log fallback when
-    p <= 0, matching dplR's universal method)."""
+    p <= 0). ``floor`` applies only to the log branch (ARSTAN's MAX(x, 0.01)),
+    so the guarded cook path's p == 0 series never hit log(0); the power branch is
+    left exactly x**p and so stays invertible."""
     x = np.asarray(col, dtype=float)
     out = x.copy()
     mask = ~np.isnan(x)
     if p <= 0:
-        out[mask] = np.log(x[mask])
+        xv = np.maximum(x[mask], floor) if floor is not None else x[mask]
+        out[mask] = np.log(xv)
     else:
         out[mask] = x[mask] ** p
     return out
@@ -200,7 +213,9 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
 
     Two methods are offered:
 
-    - ``"cook"`` (default) estimates p independently for each series.
+    - ``"cook"`` (default) estimates p independently for each series, with
+      ARSTAN's guard: p = 1 - b (signed), p < 0.05 collapses to 0 (log), and p is
+      clamped above at 1 (p > 1 would amplify variance rather than stabilise it).
     - ``"universal"`` estimates a single p for the whole data set with a linear
       mixed-effects model (random intercept per year), matching dplR's default.
       Requires statsmodels; a log transform is used if the estimate is p <= 0.
@@ -238,9 +253,12 @@ def powt(rwl, method="cook", rescale=False, return_power=False, plot=False,
 
     Notes
     -----
-    dplPy reproduces dplR's power exactly. A given series' power can differ slightly
-    from ARSTAN's, which uses the trailing ring as the level and clamps p to
-    ``[0, 1]``.
+    dplPy's ``cook`` applies ARSTAN's guard (signed p, log below 0.05, clamp to 1)
+    and so intentionally departs from dplR's ``cook``, which uses the unguarded
+    ``|1 - b|`` -- a faithful but unguarded copy of ARSTAN whose unclamped p > 1
+    amplifies variance. It keeps Cook & Peters' adjacent-ring mean as the level
+    (ARSTAN opt 4 uses the trailing ring; that variant is available as
+    ``method="druckenbrod"``). ``universal`` still reproduces dplR exactly.
 
     Examples
     --------
@@ -322,7 +340,7 @@ def _powt_cook(rwl, is_series, rescale, return_power, plot=False, return_stats=F
     if is_series:
         raw = rwl.to_numpy()
         p = _cook_power(raw, prec)
-        out = _apply_power(raw, p)
+        out = _apply_power(raw, p, floor=0.01)
         if rescale:
             out = _rescale(out, raw)
         result = pd.Series(out, index=rwl.index, name=rwl.name)
@@ -339,7 +357,7 @@ def _powt_cook(rwl, is_series, rescale, return_power, plot=False, return_stats=F
     for name in rwl.columns:
         col = rwl[name].to_numpy()
         p = _cook_power(col, prec)
-        out = _apply_power(col, p)
+        out = _apply_power(col, p, floor=0.01)
         if rescale:
             out = _rescale(out, col)
         powers[name] = p

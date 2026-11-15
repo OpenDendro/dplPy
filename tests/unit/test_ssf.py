@@ -87,6 +87,24 @@ def test_ssf_negative_curve_error_points_to_crust():
     assert "literal zero" in msg          # recode_zeros named only as the caveat
 
 
+def test_ssf_cook_preset_subtract_no_runaway():
+    # preset="cook": Cook & Peters (1997) / ARSTAN power-transform + subtract. On
+    # co021 -- which raises under the basic method and inflates at the ends under
+    # ratio+crust -- cook forces difference mode, converges, and the chronology
+    # stays bounded: subtraction never divides, so the near-zero-curve runaway
+    # cannot form. The returned index is a residual (centred near the series mean).
+    data = _read_quiet("tests/data/csv/co021.csv")
+    out = _ssf_quiet(data, preset="cook", return_info=True, return_unconverged=True)
+    assert out["infoList"]["method"] == "difference"
+    assert out["infoList"]["converged"]
+    sfc = out["ssfCrn"]["sfc"].to_numpy()
+    sfc = sfc[np.isfinite(sfc)]
+    med = np.median(sfc)
+    mad = np.median(np.abs(sfc - med)) * 1.4826
+    # largest excursion stays in the normal range, not the ratio method's runaway
+    assert np.max(np.abs(sfc - med)) / mad < 10
+
+
 def test_ssf_crust_preset_rescues_co021():
     # co021 defeats the basic method (curve <= 0), but CRUST's guards -- the
     # near-zero division guard and the 0.02 curve floor -- let it standardise,
