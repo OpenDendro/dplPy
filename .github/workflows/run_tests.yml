@@ -2,13 +2,38 @@ name: run_tests
 
 on: [push]
 
-jobs:
-  build:
+# Cancel an in-flight run for the same ref when a newer push arrives.
+concurrency:
+  group: run_tests-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # Pick the Python matrix per ref: the FULL set on release (`v*`) branches, which
+  # gate publishing (pypi_release.yml runs on this workflow's success), and a LEAN
+  # set on routine pushes (incl. `main`) to keep day-to-day CI fast. Edit the two
+  # arrays below to change the policy.
+  matrix-prep:
+    runs-on: ubuntu-latest
+    outputs:
+      python-versions: ${{ steps.pick.outputs.versions }}
+    steps:
+      - id: pick
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$REF" == refs/heads/v* ]]; then
+            echo 'versions=["3.11","3.12","3.13","3.14","3.15"]' >> "$GITHUB_OUTPUT"   # FULL (release gate)
+          else
+            echo 'versions=["3.11","3.13","3.14"]' >> "$GITHUB_OUTPUT"                  # LEAN (routine)
+          fi
+
+  build:
+    needs: matrix-prep
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"] # Goal is to run tests for different python versions
+        python-version: ${{ fromJSON(needs.matrix-prep.outputs.python-versions) }}
         include:
           # The LiPD extra (pylipd) is installed on one matrix entry so the
           # to_lipd/from_lipd/lipd_metadata tests run rather than skip.
@@ -31,7 +56,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r ${{ matrix.python-version }}-requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-xdist
           pip install ruff
           pip install -e ".${{ matrix.extras }}"
       # Lint findings are reported as annotations but do not fail the build yet
@@ -41,9 +66,11 @@ jobs:
         run: |
           ruff check --output-format=github .
         continue-on-error: true
+      # Tests run in parallel with pytest-xdist (`-n auto`). Coverage is collected
+      # only on the 3.13 entry -- it is identical on every version and adds overhead.
       - name: Run unit tests
         run: |
-          pytest tests/unit --cov=dplpy
+          pytest tests/unit -n auto ${{ matrix.python-version == '3.13' && '--cov=dplpy' || '' }}
       - name: Run integ tests
         run: |
-          pytest tests/integs -rA
+          pytest tests/integs -n auto -rA
