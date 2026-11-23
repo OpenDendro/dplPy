@@ -32,7 +32,7 @@ publish if the branch name does not equal `v` + the `pyproject.toml` version).
 - `src/dplpy/__init__.py` — update `__version__`.
 - `pyproject.toml` — update `version` in the `[project]` section to match.
 - `README.md` — in the "Current Version" section, update the stated version
-  (e.g. `v0.8.0` → `v0.9.0`).
+  (e.g. `v0.9.0` → `v0.10.0`).
 - `CITATION.cff` — update `version:` and set `date-released:` to the release date
   (YYYY-MM-DD). This is what the "Cite this repository" panel and Zenodo show.
   (The version DOI is added *after* the release; see step 4.)
@@ -63,7 +63,7 @@ description change.
 ## 2. Branch to the new version branch
 
 On GitHub, create a branch from `main` named `v` + the new version number (e.g.
-`v0.9.0`). Creating the branch kicks off the workflows: `run_tests` → (on
+`v0.10.0`). Creating the branch kicks off the workflows: `run_tests` → (on
 success) build → publish to PyPI → create the GitHub (pre)release and tag. The
 release is contingent on all unit and integration tests passing.
 

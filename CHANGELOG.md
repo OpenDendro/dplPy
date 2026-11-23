@@ -10,6 +10,8 @@ and commit log.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-23
+
 ### Added
 - **`dpl.read_pos` reads CooRecorder `.pos` files** (a single file or a directory
   tree) directly into dplPy, skipping the lossy CDendro `.rwl` export. It returns a
@@ -672,7 +674,8 @@ Renamed parameters all keep their old names as deprecated aliases for now.
 - Added narrative guides and reference pages (mkdocs + mkdocstrings), and updated
   the README, citation/DOI metadata, and background references.
 
-[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/OpenDendro/dplPy/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/OpenDendro/dplPy/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OpenDendro/dplPy/compare/v0.6.0...v0.7.0
