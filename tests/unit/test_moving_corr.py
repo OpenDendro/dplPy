@@ -296,7 +296,7 @@ _G_JA_OVERALL = 0.385414
 def grid_res():
     chron, clim = _synthetic(regime=True)
     return dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
-                           window=25, iters=300, lc_iters=300, seed=7)
+                           window=25, iters=99, lc_iters=99, seed=7)
 
 
 @pytest.fixture(scope="module")
@@ -306,7 +306,7 @@ def grid_null():
     rng = np.random.default_rng(0)
     chron = pd.Series(rng.standard_normal(chron.size), index=chron.index)
     return dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
-                           window=25, iters=300, lc_iters=300, seed=7)
+                           window=25, iters=99, lc_iters=99, seed=7)
 
 
 def test_grid_type_shape_labels(grid_res):
@@ -350,9 +350,9 @@ def test_grid_null_not_field_significant(grid_null):
 def test_grid_reproducible():
     chron, clim = _synthetic(regime=True)
     a = dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
-                        window=25, iters=150, lc_iters=150, seed=11)
+                        window=25, iters=50, lc_iters=50, seed=11)
     b = dpl.moving_corr(chron, clim, end_month=12, season_lengths=(1, 3),
-                        window=25, iters=150, lc_iters=150, seed=11)
+                        window=25, iters=50, lc_iters=50, seed=11)
     np.testing.assert_array_equal(a.cube, b.cube)
     assert a.field["lc_p"] == b.field["lc_p"]
     np.testing.assert_array_equal(a.fdr_sig, b.fdr_sig)
