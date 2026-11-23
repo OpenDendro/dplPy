@@ -195,26 +195,27 @@ def test_ssf_return_unconverged():
     # co021 does not converge under the signal-free iteration. By default ssf
     # raises [2]; return_unconverged=True returns the unconverged chronology with
     # a warning and records convergence status in the info (for runaway studies).
+    # co021 is re-run only twice (raise path + return path): a single return_info
+    # call supplies the warning, the converged flag, and the chronology (ssfCrn),
+    # and preset="crust" floors max_iterations to 40 so a smaller cap would not help.
     data = _read_quiet("tests/data/rwl/co021.rwl")
+    kw = dict(fit="Spline", method="ratio", spline_period=-67, preset="crust",
+              max_iterations=40)
     with pytest.raises(ValueError) as e:
-        _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67,
-                   preset="crust", max_iterations=40)
+        _ssf_quiet(data, **kw)
     assert "[2]" in str(e.value)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            out = dpl.ssf(data, fit="Spline", method="ratio", spline_period=-67,
-                          preset="crust", max_iterations=40,
-                          return_unconverged=True, verbose=False)
+            info = dpl.ssf(data, **kw, return_unconverged=True,
+                           return_info=True, verbose=False)
     assert any("did not converge" in str(w.message) for w in rec)
-    assert list(out.columns) == ["sfc", "samp_depth"]
-    vals = out["sfc"].to_numpy()
-    assert np.all(np.isfinite(vals[~np.isnan(vals)]))
-    info = _ssf_quiet(data, fit="Spline", method="ratio", spline_period=-67,
-                      preset="crust", max_iterations=40,
-                      return_unconverged=True, return_info=True)
     assert info["infoList"]["converged"] is False
+    crn = info["ssfCrn"]
+    assert list(crn.columns) == ["sfc", "samp_depth"]
+    vals = crn["sfc"].to_numpy()
+    assert np.all(np.isfinite(vals[~np.isnan(vals)]))
 
 
 def test_ssf_converged_flag_true_when_converged():
