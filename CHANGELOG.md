@@ -10,6 +10,8 @@ and commit log.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-24
+
 ### Removed
 - **The deprecated keyword aliases carried since 0.8.0–0.9.0 are gone** — passing
   an old name now raises `TypeError` instead of forwarding with a
@@ -696,7 +698,8 @@ Renamed parameters all keep their old names as deprecated aliases for now.
 - Added narrative guides and reference pages (mkdocs + mkdocstrings), and updated
   the README, citation/DOI metadata, and background references.
 
-[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/OpenDendro/dplPy/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/OpenDendro/dplPy/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/OpenDendro/dplPy/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/OpenDendro/dplPy/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/OpenDendro/dplPy/compare/v0.7.0...v0.8.0
