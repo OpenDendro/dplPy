@@ -8,10 +8,6 @@ guide for worked examples.
 
 ::: dplpy.readers.readers
 
-## readers_url
-
-::: dplpy.readers_url.readers_url
-
 ## metadata
 
 ::: dplpy.readers.metadata

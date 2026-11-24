@@ -34,10 +34,10 @@ Key arguments:
 - `format` — normally auto-detected; override with `"csv"`, `"rwl"`, etc. if
   needed.
 
-To load directly from a URL (for example an ITRDB file), use `readers_url`:
+To load directly from a URL (for example an ITRDB file), pass the URL to `readers`:
 
 ```python
-rwl = dpl.readers_url("https://www.ncei.noaa.gov/pub/data/paleo/treering/.../ca533.rwl")
+rwl = dpl.readers("https://www.ncei.noaa.gov/pub/data/paleo/treering/.../ca533.rwl")
 ```
 
 !!! note "NOAA template files"

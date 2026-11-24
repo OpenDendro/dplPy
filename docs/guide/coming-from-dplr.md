@@ -20,7 +20,7 @@ one-to-one. The biggest differences are ergonomic rather than conceptual:
 
 | dplR | dplPy | Notes |
 |---|---|---|
-| `read.rwl`, `read.tucson`, `read.compact` | `readers` | Auto-detects format; `readers_url` for URLs |
+| `read.rwl`, `read.tucson`, `read.compact` | `readers` | Auto-detects format; reads a local path or a URL |
 | `read.crn` | `read_crn` | Single, stacked, and combined multi-site files |
 | `read.ids` | `read_ids` | Site–tree–core parsing |
 | `write.rwl` / `write.tucson` | `writers(..., format="rwl")` | Returns the path written |
