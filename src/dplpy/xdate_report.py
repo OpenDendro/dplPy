@@ -42,7 +42,7 @@ from .detrend import detrend
 from .xdate import xdate, _cofecha_crit, _bin_bounds, _prewhiten_for_xdate
 from .sensitivity import sens1
 from .stats import get_ar1
-from ._validate import _warn, _alias_kwarg, _reject_kwargs, _normalize_choice
+from ._validate import _warn, _reject_kwargs, _normalize_choice
 
 # Reader diagnostics the report re-reports in its own columns (salvage, joins,
 # renames, encoding). Only these are silenced while reading (audit G3).
@@ -457,7 +457,6 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     corr, window_length, bin_floor, p_val
         passed through to ``dpl.xdate`` (``corr``, ``bin_floor`` and ``p_val`` are
         ignored when ``preset="COFECHA"``; ``window_length`` still applies).
-        ``slide_period=`` is a deprecated alias of ``window_length``.
     output : {"both", "screen", "file"}, default "both"
         where the full report goes: ``"screen"`` prints it, ``"file"`` writes a
         ``<name>.txt`` in ``out_dir``, ``"both"`` does both. The report text is
@@ -484,8 +483,6 @@ def xdate_report(files, out_dir=".", fit="Spline", corr="spearman",
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate_report
     """
-    window_length = _alias_kwarg(kwargs, "slide_period", "window_length",
-                                 window_length, "xdate_report")
     _reject_kwargs(kwargs)
     output = _normalize_choice(output, ("both", "screen", "file"), "output")
     preset = _normalize_choice(preset, ("COFECHA",), "preset", none_ok=True)

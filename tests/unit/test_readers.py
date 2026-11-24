@@ -1681,26 +1681,3 @@ def test_header_true_forces_three_lines_when_none_detected(tmp_path):
     assert "H0" in d2.columns
     with pytest.raises(ValueError):
         dpl.readers(str(p), header="yes")
-
-
-def test_readers_url_is_deprecated_and_forwards_kwargs(capsys):
-    # G8: readers_url emits a DeprecationWarning and forwards every keyword
-    # (join/encoding/format/verbose) to readers().
-    import urllib.request
-    from unittest.mock import patch, MagicMock
-    raw = open(RWL + "ca533.rwl", "rb").read()
-
-    def fake_urlopen(url, *a, **k):
-        m = MagicMock()
-        m.read.return_value = raw
-        m.__enter__.return_value = m
-        m.__exit__.return_value = False
-        return m
-
-    with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
-        with pytest.warns(DeprecationWarning, match="readers_url"):
-            d = dpl.readers_url("https://example.org/ca533", format="rwl",
-                                encoding="latin1", join=True, verbose=False)
-    assert d.shape[1] == 34
-    assert d.attrs["dplpy_encoding"] == "latin1"
-    assert capsys.readouterr().out == ""                         # verbose forwarded

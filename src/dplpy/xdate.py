@@ -49,7 +49,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import pandas as pd
 from ._validate import (_require_dataframe, _normalize_corr, _plot_kwarg, _warn,
-                        _alias_kwarg, _reject_kwargs, _normalize_choice,
+                        _reject_kwargs, _normalize_choice,
                         _require_year_index, _carry_attrs)
 from .autoreg import _prewhiten
 from .tbrm import tbrm_rows
@@ -257,13 +257,7 @@ def normalize_for_crossdating(data: pd.DataFrame, prewhiten=True, ar_max=10,
 
     ``spline_period`` (COFECHA's spline variance stabilization, applied before AR)
     and ``zscore`` (each series to mean 0 / SD 1 before the master is built) are
-    the extra steps the COFECHA preset switches on. ``method=`` and
-    ``stabilize_period=`` are accepted as deprecated aliases of ``estimator`` and
-    ``spline_period``."""
-    estimator = _alias_kwarg(kwargs, "method", "estimator", estimator,
-                             "normalize_for_crossdating")
-    spline_period = _alias_kwarg(kwargs, "stabilize_period", "spline_period",
-                                 spline_period, "normalize_for_crossdating")
+    the extra steps the COFECHA preset switches on."""
     _reject_kwargs(kwargs)
     estimator = _normalize_choice(estimator, ("yw", "burg", "ols"), "estimator")
     data = _require_year_index(data, "data")
@@ -434,7 +428,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", window_length=50,
     corr : {"spearman", "pearson", "kendall"}, default "spearman"
         correlation method (case-insensitive).
     window_length : int, default 50
-        segment length in years (``slide_period=`` is a deprecated alias).
+        segment length in years.
     bin_floor : int, default 100
         the first segment is floored to a multiple of this.
     p_val : float, default 0.05
@@ -471,7 +465,7 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", window_length=50,
         zeros mark them (e.g. ``absent=raw_rwl == 0``). None disables the omission.
     spline_period : int, default 32
         COFECHA preset only -- spline wavelength (years) for the internal detrend and
-        variance stabilization (``stabilize_period=`` is a deprecated alias).
+        variance stabilization.
 
     Returns
     -------
@@ -510,10 +504,6 @@ def xdate(data: pd.DataFrame, prewhiten=True, corr="spearman", window_length=50,
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate
     """
-    window_length = _alias_kwarg(kwargs, "slide_period", "window_length",
-                                 window_length, "xdate")
-    spline_period = _alias_kwarg(kwargs, "stabilize_period", "spline_period",
-                                 spline_period, "xdate")
     plot = _plot_kwarg(plot, kwargs)
     _require_dataframe(data)
     data = _require_year_index(data, "data")
@@ -1135,8 +1125,7 @@ def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
                window_length=50, bin_floor=100, p_val=0.05, biweight=True, **kwargs):
     """dplR-style crossdating overview for a set of series (see corr.rwl.seg).
 
-    A thin wrapper: crossdates ``data`` with `xdate()` (same parameters;
-    ``slide_period=`` is a deprecated alias of ``window_length``) and draws the
+    A thin wrapper: crossdates ``data`` with `xdate()` (same parameters) and draws the
     green/blue/red segment plot -- green = series extent, blue = a segment that
     correlates significantly with the master, red = a flagged segment
     (p >= ``p_val``). Returns the matplotlib Axes.
@@ -1154,8 +1143,6 @@ def xdate_plot(data: pd.DataFrame, prewhiten=True, corr="spearman",
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#xdate_plot
     """
-    window_length = _alias_kwarg(kwargs, "slide_period", "window_length",
-                                 window_length, "xdate_plot")
     _reject_kwargs(kwargs)
     window_length = int(window_length)
     res = xdate(data, prewhiten=prewhiten, corr=corr, window_length=window_length,

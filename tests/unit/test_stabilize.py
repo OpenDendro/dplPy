@@ -124,14 +124,9 @@ def test_return_info(crn, rwi):
     pd.testing.assert_frame_equal(info["vsc"], plain)
 
 
-def test_window_length_alias_and_too_long_window_raises(crn, rwi):
-    # D3: win_length= -> window_length= (deprecated alias); B10: a running rbar
-    # needs a window shorter than the chronology, else ValueError (not a silent
-    # rbar=0 degrade)
-    base = dpl.stabilize_chron(crn, "rbar", rwi=rwi, window_length=40)
-    with pytest.warns(DeprecationWarning):
-        alias = dpl.stabilize_chron(crn, "rbar", rwi=rwi, win_length=40)
-    pd.testing.assert_frame_equal(base, alias)
+def test_too_long_window_raises(crn, rwi):
+    # B10: a running rbar needs a window shorter than the chronology, else
+    # ValueError (not a silent rbar=0 degrade)
     with pytest.raises(ValueError, match="window_length"):
         dpl.stabilize_chron(crn, "rbar", rwi=rwi, window_length=len(crn))
     short = crn.iloc[:40]

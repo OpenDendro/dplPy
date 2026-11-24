@@ -152,17 +152,6 @@ def test_sfrcs_default_po_is_zero():
     rwi = _sfrcs_quiet(rwl, plot=False)
     assert rwi.shape == rwl.shape
 
-
-def test_sfrcs_make_plot_deprecated():
-    rwl, po = _gp()
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            dpl.sfrcs(rwl, po=po, make_plot=False, verbose=False, max_iterations=3)
-    assert any(issubclass(x.category, DeprecationWarning) for x in w)
-
-
 def test_sfrcs_bad_args():
     rwl, _ = _gp()
     with pytest.raises(TypeError):
@@ -212,33 +201,8 @@ def test_sfrcs_one_iteration_equals_rcs_for_every_fit():
     assert np.allclose(a, b / np.nanmean(b), equal_nan=True, atol=1e-9)
 
 
-def test_sfrcs_biweight_aliases():
+def test_sfrcs_bad_kwarg():
     rwl, po = _gp()
-    ref = _sfrcs_quiet(rwl, po=po, plot=False, biweight=True, max_iterations=3)
-    with pytest.warns(DeprecationWarning, match="biweight_curve"):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            a = dpl.sfrcs(rwl, po=po, plot=False, biweight_curve=True,
-                          biweight_crn=True, verbose=False, max_iterations=3)
-    assert np.allclose(a.to_numpy(), ref.to_numpy(), equal_nan=True)
-    # disagreeing pair: biweight_crn wins, with a warning saying so
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            b = dpl.sfrcs(rwl, po=po, plot=False, biweight_curve=False,
-                          biweight_crn=True, verbose=False, max_iterations=3)
-    assert any("disagree" in str(x.message) for x in w)
-    assert np.allclose(b.to_numpy(), ref.to_numpy(), equal_nan=True)
-
-
-def test_sfrcs_period_alias_and_bad_kwarg():
-    rwl, po = _gp()
-    with pytest.warns(DeprecationWarning, match="period="):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            dpl.sfrcs(rwl, po=po, plot=False, fit="Spline", preset=None,
-                      period=0.1, verbose=False, max_iterations=2)
     with pytest.raises(TypeError):
         _sfrcs_quiet(rwl, po=po, plot=False, bogus=1)
 

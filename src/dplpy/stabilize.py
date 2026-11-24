@@ -34,7 +34,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import (_alias_kwarg, _reject_kwargs, _normalize_choice,
+from ._validate import (_reject_kwargs, _normalize_choice,
                         _carry_attrs)
 from .rbar import running_rbar_vector, pairwise_corr_mean
 from .smoothingspline import variance_stabilize_spline
@@ -177,7 +177,6 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     window_length, min_seg_ratio : int, float
         running-rbar window length (default 50; must be shorter than the
         chronology) and minimum overlap ratio (as in chron_stabilized).
-        (``win_length=`` is accepted as a deprecated alias.)
     spline_period : int, float or None, default None
         spline stiffness for the ``"spline"``/``"both"`` families. ``None`` = the 67%
         spline (``floor(0.67*n)`` years); an int > 1 is a fixed wavelength in years; a
@@ -220,8 +219,6 @@ def stabilize_chron(chron, method, *, column="std", rwi=None, rbar=None,
     Osborn, Briffa & Jones (1997) Dendrochronologia 15, 89-99.
     Frank, Esper & Cook (2006) TRACE 4, 56-66.
     """
-    window_length = _alias_kwarg(kwargs, "win_length", "window_length",
-                                 window_length, "stabilize_chron")
     _reject_kwargs(kwargs)
     method = _normalize_choice(method, _METHODS, "method")
     rbar_mode = _normalize_choice(rbar_mode, _RBAR_MODES, "rbar_mode")

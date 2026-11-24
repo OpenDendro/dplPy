@@ -145,12 +145,6 @@ def test_mrcs_interior_gap_runs_and_keeps_years():
 def test_mrcs_period_alias_sort_case_and_attrs():
     rwl, po = _gp()
     rwl.attrs.update({"dplpy_precision": 0.01, "kind": "rwl"})
-    with pytest.warns(DeprecationWarning, match="period="):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            a = dpl.mrcs(rwl, po=po, n_curves=2, fit="Spline", period=0.1, plot=False)
-    b = _mrcs(rwl, po=po, n_curves=2, fit="Spline", spline_period=0.1, plot=False)
-    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
     c = _mrcs(rwl, po=po, n_curves=2, sort="GROWTH", plot=False)      # D11
     d = _mrcs(rwl, po=po, n_curves=2, sort="growth", plot=False)
     assert np.allclose(c.to_numpy(), d.to_numpy(), equal_nan=True)

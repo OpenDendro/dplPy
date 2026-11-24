@@ -139,13 +139,6 @@ def test_rcs_rc_out_toggle():
     assert np.allclose(plain.to_numpy()[~np.isnan(plain.to_numpy())],
                        full["rwi"].to_numpy()[~np.isnan(full["rwi"].to_numpy())])
 
-
-def test_rcs_make_plot_deprecated():
-    rwl, po = _gp()
-    with pytest.warns(DeprecationWarning):
-        dpl.rcs(rwl, po, make_plot=False)
-
-
 def test_rcs_bad_args():
     rwl, _ = _gp()
     with pytest.raises(ValueError):            # unknown curve
@@ -310,10 +303,6 @@ def test_rcs_short_regional_curve_falls_back_to_mean():
 
 def test_rcs_period_alias_and_case_insensitive_preset():
     rwl, po = _gp()
-    with pytest.warns(DeprecationWarning, match="period="):
-        a = dpl.rcs(rwl, po, fit="Spline", period=0.1, plot=False)
-    b = dpl.rcs(rwl, po, fit="Spline", spline_period=0.1, plot=False)
-    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
     c = dpl.rcs(rwl, po, preset="CRUST", plot=False)
     d = dpl.rcs(rwl, po, preset="crust", plot=False)
     assert np.allclose(c.to_numpy(), d.to_numpy(), equal_nan=True)

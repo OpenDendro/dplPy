@@ -32,7 +32,7 @@ from statsmodels.tsa.ar_model import ar_select_order, AutoReg
 import pandas as pd
 import numpy as np
 import warnings
-from ._validate import (_alias_kwarg, _reject_kwargs, _normalize_choice,
+from ._validate import (_reject_kwargs, _normalize_choice,
                         _drop_allnan_columns, _carry_attrs)
 
 def ar_func(data: pd.DataFrame | pd.Series, ar_max=10, aic=True, method="yw", first_aic_min=True, **kwargs) -> (pd.DataFrame | pd.Series):
@@ -46,8 +46,7 @@ def ar_func(data: pd.DataFrame | pd.Series, ar_max=10, aic=True, method="yw", fi
     data : pd.DataFrame or pd.Series
         ring widths from dpl.readers(), or a single series taken from one.
     ar_max : int, default 10
-        maximum AR order considered when selecting the model. (``max_lag=`` is
-        accepted as a deprecated alias.)
+        maximum AR order considered when selecting the model.
     aic : bool, default True
         select the AR order by AIC up to ar_max; if False, fit a fixed AR of order
         ar_max.
@@ -78,7 +77,6 @@ def ar_func(data: pd.DataFrame | pd.Series, ar_max=10, aic=True, method="yw", fi
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/chronology/#ar_func
     """
-    ar_max = _alias_kwarg(kwargs, "max_lag", "ar_max", ar_max, "ar_func")
     _reject_kwargs(kwargs)
     method = _normalize_choice(method, ("yw", "burg", "ols"), "method")
     if isinstance(data, pd.DataFrame):
@@ -126,8 +124,7 @@ def autoreg(data: pd.Series, ar_max=10, aic=True, method="yw", first_aic_min=Tru
     data : pd.Series
         an individual series representing tree rings/widths.
     ar_max : int, default 10
-        maximum AR order considered when selecting the model. (``max_lag=`` is
-        accepted as a deprecated alias.)
+        maximum AR order considered when selecting the model.
     aic : bool, default True
         select the AR order by AIC up to ar_max; if False, fit a fixed AR of order
         ar_max.
@@ -155,7 +152,6 @@ def autoreg(data: pd.Series, ar_max=10, aic=True, method="yw", first_aic_min=Tru
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/chronology/#autoreg
     """
-    ar_max = _alias_kwarg(kwargs, "max_lag", "ar_max", ar_max, "autoreg")
     _reject_kwargs(kwargs)
     if not isinstance(data, pd.Series):
         raise TypeError("Data argument should be pandas series. Received " + str(type(data)) + " instead.")

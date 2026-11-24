@@ -38,8 +38,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
-                        _normalize_choice)
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _normalize_choice)
 from .detrend import _normalize_method
 from .rcs import _sfrcs_run, _resolve_po, _as_rwi_frame
 from .mrcs import _allocate, _plot_mrcs, _SORTS
@@ -75,12 +74,11 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
         how trees are ranked before the equal-count split (see `mrcs()`).
     fit, spline_period, nyrs0, f, pos_slope, min_n, preset, ss, rise :
         the regional-curve settings, identical to `sfrcs()` (``preset="crust"``
-        by default; ``period=`` is a deprecated alias of ``spline_period``).
+        by default).
     method : {"ratio", "difference"}, default "ratio"
         ratio (division) or difference (subtraction) indices.
     biweight, max_iterations, tol, verbose :
-        the signal-free settings, identical to `sfrcs()` (``biweight_curve=`` /
-        ``biweight_crn=`` are deprecated aliases of ``biweight``).
+        the signal-free settings, identical to `sfrcs()`.
     reset_means : bool, default True
         restore each tree's one-curve mean (ratios only; skipped with a warning
         for ``method="difference"``).
@@ -89,8 +87,7 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
         scale, as in `sfrcs()` (needed for signal-free difference indices; see
         there). Before 0.9.0 the rescale was always applied.
     plot : bool, default True
-        draw the per-class regional-curve figure (``make_plot=`` is a deprecated
-        alias).
+        draw the per-class regional-curve figure.
     return_info : bool, default False
         if True, return a dict of diagnostics (see Returns) instead of ``rwi``.
 
@@ -110,7 +107,6 @@ def sfmrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "sfmrcs")
     biweight = _sf_options(kwargs, biweight, max_iterations, "sfmrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)

@@ -31,7 +31,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import (_require_dataframe, _alias_kwarg, _reject_kwargs,
+from ._validate import (_require_dataframe, _reject_kwargs,
                         _normalize_choice, _carry_attrs, _warn)
 from .rbar import running_rbar_vector, pairwise_corr_mean
 from .chron import chron
@@ -55,8 +55,7 @@ def chron_stabilized(rwi_data: pd.DataFrame, window_length=50, min_seg_ratio=1/3
     rwi_data : pd.DataFrame
         detrended ring-width indices.
     window_length : int, default 50
-        window length over which rbar values are calculated. (``win_length=`` is
-        accepted as a deprecated alias.)
+        window length over which rbar values are calculated.
     min_seg_ratio : float, default 1/3
         minimum ratio of non-NA values to window length for a series to count in an
         Neff calculation (1/3 matches dplR's chron.stabilized()).
@@ -82,7 +81,6 @@ def chron_stabilized(rwi_data: pd.DataFrame, window_length=50, min_seg_ratio=1/3
         years; a float in (0, 1) is a fraction of the chronology length; None uses
         the 67% spline (``floor(0.67*n)`` years, as stabilize_chron and dplR's
         detrend default; earlier releases used 0.5n). Ignored by the rbar methods.
-        (``spline_nyrs=`` is accepted as a deprecated alias.)
 
     Returns
     -------
@@ -109,10 +107,6 @@ def chron_stabilized(rwi_data: pd.DataFrame, window_length=50, min_seg_ratio=1/3
     .. [2] https://opendendro.github.io/dplPy/reference/chronology/#chron_stabilized
     """
     _require_dataframe(rwi_data)
-    window_length = _alias_kwarg(kwargs, "win_length", "window_length",
-                                 window_length, "chron_stabilized")
-    spline_period = _alias_kwarg(kwargs, "spline_nyrs", "spline_period",
-                                 spline_period, "chron_stabilized")
     _reject_kwargs(kwargs)
     method = _normalize_choice(method, _METHODS, "method")
     if method == "mean_rbar":
@@ -208,8 +202,6 @@ def _spline_stabilize(chron_series, n_samps, spline_period=None,
     is off by default (a zero-centered chronology has legitimate negatives); set it
     True only for a positive index.
     """
-    spline_period = _alias_kwarg(kwargs, "spline_nyrs", "spline_period", spline_period,
-                                 "_spline_stabilize")
     _reject_kwargs(kwargs)
     n = len(chron_series)
     if spline_period is None:

@@ -62,10 +62,6 @@ def test_chron_stabilized_invalid_winlen():
         dpl.chron_stabilized(input_df, window_length=101)
     expected_msg = "Window length should not be greater than the number of rows in the dataset"
     assert expected_msg == str(errorMsg.value)
-    # win_length= is a deprecated alias of window_length=
-    with pytest.warns(DeprecationWarning):
-        with pytest.raises(ValueError):
-            dpl.chron_stabilized(input_df, win_length=101)
     with pytest.raises(TypeError):
         dpl.chron_stabilized(input_df, bogus=1)
 
@@ -159,8 +155,7 @@ def test_chron_stabilized_method_case_insensitive_and_alias():
 
 def test_chron_stabilized_spline_period_default_and_alias():
     # D3: spline stiffness is spline_period; None = the 67% spline (floor(0.67 n)),
-    # the same default as stabilize_chron (earlier releases used 0.5 n);
-    # spline_nyrs= is a deprecated alias
+    # the same default as stabilize_chron (earlier releases used 0.5 n)
     rwi = _staggered_rwi()
     n = len(rwi)
     default = _quiet(dpl.chron_stabilized, rwi, method="spline")
@@ -169,9 +164,6 @@ def test_chron_stabilized_spline_period_default_and_alias():
     half = _quiet(dpl.chron_stabilized, rwi, method="spline", spline_period=0.5)
     pd.testing.assert_frame_equal(default, explicit)
     assert not np.allclose(default["vsc"], half["vsc"])
-    with pytest.warns(DeprecationWarning):
-        alias = dpl.chron_stabilized(rwi, method="spline", spline_nyrs=0.5)
-    pd.testing.assert_frame_equal(alias, half)
     assert (default["vsc"].dropna() >= 0).all()           # clipped at 0
 
 

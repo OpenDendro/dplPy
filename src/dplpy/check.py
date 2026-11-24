@@ -43,8 +43,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from ._validate import (_require_dataframe, _require_year_index, _alias_kwarg,
-                        _reject_kwargs)
+from ._validate import (_require_dataframe, _require_year_index, _reject_kwargs)
 from .smoothingspline import _caps
 from .xdate import _lag_table
 
@@ -625,8 +624,7 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
     small_thresh, big_thresh, max_year :
         tunables; defaults follow dplR's ``rwl.check.control`` except ``lag`` (10,
         dplPy's package-wide lag search) and ``spline_period`` (32, the high-pass
-        spline). ``lag_max=`` and ``spline_nyrs=`` are accepted as deprecated
-        aliases.
+        spline).
 
     Returns
     -------
@@ -648,9 +646,6 @@ def check(x, file=None, checks=None, *, min_depth: int = 2, depth_run: int = 10,
     ----------
     .. [1] Bunn, A. G. (2026) dplR 1.8.0, ``rwl.check``.
     """
-    lag = _alias_kwarg(kwargs, "lag_max", "lag", lag, "check")
-    spline_period = _alias_kwarg(kwargs, "spline_nyrs", "spline_period", spline_period,
-                                 "check")
     _reject_kwargs(kwargs)
     if max_year is None:
         max_year = date.today().year

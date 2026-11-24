@@ -40,8 +40,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
-                        _normalize_choice, _carry_attrs)
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _normalize_choice, _carry_attrs)
 from ._plot_style import style_axes, finalize_font
 from .detrend import _normalize_method, _finish_figure
 from .rcs import rcs, _resolve_po, _align, _reset_means
@@ -147,8 +146,7 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
     fit, method, spline_period, nyrs0, f, pos_slope, biweight, min_n, preset,
     rescale_difference :
         passed through to `rcs()` to build each class curve; see `rcs()`.
-        Defaults match `rcs()`. The former name ``period=`` is accepted with a
-        DeprecationWarning.
+        Defaults match `rcs()`.
     reset_means : bool, default True
         if True (ratios only), rescale each tree's indices to the mean it would have
         had under one-curve RCS, recovering the low-frequency variance multiple RCS
@@ -157,8 +155,7 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
         if True, return a dict ``{"rwi", "rc", "alloc"}`` -- the indices, the list of
         per-class regional curves (by cambial age), and the series->class map.
     plot : bool, default True
-        draw the per-class regional-curve figure. ``make_plot=`` is accepted as a
-        deprecated alias.
+        draw the per-class regional-curve figure.
 
     Returns
     -------
@@ -173,7 +170,6 @@ def mrcs(rwl: pd.DataFrame, po=None, n_curves=2, sort="growth",
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "mrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)
     sort = _normalize_choice(sort, _SORTS, "sort")

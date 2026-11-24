@@ -53,7 +53,6 @@ set_friendly_warnings(True)
 
 from .readers import readers
 from .readers import metadata
-from .readers_url import readers_url
 from .summary import summary
 from .stats import stats
 from .samp_stats import samp_stats
@@ -113,7 +112,6 @@ from . import fhx
 __all__ = [
     "readers",
     "metadata",
-    "readers_url",
     "summary",
     "stats",
     "samp_stats",

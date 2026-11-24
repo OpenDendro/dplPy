@@ -73,9 +73,9 @@ def test_chron_prewhiten_routes_through_prewhiten(monkeypatch):
     # dplR-style NaN warm-up (backcast=False)
     assert calls == [("yw", 10, True, None, False)] * 2
     calls.clear()
-    with pytest.warns(DeprecationWarning):
-        dpl.chron(input_df, biweight=False, prewhiten=True, plot=False, max_lag=4,
-                  ar_method="Burg", first_aic_min=False, backcast=True, aic=False)
+    # non-default prewhiten options route through to _prewhiten unchanged
+    dpl.chron(input_df, biweight=False, prewhiten=True, plot=False, ar_max=4,
+              ar_method="Burg", first_aic_min=False, backcast=True, aic=False)
     assert calls == [("burg", 4, False, 4, True)] * 2
 
 

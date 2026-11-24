@@ -216,10 +216,6 @@ def test_autoreg_defaults_are_yw_ar_max_10_first_min():
     default = np.asarray(dpl.autoreg(s), dtype=float)
     explicit = np.asarray(dpl.autoreg(s, method="yw", ar_max=10, first_aic_min=True), dtype=float)
     assert np.array_equal(default, explicit)
-    # ar_max= still works as a deprecated alias of ar_max=
-    with pytest.warns(DeprecationWarning):
-        alias = np.asarray(dpl.autoreg(s, max_lag=10), dtype=float)
-    assert np.array_equal(alias, default)
     assert dpl.autoreg(s, method="YW").shape == default.shape       # case-insensitive
 
 

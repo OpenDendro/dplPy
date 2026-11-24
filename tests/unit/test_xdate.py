@@ -71,7 +71,7 @@ def test_xdate_returns_rich_result():
     # The result is a dict mirroring dplR's corr.rwl.seg output.
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
-    res = _xdate_quiet(rwi, corr="spearman", slide_period=50, bin_floor=100)
+    res = _xdate_quiet(rwi, corr="spearman", window_length=50, bin_floor=100)
     for key in ("seg_corr", "p_val", "overall", "avg_seg_corr", "flags", "bins", "rwi"):
         assert key in res
     assert res["seg_corr"].shape == (34, 50)          # series x bins
@@ -89,7 +89,7 @@ def test_xdate_matches_dplR_flags_ca533():
     # mutually exclusive -- an A flag never carries a non-zero best lag.
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
-    res = _xdate_quiet(rwi, corr="spearman", slide_period=50, bin_floor=100, p_val=0.05)
+    res = _xdate_quiet(rwi, corr="spearman", window_length=50, bin_floor=100, p_val=0.05)
     # every series dplR flags is still flagged (as A or B)
     assert {"CAM011", "CAM051", "CAM131", "CAM181", "CAM201"}.issubset(res["flags"].keys())
     # only CAM131 is a true A flag (lag 0 is best but not significant)
@@ -159,7 +159,7 @@ def test_xdate_prewhitening_is_package_standard():
 def test_xdate_no_prewhiten_runs():
     data = _read_quiet("tests/data/csv/ca533.csv")
     rwi = dpl.detrend(data, fit="spline", plot=False)
-    res = _xdate_quiet(rwi, prewhiten=False, corr="pearson", slide_period=50, bin_floor=100)
+    res = _xdate_quiet(rwi, prewhiten=False, corr="pearson", window_length=50, bin_floor=100)
     assert res["seg_corr"].shape[0] == 34
 
 
@@ -181,7 +181,7 @@ def test_xdate_plot_matches_dplR_semantics_ca533():
         warnings.simplefilter("ignore")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            ax = xdate_plot(rwi, slide_period=50, bin_floor=100, p_val=0.05)
+            ax = xdate_plot(rwi, window_length=50, bin_floor=100, p_val=0.05)
 
     # Series labels alternate between the left axis and a secondary right axis,
     # so collect both to map an integer row -> series name.
@@ -420,20 +420,11 @@ def test_xdate_ar_max_is_honoured():
     assert not r1["overall"]["rho"].equals(r10["overall"]["rho"])
 
 
-def test_xdate_aliases_and_case_insensitive_options():
-    # D3/D11: slide_period= and stabilize_period= are deprecated aliases; preset
-    # and corr are case-insensitive; stray keywords still raise.
+def test_xdate_case_insensitive_options():
+    # D11: preset and corr are case-insensitive; stray keywords still raise.
     data = _read_quiet("tests/data/csv/ca533.csv").iloc[:, :8]
     rwi = dpl.detrend(data, fit="Spline", plot=False)
-    import io
-    import contextlib
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        with contextlib.redirect_stdout(io.StringIO()):
-            old = dpl.xdate(rwi, slide_period=40, show_flags=False)
-    assert any(isinstance(x.message, DeprecationWarning) for x in w)
     new = _xdate_quiet(rwi, window_length=40, show_flags=False)
-    pd.testing.assert_frame_equal(old["seg_corr"], new["seg_corr"])
     upper = _xdate_quiet(rwi, corr="SPEARMAN", window_length=40, show_flags=False)
     pd.testing.assert_frame_equal(upper["seg_corr"], new["seg_corr"])
     with pytest.raises(TypeError):

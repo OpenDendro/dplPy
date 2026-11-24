@@ -142,15 +142,7 @@ def test_sfmrcs_accepts_rcs_curve_vocabulary_and_aliases():
     a = _q(rwl, po=po, n_curves=2, fit="Spline", preset=None, spline_period=0.1,
            plot=False, max_iterations=3)
     assert a.shape == rwl.shape
-    with pytest.warns(DeprecationWarning, match="biweight_crn"):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                b = dpl.sfmrcs(rwl, po=po, n_curves=2, biweight_crn=True,
-                               verbose=False, plot=False, max_iterations=3)
     c = _q(rwl, po=po, n_curves=2, biweight=True, plot=False, max_iterations=3)
-    assert np.allclose(b.to_numpy(), c.to_numpy(), equal_nan=True)
     assert c.attrs["kind"] == "rwi"
 
 

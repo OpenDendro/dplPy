@@ -45,7 +45,7 @@ DOCS_URL = "https://opendendro.github.io/dplPy/"
 # package and cannot describe functions that are not there.
 _GROUPS = [
     ("Reading and writing data",
-     ["readers", "readers_url", "metadata", "read_crn", "read_ids", "writers",
+     ["readers", "metadata", "read_crn", "read_ids", "writers",
       "read_tridas", "write_tridas", "to_lipd", "from_lipd", "lipd_metadata",
       "combine_rwl", "edit_rwl", "fill_internal", "SiteMetadata",
       "TridasProject", "TridasMetadata"]),

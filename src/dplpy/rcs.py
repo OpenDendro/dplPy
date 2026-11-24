@@ -40,8 +40,7 @@ import numpy as np
 import pandas as pd
 
 from ._plot_style import style_axes, finalize_font, ACCENT, NEUTRAL
-from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
-                        _normalize_choice, _series_table, _carry_attrs)
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _normalize_choice, _series_table, _carry_attrs)
 from .agedepspline import ads, _ads_curve
 from .smoothingspline import _caps, get_period
 from .xdate import _row_biweight
@@ -532,8 +531,7 @@ def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
     spline_period : int or float, default 0.1
         smoothing wavelength for ``fit="Spline"`` (``get_period`` rule): a fraction of
         length in ``(0, 1]`` (default 0.1 = 10%), a percent-of-length spline if
-        negative (-10 = 10%), or a fixed wavelength in years if > 1. The former name
-        ``period=`` is accepted with a DeprecationWarning.
+        negative (-10 = 10%), or a fixed wavelength in years if > 1.
     nyrs0 : int, default 50
         initial stiffness for ``fit="AgeDepSpline"`` (see ``dpl.ads``).
     f : float, default 0.5
@@ -563,8 +561,7 @@ def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
         if True, return a dict with both the detrended ``rwi`` and the regional curve
         ``rc``; otherwise return just ``rwi``.
     plot : bool, default True
-        draw the regional-curve figure (series and curve vs cambial age). The former
-        name ``make_plot=`` is accepted for now with a DeprecationWarning.
+        draw the regional-curve figure (series and curve vs cambial age).
 
     Returns
     -------
@@ -591,7 +588,6 @@ def rcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
        options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "rcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)               # 'ratio' / 'difference'
     fit = None if fit is None else _normalize_fit(fit)

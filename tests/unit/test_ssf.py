@@ -25,25 +25,25 @@ def _ssf_quiet(data, **kw):
             return dpl.ssf(data, verbose=False, **kw)
 
 
-# dplR ssf(ca533, method="Spline", recode.zeros=TRUE) first values (dplR 1.7.9).
+# dplR ssf(ca533, fit="Spline", recode.zeros=TRUE) first values (dplR 1.7.9).
 # dplPy reproduces the full signal-free iteration to ~1e-7.
 _DPLR_SSF_CA533 = [0.394662, 0.302022, 0.325494, 0.442067, 0.512245]
 
 
 def test_ssf_matches_dplR_ca533_spline():
     data = _read_quiet("tests/data/csv/ca533.csv")
-    out = _ssf_quiet(data, method="Spline", recode_zeros=True)
+    out = _ssf_quiet(data, fit="Spline", recode_zeros=True)
     assert list(out.columns) == ["sfc", "samp_depth"]
     assert np.allclose(out["sfc"].to_numpy()[:5], _DPLR_SSF_CA533, atol=1e-4)
 
 
-# dplR ssf(wa082, method="AgeDepSpline", recode.zeros=TRUE) first values.
+# dplR ssf(wa082, fit="AgeDepSpline", recode.zeros=TRUE) first values.
 _DPLR_SSF_WA082_ADS = None  # filled by value check below via tolerance only
 
 
 def test_ssf_agedepspline_runs_and_positive():
     data = _read_quiet("tests/data/csv/wa082.csv")
-    out = _ssf_quiet(data, method="AgeDepSpline", recode_zeros=True)
+    out = _ssf_quiet(data, fit="AgeDepSpline", recode_zeros=True)
     vals = out["sfc"].to_numpy()
     vals = vals[~np.isnan(vals)]
     assert np.all(np.isfinite(vals)) and (vals > 0).all()
@@ -52,12 +52,12 @@ def test_ssf_agedepspline_runs_and_positive():
 
 def test_ssf_return_info():
     data = _read_quiet("tests/data/csv/ca533.csv")
-    info = _ssf_quiet(data, method="Spline", recode_zeros=True, return_info=True)
+    info = _ssf_quiet(data, fit="Spline", recode_zeros=True, return_info=True)
     assert isinstance(info, dict)
     for key in ("infoList", "ssfCrn", "sfCrn_Mat", "MAD_Vec", "sfRWI_Array"):
         assert key in info
     # the standalone call returns the same final chronology as info["ssfCrn"]
-    out = _ssf_quiet(data, method="Spline", recode_zeros=True)
+    out = _ssf_quiet(data, fit="Spline", recode_zeros=True)
     assert np.allclose(info["ssfCrn"]["sfc"].to_numpy(), out["sfc"].to_numpy())
     # iteration history is consistent: sfCrn_Mat has one column per iteration
     assert info["sfCrn_Mat"].shape[1] == len(info["MAD_Vec"]) + 1
@@ -68,7 +68,7 @@ def test_ssf_all_zero_row_rejected():
     # ssf must raise (matching dplR's input0 guard).
     data = _read_quiet("tests/data/csv/ca533.csv")
     with pytest.raises(ValueError):
-        _ssf_quiet(data, method="Spline", recode_zeros=False)
+        _ssf_quiet(data, fit="Spline", recode_zeros=False)
 
 
 def test_ssf_negative_curve_error_points_to_crust():
@@ -79,7 +79,7 @@ def test_ssf_negative_curve_error_points_to_crust():
     # recode_zeros (which does not help a low-but-positive chronology).
     data = _read_quiet("tests/data/csv/co021.csv")
     with pytest.raises(ValueError) as e:
-        _ssf_quiet(data, method="Spline", recode_zeros=True)
+        _ssf_quiet(data, fit="Spline", recode_zeros=True)
     msg = str(e.value)
     assert "went <= 0 for series" in msg
     assert "1455" in msg                  # the near-zero chronology year
@@ -222,7 +222,7 @@ def test_ssf_converged_flag_true_when_converged():
     # a collection that converges reports converged=True and an iteration count;
     # return_unconverged has no effect on a converged run.
     data = _read_quiet("tests/data/csv/ca533.csv")
-    info = _ssf_quiet(data, method="Spline", recode_zeros=True, return_info=True)
+    info = _ssf_quiet(data, fit="Spline", recode_zeros=True, return_info=True)
     assert info["infoList"]["converged"] is True
     assert isinstance(info["infoList"]["n_iterations"], int)
 
@@ -272,9 +272,9 @@ def test_ssf_biweight_vs_arithmetic_mean():
     # biweight=False uses a plain arithmetic mean. The default is unchanged, and
     # the arithmetic chronology equals the per-year nanmean of the final indices.
     data = _read_quiet("tests/data/csv/ca533.csv")
-    default = _ssf_quiet(data, method="Spline", recode_zeros=True)
-    tukey = _ssf_quiet(data, method="Spline", recode_zeros=True, biweight=True)
-    arith = _ssf_quiet(data, method="Spline", recode_zeros=True, biweight=False,
+    default = _ssf_quiet(data, fit="Spline", recode_zeros=True)
+    tukey = _ssf_quiet(data, fit="Spline", recode_zeros=True, biweight=True)
+    arith = _ssf_quiet(data, fit="Spline", recode_zeros=True, biweight=False,
                        return_info=True)
     assert np.array_equal(default["sfc"].to_numpy(), tukey["sfc"].to_numpy(),
                           equal_nan=True)
@@ -329,36 +329,6 @@ def test_ssf_fit_and_method_vocabulary():
     d = _ssf_quiet(data, method="difference", recode_zeros=True)
     assert np.all(np.isfinite(d["sfc"].to_numpy()))
     assert not np.allclose(d["sfc"].to_numpy(), a["sfc"].to_numpy())
-
-
-def test_ssf_deprecated_spellings():
-    data = _read_quiet("tests/data/csv/ca533.csv")
-    ref = _ssf_quiet(data, fit="Spline", recode_zeros=True)
-    buf = io.StringIO()
-    # old method= curve name
-    with pytest.warns(DeprecationWarning, match="method="):
-        with contextlib.redirect_stdout(buf):
-            a = dpl.ssf(data, method="Spline", recode_zeros=True, verbose=False)
-    assert np.allclose(a["sfc"].to_numpy(), ref["sfc"].to_numpy())
-    # old nyrs= -> spline_period=
-    with pytest.warns(DeprecationWarning, match="nyrs="):
-        with contextlib.redirect_stdout(buf):
-            b = dpl.ssf(data, nyrs=0.5, recode_zeros=True, verbose=False)
-    c = _ssf_quiet(data, spline_period=0.5, recode_zeros=True)
-    assert np.allclose(b["sfc"].to_numpy(), c["sfc"].to_numpy())
-    # old mad_threshold= -> tol=
-    with pytest.warns(DeprecationWarning, match="mad_threshold="):
-        with contextlib.redirect_stdout(buf):
-            dpl.ssf(data, mad_threshold=5e-4, recode_zeros=True, verbose=False)
-    # old difference=True -> method="difference"
-    with pytest.warns(DeprecationWarning, match="difference="):
-        with contextlib.redirect_stdout(buf):
-            e = dpl.ssf(data, difference=True, recode_zeros=True, verbose=False)
-    f = _ssf_quiet(data, method="difference", recode_zeros=True)
-    assert np.allclose(e["sfc"].to_numpy(), f["sfc"].to_numpy())
-    with pytest.raises(TypeError):
-        _ssf_quiet(data, bogus=1, recode_zeros=True)
-
 
 def test_ssf_warns_instead_of_printing_and_requires_dataframe():
     data = _read_quiet("tests/data/csv/ca533.csv")

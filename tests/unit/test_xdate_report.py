@@ -125,20 +125,10 @@ def test_xdate_report_handles_bc_years(tmp_path):
         assert any(b.startswith("-") for b in rep["bins"])
 
 
-def test_xdate_report_window_alias_and_case(tmp_path):
-    # D3/D11/D13: slide_period= is a deprecated alias; preset/output are
-    # case-insensitive; xdate is called with plot=False (no DeprecationWarning
-    # from xdate's own make_plot= shim).
+def test_xdate_report_window_and_case(tmp_path):
+    # D11/D13: preset/output are case-insensitive.
     key = RWL + "ca533.rwl"
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        with contextlib.redirect_stdout(io.StringIO()):
-            old = dpl.xdate_report(key, output="Screen", verbose=False, slide_period=40)
-    dep = [str(m.message) for m in w if isinstance(m.message, DeprecationWarning)]
-    assert any("slide_period" in d for d in dep)
-    assert not any("make_plot" in d for d in dep)
     new = _quiet_report(key, output="screen", verbose=False, window_length=40)
-    assert old[key]["text"] == new[key]["text"]
     assert new[key]["report"]["window_length"] == 40
     cof = _quiet_report(key, output="screen", verbose=False, preset="cofecha")
     assert cof[key]["report"]["preset"] == "COFECHA"

@@ -199,20 +199,6 @@ def test_detrend_ratio(mock_spline: Mock):
     pd.testing.assert_frame_equal(expected_df, div)
     pd.testing.assert_frame_equal(expected_df, default)
 
-
-@patch.object(_m_detrend, 'spline')
-def test_detrend_residual_deprecated_alias(mock_spline: Mock):
-    # 'residual' is a deprecated alias for 'ratio' (division): same numbers, but
-    # it must warn, since in dplPy 'residual' now names only the AR chronology.
-    mock_spline.side_effect = mock_spline_method
-    input_df = pd.DataFrame(data={"SeriesA": [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5]},
-                            index=pd.Index(data=[1, 2, 3, 4, 5, 6, 7, 8], name="Year"))
-    with pytest.warns(FutureWarning):
-        aliased = dpl.detrend(input_df, method='residual', plot=False)
-    ratio = dpl.detrend(input_df, method='ratio', plot=False)
-    pd.testing.assert_frame_equal(ratio, aliased)
-
-
 @patch.object(_m_detrend, 'spline')
 def test_detrend_difference(mock_spline: Mock):
     mock_spline.side_effect = mock_spline_method
@@ -848,10 +834,7 @@ def test_detrend_short_series_never_crash(n, fit):
 def test_detrend_period_alias_and_attrs():
     data = _quiet_read("tests/data/csv/ca533.csv").iloc[:, :3]
     data.attrs.update({"dplpy_precision": 0.01, "kind": "rwl", "site": "ca533"})
-    with pytest.warns(DeprecationWarning, match="period="):
-        a = dpl.detrend(data, period=0.5, plot=False)
     b = dpl.detrend(data, spline_period=0.5, plot=False)
-    assert np.allclose(a.to_numpy(), b.to_numpy(), equal_nan=True)
     assert b.attrs["kind"] == "rwi" and b.attrs["site"] == "ca533"
     assert "dplpy_precision" not in b.attrs
     s = dpl.detrend(data.iloc[:, 0], plot=False)

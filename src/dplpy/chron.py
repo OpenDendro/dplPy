@@ -36,7 +36,7 @@ __license__ = "GNU GPLv3"
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from ._validate import (_require_dataframe, _alias_kwarg, _reject_kwargs,
+from ._validate import (_require_dataframe, _reject_kwargs,
                         _normalize_choice, _carry_attrs, _warn)
 from ._plot_style import style_axes, finalize_font, ACCENT
 import numpy as np
@@ -69,7 +69,6 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     ar_max : int, default 10
         maximum AR order considered when prewhiten is True. To reproduce dplR's
         chron() exactly, pass ar_max=floor(10*log10(n)) and first_aic_min=False.
-        (``max_lag=`` is accepted as a deprecated alias.)
     aic : boolean, default True
         when prewhiten is True, select the AR order by AIC up to ar_max; if False,
         fit a fixed AR of order ar_max.
@@ -144,7 +143,6 @@ def chron(rwi_data: pd.DataFrame, biweight=True, prewhiten=False, plot=True,
     .. [1] https://opendendro.github.io/dplPy/reference/chronology/#chron
     """
     _require_dataframe(rwi_data)
-    ar_max = _alias_kwarg(kwargs, "max_lag", "ar_max", ar_max, "chron")
     _reject_kwargs(kwargs)
     ar_method = _normalize_choice(ar_method, ("yw", "burg", "ols"), "ar_method")
     from .stabilize import stabilize_chron, _prepare_stabilize_kwargs

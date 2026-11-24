@@ -37,7 +37,7 @@ import numpy as np
 import pandas as pd
 
 from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM, NEUTRAL
-from ._validate import (_warn, _alias_kwarg, _reject_kwargs, _normalize_choice,
+from ._validate import (_warn, _reject_kwargs, _normalize_choice,
                         _drop_allnan_columns, _carry_attrs)
 from .smoothingspline import spline, get_period
 from .agedepspline import ads
@@ -123,7 +123,6 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
         smoothing wavelength for ``fit="Spline"`` (``get_period`` rule): a fraction of
         length in ``(0, 1]``, a percent-of-length spline if negative, or a fixed
         wavelength in years if > 1. None uses the dplR default (two thirds of length).
-        The former name ``period=`` is accepted with a DeprecationWarning.
     nyrs0 : int, default 50
         initial spline stiffness for ``fit="AgeDepSpline"`` (see ``dpl.ads``).
     pos_slope : boolean, default False
@@ -185,8 +184,6 @@ def detrend(data: pd.DataFrame | pd.Series, fit="Spline", method="ratio",
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/detrending/#detrend
     """
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period,
-                                 "detrend")
     _reject_kwargs(kwargs)
     method = _normalize_method(method)
     plot = _normalize_plot(plot)
@@ -310,8 +307,6 @@ def _empty_rwi(data, series_name, return_info):
 def detrend_series(data: pd.Series, fit, method, plot=False, spline_period=None,
                    nyrs0=50, pos_slope=False, f=0.5, verbose=False,
                    return_info=False, span="cv", bass=0.0, **kwargs):
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period,
-                                 "detrend_series")
     _reject_kwargs(kwargs)
     series_name = data.name
     method = _normalize_method(method)      # idempotent; canonical passes through
@@ -515,9 +510,8 @@ def _normalize_fit(fit):
 
 
 # Canonical detrending-method names. Division = 'ratio' (aka 'division');
-# subtraction = 'difference'. 'residual' is a deprecated alias for 'ratio' -- in
-# dplPy 'residual' otherwise refers only to the residual (AR-prewhitened)
-# chronology, so it is being retired from the detrending vocabulary.
+# subtraction = 'difference'. ('residual' is not a detrending method -- in dplPy
+# it refers only to the residual (AR-prewhitened) chronology.)
 def _normalize_method(method):
     m = str(method).strip().lower()
     if m in ("ratio", "division"):
@@ -532,15 +526,6 @@ def _normalize_method(method):
             "curve is chosen with fit= (e.g. fit='" + _FIT_CANON[m] + "'); "
             "method= only selects 'ratio' (division) or 'difference' "
             "(subtraction).")
-    if m == "residual":
-        _warn(
-            "detrend(method='residual') is deprecated and will be removed in a "
-            "future release. 'residual' previously meant detrending by DIVISION; "
-            "use method='ratio' (or 'division') for division, or "
-            "method='difference' for subtraction. In dplPy 'residual' now refers "
-            "only to the residual (AR-prewhitened) chronology. Treating "
-            "method='residual' as 'ratio' for now.", FutureWarning, stacklevel=4)
-        return "ratio"
     raise ValueError(
         "unsupported detrending method '" + str(method) + "'. Use 'ratio' "
         "(division, the default) or 'difference' (subtraction).")

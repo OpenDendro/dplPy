@@ -10,6 +10,28 @@ and commit log.
 
 ## [Unreleased]
 
+### Removed
+- **The deprecated keyword aliases carried since 0.8.0–0.9.0 are gone** — passing
+  an old name now raises `TypeError` instead of forwarding with a
+  `DeprecationWarning`. Use the current spelling: `ar_max=` (was `max_lag=`, in
+  `autoreg`/`chron`/`chron_ars`), `lag=` (was `lag_max=`, in `check`),
+  `spline_period=` (was `period=` in `detrend`/`rcs`/`mrcs`/`sfrcs`/`sfmrcs`,
+  `nyrs=` in `ssf`, `spline_nyrs=` in `check`/`chron_stabilized`, and
+  `stabilize_period=` in `xdate`), `window_length=` (was `seg_length=` in
+  `series_corr`, `slide_period=` in `xdate`/`xdate_report`/`xdate_plot`, and
+  `win_length=` in `stabilize_chron`/`chron_stabilized`), `estimator=` (was
+  `method=` in `xdate`), `biweight=` (was `biweight_curve=`/`biweight_crn=` in
+  `sfrcs`/`sfmrcs`), `tol=` (was `mad_threshold=` in `ssf`), and `plot=` (was
+  `make_plot=`, on every plotting function).
+- **`ssf` no longer accepts a curve name passed to `method=` or the old
+  `difference=True` flag.** Choose the detrending curve with `fit=` (e.g.
+  `fit="AgeDepSpline"`) and the index type with `method="ratio"`/`"difference"`.
+- **`detrend(method="residual")` is no longer accepted.** "residual" is not a
+  detrending method in dplPy — it names only the AR-prewhitened chronology. Use
+  `method="ratio"` (division) or `method="difference"` (subtraction).
+- **`dpl.readers_url()` is removed.** `dpl.readers()` reads a URL directly, so
+  call `dpl.readers(url)`.
+
 ## [0.10.0] - 2026-11-23
 
 ### Added

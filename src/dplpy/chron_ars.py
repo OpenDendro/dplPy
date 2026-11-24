@@ -51,7 +51,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from ._validate import (_require_dataframe, _alias_kwarg, _reject_kwargs,
+from ._validate import (_require_dataframe, _reject_kwargs,
                         _normalize_choice, _drop_allnan_columns, _carry_attrs,
                         _warn)
 
@@ -93,7 +93,6 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, ar_max=10,
         arithmetic mean.
     ar_max : int, default 10
         maximum AR lag considered when selecting the pooled AR order.
-        (``max_lag=`` is accepted as a deprecated alias.)
     first_aic_min : boolean, default True
         select the order at the first local AIC minimum (ARSTAN's and dplR's rule)
         if True, else the global AIC minimum. With True, a pooled AIC that never
@@ -178,7 +177,6 @@ def chron_ars(rwi_data: pd.DataFrame, biweight=True, ar_max=10,
     .. [3] https://opendendro.github.io/dplPy/reference/chronology/#chron_ars
     """
     _require_dataframe(rwi_data)
-    ar_max = _alias_kwarg(kwargs, "max_lag", "ar_max", ar_max, "chron_ars")
     _reject_kwargs(kwargs)
     prewhiten_method = _normalize_choice(prewhiten_method, _KNOWN_PREWHITEN_METHODS,
                                          "prewhiten_method")

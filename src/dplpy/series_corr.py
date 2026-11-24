@@ -39,8 +39,7 @@ from .xdate import (normalize_for_crossdating, _row_biweight, _row_mean, _bin_bo
                     _thin, _carry_attrs)
 
 import pandas as pd
-from ._validate import (_require_dataframe, _normalize_corr, _plot_kwarg, _alias_kwarg,
-                        _normalize_choice, _require_year_index)
+from ._validate import (_require_dataframe, _normalize_corr, _plot_kwarg, _normalize_choice, _require_year_index)
 import numpy as np
 import matplotlib.pyplot as plt
 from ._plot_style import style_axes, finalize_font, ACCENT, ACCENT_WARM
@@ -106,8 +105,7 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     series_name : str
         the series to examine.
     prewhiten, corr, window_length, bin_floor, p_val, biweight, lag, ar_max, first_aic_min
-        as in `dpl.xdate()` (``window_length`` is the segment length;
-        ``seg_length=`` is a deprecated alias).
+        as in `dpl.xdate()` (``window_length`` is the segment length).
     plot : bool, default True
         master switch for drawing any figure.
     series_x : bool, default False
@@ -134,8 +132,6 @@ def series_corr(data: pd.DataFrame, series_name: str, prewhiten=True,
     ----------
     .. [1] https://opendendro.github.io/dplPy/reference/crossdating/#series_corr
     """
-    window_length = _alias_kwarg(kwargs, "seg_length", "window_length",
-                                 window_length, "series_corr")
     plot = _plot_kwarg(plot, kwargs)
     _require_dataframe(data)
     if not isinstance(series_name, str):

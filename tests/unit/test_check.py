@@ -193,20 +193,6 @@ def test_unsorted_index_matches_sorted():
     pd.testing.assert_frame_equal(ref, got)
     assert ((got["check"] == "RWL_DATING_LAG") & (got["series"] == "T05")).any()
 
-
-def test_lag_and_spline_period_aliases():
-    # D3: lag_max= and spline_nyrs= are deprecated aliases of lag= and spline_period=
-    df = _clean()
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        old = dpl.check(df, file="x", lag_max=5, spline_nyrs=32)
-    assert sum(isinstance(m.message, DeprecationWarning) for m in w) == 2
-    new = dpl.check(df, file="x", lag=5, spline_period=32)
-    pd.testing.assert_frame_equal(old, new)
-    with pytest.raises(TypeError):
-        dpl.check(df, bogus=1)
-
-
 def test_header_span_regex_handles_bc_years(tmp_path):
     # G7: the ITRDB header span regex must read negative (BC) years, so nm580's
     # "-136 2004" header no longer reports a false RWL_HEADER_SPAN.
@@ -226,11 +212,20 @@ def test_header_span_regex_handles_bc_years(tmp_path):
     assert not (f["check"] == "RWL_HEADER_SPAN").any()
 
 
-def test_reader_warnings_are_not_blanket_suppressed():
-    # G3: only the reader diagnostics that become findings are silenced; a
-    # DeprecationWarning raised while checking still reaches the caller.
+def test_reader_warnings_are_not_blanket_suppressed(monkeypatch):
+    # G3: check() does not wrap its body in a blanket warnings filter -- only
+    # the specific reader diagnostics it re-reports as findings are silenced, so
+    # any other warning raised while checking still reaches the caller.
+    import importlib
+    _chk = importlib.import_module("dplpy.check")
+
+    def noisy(M, years, cols, ctl):
+        warnings.warn("not a reader diagnostic", UserWarning)
+        return []
+
+    monkeypatch.setitem(_chk._GROUPS, "structure", noisy)
     df = _clean()
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        dpl.check(df, lag_max=5)
-    assert any(isinstance(m.message, DeprecationWarning) for m in w)
+        dpl.check(df, checks=["structure"])
+    assert any("not a reader diagnostic" in str(m.message) for m in w)

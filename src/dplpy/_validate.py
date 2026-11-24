@@ -170,19 +170,12 @@ def _normalize_corr(corr, allowed=("spearman", "pearson", "kendall")):
 
 
 def _plot_kwarg(plot, kwargs):
-    """Resolve the plot flag, accepting the deprecated ``make_plot=`` alias.
+    """Resolve the plot flag and reject any stray keyword.
 
     dplPy standardized every public function's plotting switch on ``plot=`` in
-    0.8.0. ``make_plot=`` is kept for one release as a deprecated alias: if it is
-    present it emits a ``DeprecationWarning`` and its value is used (a user who
-    passes the old name clearly wants that value). Any other stray keyword is a
-    ``TypeError``, exactly as it would be without ``**kwargs``.
+    0.8.0. Any leftover keyword is a ``TypeError``, exactly as it would be
+    without ``**kwargs``.
     """
-    if "make_plot" in kwargs:
-        plot = kwargs.pop("make_plot")
-        warnings.warn(
-            "make_plot= is deprecated and will be removed in a future release; "
-            "use plot= instead.", DeprecationWarning, stacklevel=3)
     if kwargs:
         raise TypeError("unexpected keyword argument(s): "
                         + ", ".join(repr(k) for k in sorted(kwargs)))
@@ -215,23 +208,6 @@ def _warn(msg, category=DplpyWarning, stacklevel=3):
     warnings.warn(msg, category, stacklevel=stacklevel)
 
 
-def _alias_kwarg(kwargs, old, new, current, func):
-    """Honour a deprecated keyword ``old`` for parameter ``new``.
-
-    If ``old`` is in ``kwargs`` it is popped, a DeprecationWarning names the
-    function and the replacement, and its value is returned (a caller who
-    passes the old name clearly wants that value). Otherwise ``current`` (the
-    value bound to the new name) is returned. Call once per renamed parameter;
-    then call ``_reject_kwargs(kwargs)`` so stray names still raise TypeError.
-    """
-    if old in kwargs:
-        val = kwargs.pop(old)
-        warnings.warn(
-            func + "(): " + old + "= is deprecated and will be removed in a "
-            "future release; use " + new + "= instead.",
-            DeprecationWarning, stacklevel=3)
-        return val
-    return current
 
 
 def _reject_kwargs(kwargs):

@@ -1,5 +1,5 @@
 """Tests for the console entry point (`dplpy` / `python -m dplpy`), the
-in-console help menu, readme(), and the readers_url wrapper."""
+in-console help menu, and readme()."""
 import io
 import runpy
 import sys
@@ -148,33 +148,3 @@ def test_readme_without_browser_prints_url(capsys):
     out = capsys.readouterr().out
     assert "https://opendendro.github.io/dplPy/" in out
     assert "No web browser" in out
-
-
-# ------------------------------------------------------------ readers_url ---
-
-def test_readers_url_forwards_to_readers(DATA):
-    # readers_url is a thin wrapper over readers(); feed it a local file's
-    # bytes through a mocked urlopen so no network is needed.
-    rwl_path = DATA / "rwl" / "ca533.rwl"
-    payload = rwl_path.read_bytes()
-
-    class _Resp(io.BytesIO):
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            self.close()
-
-        def info(self):
-            return {}
-
-    url = "https://example.invalid/ca533.rwl"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        expected = dpl.readers(str(rwl_path))
-        # readers() calls urllib.request.urlopen(url, timeout=...) by module path
-        with mock.patch("urllib.request.urlopen", return_value=_Resp(payload)) as uo:
-            got = dpl.readers_url(url)
-    assert uo.call_args[0][0] == url
-    assert list(got.columns) == list(expected.columns)
-    assert got.shape == expected.shape

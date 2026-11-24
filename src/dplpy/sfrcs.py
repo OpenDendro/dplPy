@@ -36,29 +36,15 @@ import numpy as np
 import pandas as pd
 
 from .rcs import _sfrcs_run, _plot_rcs, _resolve_po, _as_rwi_frame
-from ._validate import (_require_dataframe, _plot_kwarg, _warn, _alias_kwarg,
+from ._validate import (_require_dataframe, _plot_kwarg, _warn, _reject_kwargs,
                         _normalize_choice)
 from .detrend import _normalize_method, _normalize_fit
 
 
 def _sf_options(kwargs, biweight, max_iterations, func):
-    """Shared argument plumbing for sfrcs/sfmrcs: the deprecated
-    ``biweight_curve``/``biweight_crn`` pair collapses onto ``biweight`` (if both
-    are given, ``biweight_crn`` wins with a warning), and ``max_iterations`` must
-    be >= 1."""
-    old = {k: kwargs.pop(k) for k in ("biweight_curve", "biweight_crn") if k in kwargs}
-    for k in old:
-        _warn(func + "(): " + k + "= is deprecated and will be removed in a future "
-              "release; use biweight= instead.", DeprecationWarning, stacklevel=4)
-    if len(old) == 2 and bool(old["biweight_curve"]) != bool(old["biweight_crn"]):
-        _warn(func + "(): biweight_curve and biweight_crn disagree; a single "
-              "biweight= now controls both the regional-curve mean and the "
-              "chronology mean -- using biweight_crn="
-              + str(bool(old["biweight_crn"])) + ".", stacklevel=4)
-    if "biweight_crn" in old:
-        biweight = bool(old["biweight_crn"])
-    elif "biweight_curve" in old:
-        biweight = bool(old["biweight_curve"])
+    """Shared argument plumbing for sfrcs/sfmrcs: reject unknown keywords and
+    require ``max_iterations`` >= 1."""
+    _reject_kwargs(kwargs)
     if int(max_iterations) < 1:
         raise ValueError("max_iterations must be >= 1.")
     return biweight
@@ -105,8 +91,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
     biweight : bool, default False
         use a Tukey biweight robust mean both for the regional curve by cambial age
         and for the yearly chronology. Default False (arithmetic means) matches
-        CRUST. The former pair ``biweight_curve=``/``biweight_crn=`` is accepted
-        with a DeprecationWarning (if both are given, ``biweight_crn`` wins).
+        CRUST.
     preset : {None, "crust"}, default "crust"
         "crust" (the default, unlike ``rcs``) builds the regional curve the CRUST way
         -- an age-dependent spline with per-point stiffness ``ss + cambial age``
@@ -130,8 +115,7 @@ def sfrcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
         indices need before the chronology is divided out, so prefer True for
         difference-mode signal-free work. (Before 0.9.0 sfrcs always rescaled.)
     plot : bool, default True
-        draw the regional-curve figure (series and final curve vs cambial age). The
-        former name ``make_plot=`` is accepted for now with a DeprecationWarning.
+        draw the regional-curve figure (series and final curve vs cambial age).
     return_info : bool, default False
         if True, return a dict of diagnostics (see Returns) instead of just ``rwi``.
     verbose : bool, default True
@@ -169,7 +153,6 @@ def sfrcs(rwl: pd.DataFrame, po=None, fit="AgeDepSpline", method="ratio",
        options and recommendations. Dendrochronologia, 32, 343-356.
     """
     _require_dataframe(rwl)
-    spline_period = _alias_kwarg(kwargs, "period", "spline_period", spline_period, "sfrcs")
     biweight = _sf_options(kwargs, biweight, max_iterations, "sfrcs")
     plot = _plot_kwarg(plot, kwargs)
     method = _normalize_method(method)

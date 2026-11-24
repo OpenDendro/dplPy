@@ -373,9 +373,6 @@ def test_pooled_acf_matches_dplR_reference_ca533():
 def test_chron_ars_ar_max_alias_and_case_insensitive_options():
     df = _ar2_dataset()
     base = dpl.chron_ars(df, verbose=False)
-    with pytest.warns(DeprecationWarning):
-        alias = dpl.chron_ars(df, verbose=False, max_lag=10)
-    pd.testing.assert_frame_equal(base, alias)
     up = dpl.chron_ars(df, verbose=False, prewhiten_method="AR.YW", ars_method="ARSTAN")
     pd.testing.assert_frame_equal(base, up)
     with pytest.raises(TypeError):

@@ -194,19 +194,9 @@ def test_series_corr_lag_sign_matches_xdate_and_cofecha():
 
 
 def test_series_corr_aliases_defaults_and_options():
-    # D3/D4/D11: seg_length= is a deprecated alias of window_length; lag defaults
-    # to 10; which= is case-insensitive; ar_max is accepted.
-    import warnings
-    import io
-    import contextlib
+    # D4/D11: lag defaults to 10; which= is case-insensitive; ar_max is accepted.
     raw = _missing_ring_frame()
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        with contextlib.redirect_stdout(io.StringIO()):
-            old = dpl.series_corr(raw, "S1", seg_length=40, bin_floor=0, plot=False)
-    assert any(isinstance(x.message, DeprecationWarning) for x in w)
     new = _quiet(dpl.series_corr, raw, "S1", window_length=40, bin_floor=0, plot=False)
-    pd.testing.assert_series_equal(old["seg_corr"], new["seg_corr"])
     assert len(new["lag_table"]) == 21
     _quiet(dpl.series_corr, raw, "S1", which="CCF", plot=False)      # case-insensitive
     with pytest.raises(ValueError):

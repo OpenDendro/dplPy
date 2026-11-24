@@ -35,7 +35,7 @@ __license__ = "GNU GPLv3"
 import numpy as np
 import pandas as pd
 
-from ._validate import (_require_dataframe, _warn, _alias_kwarg, _reject_kwargs,
+from ._validate import (_require_dataframe, _warn, _reject_kwargs,
                         _normalize_choice, _drop_allnan_columns)
 from .stats import stats
 from .chron import chron
@@ -187,12 +187,10 @@ def ssf(rwl,
         detrending curve used at each iteration (the ``detrend`` vocabulary,
         case-insensitive): a cubic smoothing spline or an age-dependent spline
         (``dpl.ads``, fit with ``pos_slope=True`` as in dplR's ssf). Any other
-        name raises. Before 0.9.0 this was called ``method=``; a curve name passed
-        to ``method`` is still honoured with a DeprecationWarning.
+        name raises.
     method : {"ratio", "difference"}, default "ratio"
         how indices are formed: ``"ratio"`` divides series by curve, ``"difference"``
-        subtracts (the former ``difference=True`` flag, accepted with a
-        DeprecationWarning).
+        subtracts.
     spline_period : int or float or None, default None
         stiffness of the curve. For ``fit="Spline"`` it is the spline wavelength
         (``get_period`` rule): None uses dplR ssf's 0.6667 of each series' length,
@@ -200,7 +198,6 @@ def ssf(rwl,
         length, and a value > 1 a fixed wavelength in years. For
         ``fit="AgeDepSpline"`` it is the initial stiffness ``nyrs0`` (None = 50)
         and must be an integer > 1 -- a fraction is only valid for ``Spline``.
-        The former name ``nyrs=`` is accepted with a DeprecationWarning.
     max_iterations : int, default 25
         maximum signal-free iterations before giving up. Under ``preset="crust"``
         it is raised to at least 40 (CRUST's limit), as difficult sites can need
@@ -208,8 +205,7 @@ def ssf(rwl,
     tol : float, default 5e-4
         convergence threshold on the median absolute difference of the
         high-frequency chronology between successive iterations (dplR's
-        ``mad.threshold``; the former name ``mad_threshold=`` is accepted with a
-        DeprecationWarning).
+        ``mad.threshold``).
     recode_zeros : bool, default False
         recode zero ring-widths to 0.001 before processing (avoids div-by-zero
         from literal zero rings). The input frame is not modified. Note this does
@@ -293,19 +289,7 @@ def ssf(rwl,
        implementation of Regional Chronology Standardisation: Part 2, Further
        RCS options and recommendations. Dendrochronologia, 32, 343-356.
     """
-    # --- deprecated spellings (audit D3 / D5) -------------------------------
-    spline_period = _alias_kwarg(kwargs, "nyrs", "spline_period", spline_period, "ssf")
-    tol = _alias_kwarg(kwargs, "mad_threshold", "tol", tol, "ssf")
-    if "difference" in kwargs:
-        method = "difference" if _alias_kwarg(kwargs, "difference", "method",
-                                              None, "ssf") else "ratio"
     _reject_kwargs(kwargs)
-    if str(method).strip().lower() in _FIT_CANON:
-        # the pre-0.9.0 meaning of method= was the curve name
-        _warn("ssf(): method='" + str(method) + "' names a curve; the curve is now "
-              "chosen with fit= and method= selects 'ratio' or 'difference'. "
-              "Treating it as fit='" + str(method) + "'.", DeprecationWarning)
-        fit, method = method, "ratio"
     fit = _normalize_fit(fit)
     if fit not in ("Spline", "AgeDepSpline"):
         raise ValueError("ssf: fit must be 'Spline' or 'AgeDepSpline', got '"
